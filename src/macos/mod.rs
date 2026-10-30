@@ -87,8 +87,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use procage_policy::lower::GrantSlot;
 use procage_policy::{LowerError, LowerOptions, Plan, Policy, SeatbeltPlan, Target, Tty, lower};
 
+pub use crate::unix::TMPDIR_GRANT;
 pub use child::Child;
 pub use probe::{ApplyMethod, probe};
+
+use crate::unix::TmpdirGuard;
 
 /// A step of the in-child sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -541,7 +544,7 @@ impl Cage {
             }));
         }
         let tmpdir = match self.grant_slot(TMPDIR_GRANT) {
-            Some(_) => Some(spawn::private_tmpdir().map_err(SpawnError::Tmpdir)?),
+            Some(_) => Some(crate::unix::private_tmpdir().map_err(SpawnError::Tmpdir)?),
             None => None,
         };
         let removal = TmpdirGuard(tmpdir.clone());
@@ -553,12 +556,12 @@ impl Cage {
             }
         }
         let tokens = spawn::tokens(lib, self, &grants)?;
-        let dropped = spawn::environment(command, &self.plan.hygiene.env);
+        let dropped = crate::unix::environment(command, &self.plan.hygiene.env);
         sys::ChildPlan {
             ops: lib.child_ops(),
             bytecode: self.bytecode.clone(),
             tokens,
-            limits: spawn::limits(&self.plan.hygiene.limits),
+            limits: crate::unix::limits(&self.plan.hygiene.limits),
             new_session: self.plan.hygiene.tty != Tty::Inherit,
             keep,
             fd_buffer: sys::fd_buffer(),
@@ -576,26 +579,6 @@ fn kept_fds(fds: impl IntoIterator<Item = i32>) -> Result<Vec<i32>, SpawnError> 
     match keep.iter().find(|&&fd| !sys::fd_is_open(fd)) {
         Some(&fd) => Err(SpawnError::Fd { fd }),
         None => Ok(keep),
-    }
-}
-
-/// The grant name procage binds to a private temporary directory.
-pub const TMPDIR_GRANT: &str = "tmpdir";
-
-/// Removes a private temporary directory unless the spawn succeeded.
-struct TmpdirGuard(Option<PathBuf>);
-
-impl TmpdirGuard {
-    fn disarm(mut self) -> Option<PathBuf> {
-        self.0.take()
-    }
-}
-
-impl Drop for TmpdirGuard {
-    fn drop(&mut self) {
-        if let Some(dir) = self.0.take() {
-            let _ = std::fs::remove_dir_all(dir);
-        }
     }
 }
 

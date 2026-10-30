@@ -153,15 +153,17 @@ fn waivers_remove_exactly_their_class_and_are_listed() {
                 "{class}: {line}"
             );
         }
-        // Linux lists the waiver too.
+        // Linux lists the waiver too (the base's write rule reaches the
+        // data classes, which T1 masks at spawn: an approximation).
         let t1 = Target::Linux {
             tier: Tier::T1,
             landlock_abi: 8,
         };
-        assert_eq!(
-            lower(&p, t1, &LowerOptions::default()).unwrap().waivers(),
-            &[class]
-        );
+        let masked = LowerOptions::default()
+            .allow(Construct::HdSecrets)
+            .allow(Construct::HdTrustHandoff)
+            .allow(Construct::HdPersistence);
+        assert_eq!(lower(&p, t1, &masked).unwrap().waivers(), &[class]);
     }
     // Classes that apply on macOS emit something when not waived.
     for class in [

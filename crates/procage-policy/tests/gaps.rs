@@ -28,9 +28,14 @@ fn every_gap_is_listed_and_no_plan_is_returned() {
     assert_eq!(
         found,
         [
-            (Construct::FsGlob, GapKind::Approximation),
+            (Construct::FsGlob, GapKind::Unsupported),
             (Construct::FsProtect, GapKind::Unsupported),
             (Construct::NetLoopback, GapKind::Unsupported),
+            // A glob read rule is taken to reach anything.
+            (Construct::HdSecrets, GapKind::Unsupported),
+            // A write rule reaches `.git/hooks` and the other names, which
+            // T2 cannot deny inside it.
+            (Construct::HdTrustHandoff, GapKind::Unsupported),
         ]
     );
     assert!(gaps.iter().all(|g| g.target == T2));
@@ -180,7 +185,8 @@ fn a_control_character_is_unrepresentable_on_macos() {
         tier: Tier::T1,
         landlock_abi: 8,
     };
-    assert!(lower(&p, t1, &LowerOptions::default()).is_ok());
+    let options = LowerOptions::default().allow(Construct::HdTrustHandoff);
+    assert!(lower(&p, t1, &options).is_ok());
 }
 
 #[test]

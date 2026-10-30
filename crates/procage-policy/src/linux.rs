@@ -7,6 +7,7 @@
 //! architecture, opening rule file descriptors and applying anything happen
 //! in `procage`.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
 
@@ -365,6 +366,70 @@ pub enum Mount {
     Mask(AbsPath),
     /// A private, empty `/dev/shm`.
     PrivateDevShm,
+    /// Bind the path over itself, so it cannot be renamed or removed.
+    Pin(AbsPath),
+}
+
+/// The Linux paths of a data-driven hard-deny class, matched at spawn on
+/// tier T1 and checked against grants on tier T2.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ClassPaths {
+    /// The class.
+    pub class: HardDenyClass,
+    /// `true`: the paths are hidden (no read, no write); `false`: they are
+    /// read-only.
+    pub hide: bool,
+    /// Paths relative to every home.
+    pub home: Vec<String>,
+    /// Names relative to any directory (matched under writable trees).
+    pub anywhere: Vec<String>,
+    /// Absolute paths.
+    pub system: Vec<AbsPath>,
+    /// Whether every `.git` directory under a writable tree is pinned.
+    pub pin_git: bool,
+}
+
+impl ClassPaths {
+    /// The patterns these paths stand for, with homes as `/home/*` and
+    /// `/root`, for checking whether a rule can reach them.
+    pub fn patterns(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for home in crate::presets::LINUX_HOMES {
+            out.extend(self.home.iter().map(|rel| alloc::format!("{home}/{rel}")));
+        }
+        out.extend(self.anywhere.iter().map(|n| alloc::format!("/**/{n}")));
+        out.extend(
+            self.system
+                .iter()
+                .map(|p| String::from_utf8_lossy(p.as_bytes()).into_owned()),
+        );
+        if self.pin_git {
+            out.push("/**/.git".into());
+        }
+        out
+    }
+}
+
+/// Whether some path matching `pattern` (absolute; `*` is one component,
+/// `**` any number) equals, contains or lies inside `path`. Components with
+/// other wildcard characters match any one component, which can only
+/// over-report.
+pub fn may_overlap(pattern: &str, path: &[u8]) -> bool {
+    fn go(pat: &[&[u8]], path: &[&[u8]]) -> bool {
+        match (pat.first(), path.first()) {
+            // One side is a prefix of the other.
+            (None, _) | (_, None) => true,
+            (Some(&b"**"), _) => go(&pat[1..], path) || go(pat, &path[1..]),
+            (Some(p), Some(c)) => {
+                let wild = p.iter().any(|b| b"*?[{".contains(b));
+                (wild || p == c) && go(&pat[1..], &path[1..])
+            }
+        }
+    }
+    fn split(s: &[u8]) -> Vec<&[u8]> {
+        s.split(|&b| b == b'/').filter(|c| !c.is_empty()).collect()
+    }
+    go(&split(pattern.as_bytes()), &split(path))
 }
 
 /// The namespaces of a T1 child.
@@ -482,6 +547,9 @@ pub struct LinuxPlan {
     pub degradations: Vec<Degradation>,
     /// Hard-deny classes the policy waived.
     pub waivers: Vec<HardDenyClass>,
+    /// The data-driven hard-deny classes in force (not waived), whose paths
+    /// the backend handles at spawn.
+    pub classes: Vec<ClassPaths>,
     /// Environment, limits and terminal, unchanged from the policy.
     pub hygiene: Hygiene,
 }
@@ -528,6 +596,20 @@ mod tests {
             assert!(!rights(access, handled_fs(12)).contains(AccessFs::REFER));
         }
         assert!(!rights(Access::Write, handled_fs(2)).contains(AccessFs::TRUNCATE));
+    }
+
+    #[test]
+    fn overlap() {
+        assert!(may_overlap("/home/*/.ssh", b"/"));
+        assert!(may_overlap("/home/*/.ssh", b"/home"));
+        assert!(may_overlap("/home/*/.ssh", b"/home/u"));
+        assert!(may_overlap("/home/*/.ssh", b"/home/u/.ssh/id"));
+        assert!(!may_overlap("/home/*/.ssh", b"/home/u/ws"));
+        assert!(!may_overlap("/home/*/.ssh", b"/usr"));
+        assert!(may_overlap("/**/.git/hooks", b"/srv/ws"));
+        assert!(may_overlap("/root/.aws", b"/root"));
+        assert!(!may_overlap("/etc/cron.d", b"/etc/ssl"));
+        assert!(may_overlap("/etc/cron.d", b"/etc"));
     }
 
     #[test]

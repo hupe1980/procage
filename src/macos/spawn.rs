@@ -1,12 +1,7 @@
-//! Preparing a spawn in the parent: grant tokens, the environment, resource
-//! limits, and decoding a failed step.
+//! Preparing a spawn in the parent: grant tokens and decoding a failed step.
 
-use std::ffi::{CString, OsString};
+use std::ffi::CString;
 use std::io;
-use std::path::PathBuf;
-use std::process::Command;
-
-use procage_policy::{EnvPolicy, Rlimits};
 
 use super::{Cage, GrantError, SpawnError, Step, canon, sys};
 
@@ -39,57 +34,6 @@ pub(super) fn tokens(
         out.push(token);
     }
     Ok(out)
-}
-
-/// Sets the command's environment to what the policy yields (see
-/// [`crate::hygiene::environment`]); returns the names the passthrough
-/// denylist dropped.
-pub(super) fn environment(command: &mut Command, policy: &EnvPolicy) -> Vec<String> {
-    let explicit: Vec<(OsString, Option<OsString>)> = command
-        .get_envs()
-        .map(|(k, v)| (k.to_owned(), v.map(|v| v.to_owned())))
-        .collect();
-    let decision = crate::hygiene::environment(std::env::vars_os(), policy, &explicit);
-    command.env_clear();
-    command.envs(decision.set);
-    decision.dropped
-}
-
-/// A fresh directory, accessible only to the user, under the caller's
-/// temporary directory.
-pub(super) fn private_tmpdir() -> io::Result<PathBuf> {
-    use std::os::unix::fs::DirBuilderExt;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let base = std::fs::canonicalize(std::env::temp_dir())?;
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.subsec_nanos());
-    let dir = base.join(format!(
-        "procage-{}-{}-{nanos}",
-        std::process::id(),
-        COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
-    Ok(dir)
-}
-
-/// The `setrlimit` calls for the policy's limits. The core size is always
-/// set (0 by default).
-pub(super) fn limits(limits: &Rlimits) -> Vec<(libc::c_int, u64, u64)> {
-    let mut out = Vec::new();
-    for (resource, value) in [
-        (libc::RLIMIT_NPROC, limits.nproc),
-        (libc::RLIMIT_CPU, limits.cpu_seconds),
-        (libc::RLIMIT_FSIZE, limits.fsize_bytes),
-        (libc::RLIMIT_NOFILE, limits.nofile),
-        (libc::RLIMIT_CORE, Some(limits.core_bytes)),
-    ] {
-        if let Some(value) = value {
-            out.push((resource, value, value));
-        }
-    }
-    out
 }
 
 /// Turns a spawn error carrying a step code into [`SpawnError::Apply`].

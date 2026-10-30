@@ -41,11 +41,11 @@ targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 [dependencies]
 procage-policy = { path = "crates/procage-policy", version = "0.0.1" }
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 libc = "0.2"
 
 # The workspace set, except that unsafe code is denied rather than forbidden so
-# that `macos::sys` alone can allow it.
+# that `macos::sys` and `linux::sys` alone can allow it.
 [lints.rust]
 unsafe_code = "deny"
 missing_docs = "warn"

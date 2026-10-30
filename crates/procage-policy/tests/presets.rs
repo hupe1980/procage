@@ -90,6 +90,82 @@ fn the_class_lists_are_pinned() {
     }
 }
 
+#[test]
+fn the_linux_class_lists_are_pinned() {
+    assert_eq!(presets::LINUX_HOMES, ["/home/*", "/root"]);
+    assert_eq!(
+        presets::SECRETS_HOME_LINUX,
+        [
+            ".aws",
+            ".cargo/credentials.toml",
+            ".config/BraveSoftware",
+            ".config/chromium",
+            ".config/gcloud",
+            ".config/gh",
+            ".config/google-chrome",
+            ".config/microsoft-edge",
+            ".docker/config.json",
+            ".git-credentials",
+            ".gnupg",
+            ".kube",
+            ".local/share/keyrings",
+            ".mozilla",
+            ".netrc",
+            ".password-store",
+            ".pypirc",
+            ".ssh",
+        ]
+    );
+    assert_eq!(
+        presets::PERSISTENCE_HOME_LINUX,
+        [
+            ".config/autostart",
+            ".config/systemd/user",
+            ".local/share/systemd/user"
+        ]
+    );
+    assert_eq!(
+        presets::PERSISTENCE_SYSTEM_LINUX,
+        [
+            "/etc/cron.d",
+            "/etc/systemd/system",
+            "/etc/xdg/autostart",
+            "/var/spool/cron"
+        ]
+    );
+    let secrets = presets::linux_class_paths(HardDenyClass::Secrets).unwrap();
+    assert!(secrets.hide && !secrets.pin_git && secrets.anywhere.is_empty());
+    let handoff = presets::linux_class_paths(HardDenyClass::TrustHandoff).unwrap();
+    assert!(!handoff.hide && handoff.pin_git);
+    assert_eq!(handoff.anywhere.len(), presets::HANDOFF_ANYWHERE.len());
+    assert_eq!(handoff.home, presets::HANDOFF_HOME);
+    let persistence = presets::linux_class_paths(HardDenyClass::Persistence).unwrap();
+    assert_eq!(persistence.system.len(), 4);
+    assert!(presets::linux_class_paths(HardDenyClass::Privilege).is_none());
+    // The T1 plan of a preset carries every class in force.
+    let ws = AbsPath::new("/work").unwrap();
+    let options = LowerOptions::default()
+        .allow(Construct::HdSecrets)
+        .allow(Construct::HdTrustHandoff)
+        .allow(Construct::HdPersistence);
+    let t1 = Target::Linux {
+        tier: Tier::T1,
+        landlock_abi: 8,
+    };
+    let Plan::Linux(plan) = lower(&agent_workspace::v1(&ws), t1, &options).unwrap() else {
+        panic!("a Linux plan");
+    };
+    let classes: Vec<_> = plan.classes.iter().map(|c| c.class).collect();
+    assert_eq!(
+        classes,
+        [
+            HardDenyClass::Secrets,
+            HardDenyClass::TrustHandoff,
+            HardDenyClass::Persistence
+        ]
+    );
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn presets_round_trip_with_their_tag() {

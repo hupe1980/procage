@@ -1,4 +1,4 @@
-//! `unsafe` code exists only in `src/macos/sys.rs`, and every use there has a
+//! `unsafe` code exists only in `src/macos/sys.rs` and `src/linux/sys.rs`, and every use there has a
 //! `// SAFETY:` comment in the comment block directly above it.
 
 use std::path::{Path, PathBuf};
@@ -29,9 +29,9 @@ fn unsafe_lines(text: &str) -> Vec<usize> {
 }
 
 #[test]
-fn unsafe_is_confined_to_macos_sys_with_safety_comments() {
+fn unsafe_is_confined_to_the_sys_modules_with_safety_comments() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let sys = root.join("src/macos/sys.rs");
+    let sys = [root.join("src/macos/sys.rs"), root.join("src/linux/sys.rs")];
     let mut files = Vec::new();
     rust_files(&root.join("src"), &mut files);
     let mut problems = Vec::new();
@@ -41,8 +41,8 @@ fn unsafe_is_confined_to_macos_sys_with_safety_comments() {
         let lines: Vec<&str> = text.lines().collect();
         for i in unsafe_lines(&text) {
             let shown = format!("{}:{}", file.strip_prefix(root).unwrap().display(), i + 1);
-            if *file != sys {
-                problems.push(format!("{shown}: unsafe outside src/macos/sys.rs"));
+            if !sys.contains(file) {
+                problems.push(format!("{shown}: unsafe outside the sys modules"));
                 continue;
             }
             in_sys += 1;
@@ -62,8 +62,8 @@ fn unsafe_is_confined_to_macos_sys_with_safety_comments() {
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
     assert!(
-        cfg!(not(target_os = "macos")) || in_sys > 10,
-        "found only {in_sys} unsafe uses in sys.rs"
+        in_sys > 20,
+        "found only {in_sys} unsafe uses in the sys modules"
     );
 }
 

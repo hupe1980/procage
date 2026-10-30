@@ -9,12 +9,12 @@ use super::{
     subject_of,
 };
 use crate::linux::{
-    AF_NETLINK, AF_UNIX, AF_VSOCK, AccessFs, AccessNet, Action, Condition, Landlock, LandlockRule,
-    LinuxNetwork, LinuxPlan, Mount, Namespaces, NetRule, RuleTarget, Scopes, SeccompRule, Syscall,
-    TIOCLINUX, TIOCSTI, handled_fs, handled_net, rights, scopes,
+    AF_NETLINK, AF_UNIX, AF_VSOCK, AccessFs, Action, ClassPaths, Condition, Landlock, LandlockRule,
+    LinuxNetwork, LinuxPlan, Mount, Namespaces, RuleTarget, Scopes, SeccompRule, Syscall,
+    TIOCLINUX, TIOCSTI, handled_fs, handled_net, may_overlap, rights, scopes,
 };
 use crate::path::AbsPath;
-use crate::policy::{Access, Base, Exec, FsTarget, HardDenyClass, Network, Policy, Ports, Signals};
+use crate::policy::{Access, Base, Exec, FsTarget, HardDenyClass, Network, Policy, Signals};
 
 fn deny(syscall: Syscall) -> SeccompRule {
     SeccompRule {
@@ -89,20 +89,47 @@ fn class_rules(class: HardDenyClass) -> Vec<SeccompRule> {
         // never granted and T1 protect/hide targets are mountpoints.
         HardDenyClass::Privilege | HardDenyClass::RenameAnchors => vec![],
         HardDenyClass::FcntlModify | HardDenyClass::ServiceHandoff => vec![],
-        // Not expressible in a Linux plan yet (see the lowering table).
+        // Masked at spawn or enforced by Landlock's default deny (see
+        // `data_class`).
         HardDenyClass::Secrets | HardDenyClass::TrustHandoff | HardDenyClass::Persistence => vec![],
     }
 }
 
 fn class_outcome(class: HardDenyClass) -> Outcome {
     match class {
-        HardDenyClass::FcntlModify
-        | HardDenyClass::ServiceHandoff
-        | HardDenyClass::Secrets
-        | HardDenyClass::TrustHandoff
-        | HardDenyClass::Persistence => Outcome::NotApplicable,
+        HardDenyClass::FcntlModify | HardDenyClass::ServiceHandoff => Outcome::NotApplicable,
         _ => Outcome::Exact,
     }
+}
+
+/// Whether a rule of `policy` can reach a path of the class: a file rule or
+/// raw Landlock rule with an access that matters for the class whose path
+/// overlaps one of its patterns, or, for names in any directory, a grant
+/// with that access (a grant's path is known only at spawn).
+fn covered(policy: &Policy, paths: &ClassPaths) -> bool {
+    let matters = |access: Access| match access {
+        Access::Read | Access::Exec => paths.hide,
+        Access::Write => true,
+        Access::Protect | Access::Hide => false,
+    };
+    let patterns = paths.patterns();
+    let reaches = |path: &AbsPath| patterns.iter().any(|p| may_overlap(p, path.as_bytes()));
+    let fs = policy.fs.iter().any(|rule| {
+        matters(rule.access)
+            && match &rule.target {
+                FsTarget::Subpath(p) | FsTarget::Literal(p) => reaches(p),
+                FsTarget::Glob(_) => true,
+            }
+    });
+    let extra = policy.linux.as_ref().is_some_and(|layer| {
+        layer
+            .landlock_extra
+            .iter()
+            .any(|(p, access)| matters(*access) && reaches(p))
+    });
+    let grants = (!paths.anywhere.is_empty() || paths.pin_git)
+        && policy.grants.iter().any(|g| matters(g.access));
+    fs || extra || grants
 }
 
 pub(super) fn lower(
@@ -127,13 +154,13 @@ pub(super) fn lower(
     };
     let mut mounts = Vec::new();
     let mut seccomp = Vec::new();
-    let mut hide_by_siblings = Vec::new();
-    let mut mask_unix_sockets = false;
+    let mut hide_by_siblings: Vec<AbsPath> = Vec::new();
     let mut namespaces = t1.then_some(Namespaces {
         user: true,
         mount: true,
         net: true,
-        pid: true,
+        // No PID namespace yet: it needs a reaper and a fresh /proc.
+        pid: false,
         ipc: true,
         uts: true,
     });
@@ -156,16 +183,13 @@ pub(super) fn lower(
                 }
             }
             (Access::Hide, FsTarget::Subpath(p) | FsTarget::Literal(p)) => {
-                if t1 {
-                    ledger.outcome(construct, Outcome::Exact, subject, "");
+                let outcome = if t1 {
+                    Outcome::Exact
+                } else {
+                    Outcome::Unsupported
+                };
+                if ledger.outcome(construct, outcome, subject, "") {
                     mounts.push(Mount::Mask(p.clone()));
-                } else if ledger.outcome(
-                    construct,
-                    Outcome::Approximated,
-                    subject,
-                    "hidden by allowing its siblings as listed at spawn",
-                ) {
-                    hide_by_siblings.push(p.clone());
                 }
             }
             (access, FsTarget::Subpath(p)) => {
@@ -188,18 +212,9 @@ pub(super) fn lower(
                     });
                 }
             }
-            (access, FsTarget::Glob(g)) => {
-                if ledger.outcome(
-                    construct,
-                    Outcome::Approximated,
-                    subject,
-                    "expanded at spawn; files created later are not covered",
-                ) {
-                    landlock.rules.push(LandlockRule {
-                        target: RuleTarget::ExpandGlob(g.clone()),
-                        access: rights(access, handled),
-                    });
-                }
+            // Expanding globs at spawn is not implemented.
+            (_, FsTarget::Glob(_)) => {
+                ledger.outcome(construct, Outcome::Unsupported, subject, "");
             }
         }
     }
@@ -213,7 +228,6 @@ pub(super) fn lower(
     }
 
     let net_handled = handled_net(abi);
-    let tcp = AccessNet(AccessNet::BIND_TCP.0 | AccessNet::CONNECT_TCP.0);
     let network = match &policy.net {
         Network::None => {
             ledger.outcome(Construct::NetNone, Outcome::Exact, None, "");
@@ -225,57 +239,33 @@ pub(super) fn lower(
                 LinuxNetwork::NoNamespace
             }
         }
+        // Both need a relay into the network namespace (T1), which is not
+        // implemented, and T2 cannot restrict ports to loopback.
         Network::Loopback(ports) => {
-            let outcome = if t1 {
-                Outcome::Approximated
-            } else {
-                Outcome::Unsupported
-            };
-            if ledger.outcome(
-                Construct::NetLoopback,
-                outcome,
-                None,
-                "host loopback ports are relayed into the network namespace",
-            ) && let Ports::List(list) = ports
-            {
-                landlock.handled_net = net_handled;
-                for &port in list {
-                    landlock.net_rules.push(NetRule {
-                        port,
-                        access: AccessNet(tcp.0 & net_handled.0),
-                    });
-                }
-            }
+            ledger.outcome(Construct::NetLoopback, Outcome::Unsupported, None, "");
             LinuxNetwork::LoopbackRelay {
                 ports: ports.clone(),
             }
         }
         Network::UnixSockets(paths) => {
-            let outcome = match (abi >= 9, t1) {
-                (true, _) => Outcome::Exact,
-                (false, true) => Outcome::Approximated,
-                (false, false) => Outcome::Unsupported,
+            // Below ABI 9 Landlock cannot restrict connecting to pathname
+            // sockets; masking them at spawn is not implemented.
+            let outcome = if abi >= 9 {
+                Outcome::Exact
+            } else {
+                Outcome::Unsupported
             };
-            if ledger.outcome(
-                Construct::NetUnixSockets,
-                outcome,
-                None,
-                "unix sockets found under granted paths at spawn are masked",
-            ) {
+            if ledger.outcome(Construct::NetUnixSockets, outcome, None, "") {
                 seccomp.push(deny_if(
                     Syscall::Socket,
                     Condition::SocketFamilyExcept(vec![AF_UNIX]),
                 ));
                 landlock.handled_net = net_handled;
-                if abi >= 9 {
-                    for path in paths {
-                        landlock.rules.push(LandlockRule {
-                            target: RuleTarget::Path(path.clone()),
-                            access: AccessFs::RESOLVE_UNIX,
-                        });
-                    }
-                } else {
-                    mask_unix_sockets = true;
+                for path in paths {
+                    landlock.rules.push(LandlockRule {
+                        target: RuleTarget::Path(path.clone()),
+                        access: AccessFs::RESOLVE_UNIX,
+                    });
                 }
             }
             if t1 {
@@ -285,22 +275,10 @@ pub(super) fn lower(
             }
         }
         Network::Proxy { http, socks } => {
-            let outcome = if t1 {
-                Outcome::Exact
-            } else {
-                Outcome::Unsupported
-            };
-            let ports: Vec<_> = http.iter().chain(socks.iter()).copied().collect();
-            if ledger.outcome(Construct::NetProxy, outcome, None, "") {
-                landlock.handled_net = net_handled;
-                for &port in &ports {
-                    landlock.net_rules.push(NetRule {
-                        port,
-                        access: AccessNet(AccessNet::CONNECT_TCP.0 & net_handled.0),
-                    });
-                }
+            ledger.outcome(Construct::NetProxy, Outcome::Unsupported, None, "");
+            LinuxNetwork::ProxyBridge {
+                ports: http.iter().chain(socks.iter()).copied().collect(),
             }
-            LinuxNetwork::ProxyBridge { ports }
         }
         Network::All => {
             ledger.outcome(Construct::NetAll, Outcome::Exact, None, "");
@@ -328,8 +306,9 @@ pub(super) fn lower(
         seccomp.push(enosys(Syscall::Clone3));
     }
     match policy.process.signals {
+        // Landlock's signal scope (ABI 6); there is no PID namespace yet.
         Signals::SelfAndChildren => {
-            let outcome = if t1 || abi >= 6 {
+            let outcome = if abi >= 6 {
                 Outcome::Exact
             } else {
                 Outcome::Unsupported
@@ -436,8 +415,25 @@ pub(super) fn lower(
         }
     }
 
+    let mut classes = Vec::new();
     for &class in HardDenyClass::ALL {
         if policy.waive.contains(&class) {
+            continue;
+        }
+        if let Some(paths) = crate::presets::linux_class_paths(class) {
+            let outcome = match (covered(policy, &paths), t1) {
+                (false, _) => Outcome::Exact,
+                (true, true) => Outcome::Approximated,
+                (true, false) => Outcome::Unsupported,
+            };
+            if ledger.outcome(
+                Construct::of_class(class),
+                outcome,
+                Some(class.to_string()),
+                "paths that exist at spawn are masked; paths created later are not covered",
+            ) {
+                classes.push(paths);
+            }
             continue;
         }
         if ledger.outcome(
@@ -472,10 +468,11 @@ pub(super) fn lower(
         seccomp,
         network,
         no_new_privs: true,
-        mask_unix_sockets,
+        mask_unix_sockets: false,
         hide_by_siblings,
         degradations,
         waivers: policy.waive.iter().copied().collect(),
+        classes,
         hygiene: Hygiene::of(policy),
     })
 }

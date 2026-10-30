@@ -181,6 +181,9 @@ pub fn umount(target: &str) -> Result<(), i32> {
     check(rc.into()).map(drop)
 }
 
+/// `ST_RELATIME` (missing from libc's musl bindings).
+const ST_RELATIME: libc::c_ulong = 0x1000;
+
 /// The mount flags of the mount containing `path` that a bind remount must
 /// keep (the kernel locks them when the mount came from a more privileged
 /// namespace).
@@ -200,7 +203,7 @@ pub fn locked_flags(path: &str) -> Result<libc::c_ulong, i32> {
         (libc::ST_NOEXEC, libc::MS_NOEXEC),
         (libc::ST_NOATIME, libc::MS_NOATIME),
         (libc::ST_NODIRATIME, libc::MS_NODIRATIME),
-        (libc::ST_RELATIME, libc::MS_RELATIME),
+        (ST_RELATIME, libc::MS_RELATIME),
     ];
     Ok(map
         .iter()
@@ -232,7 +235,9 @@ pub fn interface_up(name: &str) -> Result<bool, i32> {
         {
             *dst = src as libc::c_char;
         }
-        if libc::ioctl(s.as_raw_fd(), libc::SIOCGIFFLAGS, &raw mut req) != 0 {
+        // The request type is `c_ulong` on glibc and `c_int` on musl.
+        #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
+        if libc::ioctl(s.as_raw_fd(), libc::SIOCGIFFLAGS as _, &raw mut req) != 0 {
             return Err(errno());
         }
         Ok(c_int::from(req.ifr_ifru.ifru_flags) & libc::IFF_UP != 0)

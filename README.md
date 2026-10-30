@@ -6,13 +6,15 @@ than the deprecated `/usr/bin/sandbox-exec`) and on Linux (Landlock, seccomp
 and namespaces), without helper binaries.
 
 **Status:** the published 0.0.1 only reserves the name. The development
-version on `main` (0.0.2, unreleased) spawns caged children on macOS, with
-inherited descriptors closed, descendants killed when a run ends, and an
-opt-in base profile that lets ordinary programs start. Every policy denies
-reading secrets and writing git hooks, shell startup files and launch
-agents; four frozen presets cover common shapes. It does not yet provide
-pseudo-terminals or support Linux. Do not rely on any release before 0.1.0 to
-contain a process.
+version on `main` (0.0.2, unreleased) spawns caged children on macOS and on
+Linux (tiers T1 and T2), with inherited descriptors closed, descendants
+killed when a run ends, and an opt-in base profile that lets ordinary
+programs start. Every policy denies reading secrets and writing git hooks,
+shell startup files and launch agents; on Linux these hold exactly where no
+rule reaches them, by masks at spawn on tier T1, and otherwise are a
+capability gap. Four frozen presets cover common shapes. It does not yet
+provide pseudo-terminals, a PID namespace, or loopback and proxy networks
+on Linux. Do not rely on any release before 0.1.0 to contain a process.
 
 ## Threat model
 
@@ -41,7 +43,9 @@ seccomp and namespace behaviour procage relies on. Each fact runs a real child
 process. Facts that apply a sandbox **fail rather than skip** when the suite
 itself runs inside a Seatbelt sandbox (for example an AI agent's), so run them
 from a plain terminal: `just test-outside`. On Linux, `just kf-linux` and
-`just kf-linux-t1` run the same suite in unprivileged containers.
+`just kf-linux-t1` run the same suite in unprivileged containers, and
+`just linux` and `just linux-t1` run the Linux backend's tests there (tier T2
+under Docker's defaults, tier T1 with seccomp unconfined).
 
 ## License
 

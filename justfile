@@ -14,7 +14,7 @@ default:
 ci: fmt-check lint test doc package-docs deny msrv no-std semver planning-paths
 
 # `ci` plus the Linux facts in containers and the macOS facts under Rosetta.
-ci-all: ci kf-linux kf-linux-t1 kf-rosetta
+ci-all: ci kf-linux kf-linux-t1 kf-rosetta linux linux-t1
 
 fmt:
     cargo fmt --all
@@ -26,6 +26,8 @@ fmt-check:
 lint:
     @echo "==> gate: lint"
     cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets --target aarch64-unknown-linux-gnu -- -D warnings
+    cargo clippy --workspace --all-targets --target x86_64-unknown-linux-musl -- -D warnings
 
 # Unit tests, doc tests and the kernel facts.
 test:
@@ -61,6 +63,7 @@ bisect:
 doc:
     @echo "==> gate: doc"
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --target aarch64-unknown-linux-gnu
 
 # The published packages (procage and its companion procage-policy) contain the
 # threat model, and the docs build from the packages alone (outside the workspace).
@@ -136,3 +139,22 @@ kf-linux-t1 tier="T1":
 kf-rosetta:
     @echo "==> gate: kf-rosetta"
     cargo test -p procage-kernel-facts --test kernel_facts --target x86_64-apple-darwin
+
+# The Linux backend's tests in a container under Docker's default seccomp profile (tier T2).
+linux tier="T2":
+    @echo "==> gate: linux ({{tier}})"
+    docker run --rm --user 65534:65534 \
+        -e HOME=/tmp -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/target \
+        -e PROCAGE_EXPECT_TIER={{tier}} \
+        -v "$PWD":/src:ro -w /src {{rust_image}} \
+        cargo test --locked -p procage --lib --test spawn_linux --test unsafe_confined
+
+# The Linux backend's tests with seccomp and AppArmor unconfined, so user namespaces work (tier T1).
+linux-t1 tier="T1":
+    @echo "==> gate: linux-t1 ({{tier}})"
+    docker run --rm --user 65534:65534 \
+        --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+        -e HOME=/tmp -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/target \
+        -e PROCAGE_EXPECT_TIER={{tier}} \
+        -v "$PWD":/src:ro -w /src {{rust_image}} \
+        cargo test --locked -p procage --lib --test spawn_linux --test unsafe_confined

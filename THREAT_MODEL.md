@@ -15,20 +15,30 @@ spelling the kernel matches, compiles the policy once, and applies it in the
 child with system calls only. If any step fails, the target never runs. Its
 integration tests observe the kernel refusing access outside the policy.
 
-It also closes every inherited descriptor the caller did not hand over,
-kills the child and the descendants it can find when the run ends, drops
-secret-looking variables from a passed-through environment, and can give
-each run a private temporary directory.
+On Linux it spawns a caged child on tier T1 (user, mount, IPC, UTS and
+network namespaces, mounts, Landlock and seccomp) or tier T2 (Landlock and
+seccomp), whichever the host allows, and refuses to spawn without Landlock.
+A construct the tier cannot enforce is an error unless the caller accepts
+it by name. Its integration tests run in containers for both tiers on one
+kernel (7.0, aarch64).
+
+On both systems it also closes every inherited descriptor the caller did not
+hand over, kills the child and the descendants it can find when the run
+ends, drops secret-looking variables from a passed-through environment, and
+can give each run a private temporary directory.
 
 It does **not** yet:
 
 - stop a descendant that double-forks and starts its own session on macOS
   from outliving the run;
-- provide pseudo-terminals (its base profile, V1, is curated for macOS
-  26.6.2 and grants nothing in the user's home);
-- deny secrets, trust-handoff files and persistence locations on Linux (it
-  does on macOS, in every policy);
-- support Linux.
+- provide pseudo-terminals (its macOS base profile, V1, is curated for
+  macOS 26.6.2 and grants nothing in the user's home);
+- deny secrets, trust-handoff files and persistence locations on Linux
+  where a rule reaches them, except by masking the paths that exist at
+  spawn on tier T1 (an approximation the caller must accept by name); on
+  tier T2 such a policy is refused unless the class is waived;
+- give Linux children a PID namespace, loopback or proxy networking, or a
+  unix-socket allowlist below Landlock ABI 9.
 
 Do not rely on any release before 0.1.0 to contain a process.
 

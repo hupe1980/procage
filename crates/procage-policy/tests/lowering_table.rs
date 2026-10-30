@@ -7,6 +7,7 @@ mod common;
 use std::collections::BTreeSet;
 
 use common::{class_of, reference_policy};
+use procage_policy::path::AbsPath;
 use procage_policy::*;
 
 const TABLE: &str = include_str!("../src/lowering.md");
@@ -127,9 +128,34 @@ fn parse() -> Vec<Row> {
     rows
 }
 
+const DATA_CLASSES: [HardDenyClass; 3] = [
+    HardDenyClass::Secrets,
+    HardDenyClass::TrustHandoff,
+    HardDenyClass::Persistence,
+];
+
+/// The reference policy of `construct`, measured in isolation: the data
+/// classes react to any rule that can reach their paths, so they are waived
+/// for every other row, and their own rows use a rule that reaches them.
+fn isolated(construct: Construct) -> Policy {
+    let mut p = reference_policy(construct);
+    match class_of(construct) {
+        Some(class) if DATA_CLASSES.contains(&class) => {
+            p.fs.push(FsRule::new(
+                Access::Write,
+                FsTarget::Subpath(AbsPath::new("/home").unwrap()),
+            ));
+            p.waive
+                .extend(DATA_CLASSES.into_iter().filter(|&c| c != class));
+        }
+        _ => p.waive.extend(DATA_CLASSES),
+    }
+    p
+}
+
 /// The policy without `construct`: waived for hard-deny classes.
 fn without(construct: Construct) -> Policy {
-    let mut p = reference_policy(construct);
+    let mut p = isolated(construct);
     let class = class_of(construct).expect("n/a is only used for hard-deny classes");
     p.waive.insert(class);
     p
@@ -153,7 +179,7 @@ fn has_gap(result: &Result<Plan, LowerError>, construct: Construct, kind: &GapKi
 }
 
 fn check(construct: Construct, target: Target, expected: Cell) -> Result<(), String> {
-    let policy = reference_policy(construct);
+    let policy = isolated(construct);
     let plain = LowerOptions::default();
     let allowed = LowerOptions::default().allow(construct);
     let result = lower(&policy, target, &plain);

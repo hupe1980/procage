@@ -14,9 +14,20 @@
 //! - [`HardDenyClass::Persistence`] denies writing [`PERSISTENCE_HOME`] in
 //!   every home and [`PERSISTENCE_SYSTEM`].
 //!
-//! On Linux these classes are not expressible yet: Landlock cannot deny
-//! inside a granted tree, and masking at spawn belongs to the Linux spawn
-//! backend, which must implement them before it ships.
+//! **Linux lists** (version 1; see [`linux_class_paths`]): homes are `/root`
+//! and every directory under `/home` ([`LINUX_HOMES`]).
+//!
+//! - `secrets`: [`SECRETS_HOME_LINUX`] in every home.
+//! - `trust-handoff`: [`HANDOFF_ANYWHERE`] in any directory, [`HANDOFF_HOME`]
+//!   in every home, and no rename or removal of `.git`.
+//! - `persistence`: [`PERSISTENCE_HOME_LINUX`] in every home and
+//!   [`PERSISTENCE_SYSTEM_LINUX`].
+//!
+//! Landlock cannot deny inside a tree it allows. Where no rule of a policy
+//! can reach a class's paths, Landlock's default deny enforces the class
+//! exactly. Where one can, tier T1 masks the paths that exist at spawn (an
+//! approximation: paths created later are not covered) and tier T2 cannot
+//! enforce the class; the lowering table gives the details.
 //!
 //! **Presets** (version 1, frozen). Each returns an ordinary [`Policy`] with
 //! base profile V1, the full hard-deny tier, an environment allowlist of
@@ -28,12 +39,17 @@
 //! | [`agent_readonly::v1`] | read of the workspace, the `tmpdir` grant, fork, signals to self and children |
 //! | [`agent_workspace::v1`] | as `agent_readonly`, plus write and exec on the workspace |
 //! | [`build::v1`] | as `agent_workspace`, plus loopback network |
+//!
+//! On Linux, `build` is a capability gap until loopback networking is
+//! relayed into the network namespace, and the write rules of
+//! `agent_workspace` and `build` reach trust-handoff names (see above).
 
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::glob::Glob;
+use crate::linux::ClassPaths;
 use crate::name::GrantName;
 use crate::path::AbsPath;
 use crate::policy::{
@@ -102,6 +118,46 @@ pub const PERSISTENCE_HOME: &[&str] = &[
 /// System-wide persistence locations.
 pub const PERSISTENCE_SYSTEM: &[&str] = &["/Library/LaunchAgents", "/Library/LaunchDaemons"];
 
+/// Linux: the home directories (`/root` and every directory under `/home`).
+pub const LINUX_HOMES: &[&str] = &["/home/*", "/root"];
+
+/// Linux: secrets, relative to each home.
+pub const SECRETS_HOME_LINUX: &[&str] = &[
+    ".aws",
+    ".cargo/credentials.toml",
+    ".config/BraveSoftware",
+    ".config/chromium",
+    ".config/gcloud",
+    ".config/gh",
+    ".config/google-chrome",
+    ".config/microsoft-edge",
+    ".docker/config.json",
+    ".git-credentials",
+    ".gnupg",
+    ".kube",
+    ".local/share/keyrings",
+    ".mozilla",
+    ".netrc",
+    ".password-store",
+    ".pypirc",
+    ".ssh",
+];
+
+/// Linux: persistence locations, relative to each home.
+pub const PERSISTENCE_HOME_LINUX: &[&str] = &[
+    ".config/autostart",
+    ".config/systemd/user",
+    ".local/share/systemd/user",
+];
+
+/// Linux: system-wide persistence locations.
+pub const PERSISTENCE_SYSTEM_LINUX: &[&str] = &[
+    "/etc/cron.d",
+    "/etc/systemd/system",
+    "/etc/xdg/autostart",
+    "/var/spool/cron",
+];
+
 /// The environment allowlist of every preset.
 pub const PRESET_ENV: &[&str] = &["HOME", "LANG", "LC_ALL", "PATH", "TERM", "TMPDIR", "USER"];
 
@@ -150,6 +206,46 @@ pub fn patterns(class: HardDenyClass) -> Vec<Glob> {
             .collect(),
         _ => Vec::new(),
     }
+}
+
+fn strings(list: &[&str]) -> Vec<alloc::string::String> {
+    list.iter().map(|s| s.to_string()).collect()
+}
+
+/// The Linux paths of a data-driven class (`None` for the other classes).
+pub fn linux_class_paths(class: HardDenyClass) -> Option<ClassPaths> {
+    let system = |list: &[&str]| -> Vec<AbsPath> {
+        list.iter()
+            .map(|p| AbsPath::new(*p).unwrap_or_else(|_| unreachable!("valid path {p}")))
+            .collect()
+    };
+    Some(match class {
+        HardDenyClass::Secrets => ClassPaths {
+            class,
+            hide: true,
+            home: strings(SECRETS_HOME_LINUX),
+            anywhere: Vec::new(),
+            system: Vec::new(),
+            pin_git: false,
+        },
+        HardDenyClass::TrustHandoff => ClassPaths {
+            class,
+            hide: false,
+            home: strings(HANDOFF_HOME),
+            anywhere: strings(HANDOFF_ANYWHERE),
+            system: Vec::new(),
+            pin_git: true,
+        },
+        HardDenyClass::Persistence => ClassPaths {
+            class,
+            hide: false,
+            home: strings(PERSISTENCE_HOME_LINUX),
+            anywhere: Vec::new(),
+            system: system(PERSISTENCE_SYSTEM_LINUX),
+            pin_git: false,
+        },
+        _ => return None,
+    })
 }
 
 /// The pattern of a `.git` directory, whose removal or renaming
