@@ -11,7 +11,8 @@
 //! kernel and what is not done yet:
 //!
 //! - a double-forked descendant can outlive a run on macOS;
-//! - there are no pseudo-terminals and no base profile;
+//! - there are no pseudo-terminals, and the base profile is curated for
+//!   macOS 26.6.2;
 //! - there is no Linux support.
 //!
 //! Do not rely on any release before 0.1.0 to contain a process.
@@ -23,13 +24,10 @@
 //! # #[cfg(target_os = "macos")]
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use procage::macos::{Cage, Grants};
-//! use procage::policy::{AbsPath, Access, FsRule, FsTarget, Policy};
+//! use procage::policy::{AbsPath, Access, Base, FsRule, FsTarget, Policy};
 //!
 //! let mut policy = Policy::default();
-//! for dir in ["/usr/lib", "/System", "/bin"] {
-//!     policy.fs.push(FsRule::new(Access::Exec, FsTarget::Subpath(AbsPath::new(dir)?)));
-//! }
-//! policy.fs.push(FsRule::new(Access::Read, FsTarget::Literal(AbsPath::new("/")?)));
+//! policy.base = Base::V1; // what ordinary programs need to start
 //! policy.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(AbsPath::new("/tmp/project")?)));
 //!
 //! let cage = Cage::new(&policy)?;

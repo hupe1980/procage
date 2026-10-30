@@ -389,6 +389,9 @@ pub struct Namespaces {
 pub enum RuleTarget {
     /// A path known when the policy was lowered.
     Path(AbsPath),
+    /// A system path that the backend skips when it does not exist on the
+    /// host (for example `/lib64`).
+    PathIfExists(AbsPath),
     /// The path bound to this grant at spawn.
     Grant(GrantName),
     /// Every path the glob matches at spawn (an approximation: later files

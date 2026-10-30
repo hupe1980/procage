@@ -123,6 +123,7 @@ constructs! {
     SeatbeltLayer => "seatbelt-layer",
     LinuxLayer => "linux-layer",
     Hygiene => "hygiene",
+    BaseV1 => "base-v1",
     HdFcntlModify => "hd-fcntl-modify",
     HdPrivilege => "hd-privilege",
     HdServiceHandoff => "hd-service-handoff",

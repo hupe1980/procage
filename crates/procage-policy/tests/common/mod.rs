@@ -222,6 +222,7 @@ pub fn reference_policy(construct: Construct) -> Policy {
             p.limits.nofile = Some(1024);
             p.tty = Tty::None;
         }
+        Construct::BaseV1 => p.base = Base::V1,
         _ => p = hard_deny_base(),
     }
     p

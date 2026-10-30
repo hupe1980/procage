@@ -24,7 +24,8 @@ It does **not** yet:
 
 - stop a descendant that double-forks and starts its own session on macOS
   from outliving the run;
-- provide pseudo-terminals, a base profile or the preset hard-deny data;
+- provide pseudo-terminals or the preset hard-deny data (its base profile,
+  V1, is curated for macOS 26.6.2 and grants nothing in the user's home);
 - support Linux.
 
 Do not rely on any release before 0.1.0 to contain a process.

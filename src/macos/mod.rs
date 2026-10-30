@@ -41,7 +41,12 @@
 //!   `DYLD_*` variables do not reach the child unless set explicitly on the
 //!   command, and the handle lists them as dropped;
 //! - a policy with the grant `tmpdir` gives each run its own `TMPDIR`, which
-//!   is removed when the handle is dropped.
+//!   is removed when the handle is dropped;
+//! - with base profile V1, `id`, `date`, `uname`, `sh`/`zsh`/`bash`, `cat`,
+//!   `sed`, `awk`, `perl`, `tar`, `gzip` and Rust programs run with correct
+//!   output (user name, local time), and children with `/dev/null` stdio
+//!   work; the base alone still refuses the home directory, temporary files,
+//!   writes to `/tmp` and the network.
 //!
 //! **Not yet done** (later features):
 //!
@@ -49,8 +54,9 @@
 //!   reparented away from the child; macOS gives no way to find it, so it
 //!   escapes lifetime control;
 //! - there are no pseudo-terminals (`Tty::NewPty`);
-//! - there is no curated base profile: the policy must grant what the
-//!   program needs to start, and opening `/dev/null` is denied unless granted;
+//! - the base profile ([`Base::V1`](procage_policy::Base::V1)) is curated
+//!   for macOS 26.6.2; tools that are Xcode shims (`/usr/bin/git`,
+//!   `/usr/bin/python3`) need developer-tool paths it does not include;
 //! - there is no helper process (path B).
 //!
 //! With `Tty::Inherit` the child runs in its own process group, so its reads

@@ -43,6 +43,7 @@
 
 extern crate alloc;
 
+pub mod base;
 #[cfg(feature = "serde")]
 mod format;
 pub mod glob;
@@ -63,7 +64,7 @@ pub use lower::{
 pub use name::{GrantName, NameError, Port, Tag};
 pub use path::{AbsPath, PathError};
 pub use policy::{
-    Access, EnvPolicy, Exec, FsRule, FsTarget, Grant, HardDenyClass, Ipc, Network, Policy,
+    Access, Base, EnvPolicy, Exec, FsRule, FsTarget, Grant, HardDenyClass, Ipc, Network, Policy,
     PolicyError, Ports, Process, Rlimits, Signals, Tty,
 };
 pub use sbpl::EscapeError;

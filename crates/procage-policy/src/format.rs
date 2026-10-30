@@ -17,7 +17,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::path::{AbsPath, PathError};
 use crate::policy::{
-    EnvPolicy, FsRule, Grant, HardDenyClass, Ipc, Network, Policy, Process, Rlimits, Tty,
+    Base, EnvPolicy, FsRule, Grant, HardDenyClass, Ipc, Network, Policy, Process, Rlimits, Tty,
 };
 use crate::{linux, seatbelt};
 
@@ -98,6 +98,8 @@ pub(crate) struct PolicyRepr {
     #[serde(default)]
     tty: Tty,
     #[serde(default)]
+    base: Base,
+    #[serde(default)]
     waive: BTreeSet<HardDenyClass>,
     #[serde(default)]
     grants: Vec<Grant>,
@@ -118,6 +120,7 @@ impl From<Policy> for PolicyRepr {
             env: p.env,
             limits: p.limits,
             tty: p.tty,
+            base: p.base,
             waive: p.waive,
             grants: p.grants,
             seatbelt: p.seatbelt,
@@ -137,6 +140,7 @@ impl From<PolicyRepr> for Policy {
             env: r.env,
             limits: r.limits,
             tty: r.tty,
+            base: r.base,
             waive: r.waive,
             grants: r.grants,
             seatbelt: r.seatbelt,

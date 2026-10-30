@@ -239,6 +239,23 @@ pub enum Tty {
     NewPty,
 }
 
+/// A curated, frozen set of rules that lets ordinary programs start (see
+/// [`crate::base`]). A policy has none unless it names a version.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "kebab-case")
+)]
+#[non_exhaustive]
+pub enum Base {
+    /// No base: only what the policy states.
+    #[default]
+    None,
+    /// Base profile version 1 (measured on macOS 26.6.2). Frozen.
+    V1,
+}
+
 /// A member of the hard-deny tier, emitted last in every plan.
 ///
 /// A class can be removed only by naming it in [`Policy::waive`], and every
@@ -385,6 +402,8 @@ pub struct Policy {
     pub limits: Rlimits,
     /// The child's terminal.
     pub tty: Tty,
+    /// The base profile.
+    pub base: Base,
     /// Hard-deny classes removed by name.
     pub waive: BTreeSet<HardDenyClass>,
     /// Per-spawn grants.

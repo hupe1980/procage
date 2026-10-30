@@ -9,7 +9,7 @@ use super::{
     Construct, GapKind, GrantSlot, Hygiene, Ledger, LowerError, LowerOptions, Outcome,
     SeatbeltPlan, Target, fs_construct, subject_of,
 };
-use crate::policy::{Access, Exec, FsTarget, HardDenyClass, Network, Policy, Ports, Signals};
+use crate::policy::{Access, Base, Exec, FsTarget, HardDenyClass, Network, Policy, Ports, Signals};
 use crate::sbpl::{self, Filter, Rule};
 use crate::seatbelt::{self, Effect};
 
@@ -301,6 +301,10 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
         allow.push(Rule::new(Effect::Allow, &["ipc-sysv*"], vec![]));
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
+    if policy.base == Base::V1 {
+        ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
+        allow.extend(crate::base::macos_v1(policy.tty));
+    }
 
     if let Some(layer) = &policy.seatbelt {
         ledger.outcome(Construct::SeatbeltLayer, Outcome::Exact, None, "");

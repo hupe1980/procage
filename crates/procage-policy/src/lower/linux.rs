@@ -14,7 +14,7 @@ use crate::linux::{
     TIOCLINUX, TIOCSTI, handled_fs, handled_net, rights, scopes,
 };
 use crate::path::AbsPath;
-use crate::policy::{Access, Exec, FsTarget, HardDenyClass, Network, Policy, Ports, Signals};
+use crate::policy::{Access, Base, Exec, FsTarget, HardDenyClass, Network, Policy, Ports, Signals};
 
 fn deny(syscall: Syscall) -> SeccompRule {
     SeccompRule {
@@ -402,6 +402,12 @@ pub(super) fn lower(
         }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
+    if policy.base == Base::V1 {
+        ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
+        landlock
+            .rules
+            .extend(crate::base::linux_v1(policy.tty, handled));
+    }
 
     if policy.seatbelt.is_some() {
         ledger.outcome(

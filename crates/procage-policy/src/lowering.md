@@ -64,6 +64,7 @@ changes the profile.
 | `seatbelt-layer` | exact | approximated | approximated | Ignored on Linux when allowed. |
 | `linux-layer` | approximated | exact | exact | Ignored on macOS when allowed. |
 | `hygiene` | exact | exact | exact | Environment, limits and terminal are carried into the plan unchanged. |
+| `base-v1` | exact | exact | exact | The curated base profile (see the `base` module). The Linux content is verified once Linux spawning exists. |
 | `hd-fcntl-modify` | exact | n/a | n/a | `(deny system-fcntl (fcntl-command 80 110))`; compiles. |
 | `hd-privilege` | exact | exact | exact | macOS: setugid writes and setuid/setgid exec denied; compiles. Linux: `no_new_privs`, which is always set. |
 | `hd-service-handoff` | exact | n/a | n/a | Launch Services, Apple events, pasteboard and XPC service lookups, `lsopen`, `appleevent-send`; compiles. |

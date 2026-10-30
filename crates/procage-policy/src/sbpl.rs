@@ -120,6 +120,8 @@ pub enum Filter {
     FileMode(u32),
     /// `(ioctl-command #x…)`.
     IoctlCommand(u32),
+    /// `(ipc-posix-name "…")`.
+    IpcPosixName(String),
 }
 
 /// A top-level SBPL rule: `(allow|deny op… filter)`. More than one filter is
@@ -158,7 +160,8 @@ impl Rule {
             | Filter::GlobalNamePrefix(s)
             | Filter::XpcServiceNamePrefix(s)
             | Filter::RemoteIp(s)
-            | Filter::LocalIp(s) => Some(s.as_bytes()),
+            | Filter::LocalIp(s)
+            | Filter::IpcPosixName(s) => Some(s.as_bytes()),
             Filter::Target(_)
             | Filter::OutsideSameSandbox
             | Filter::FcntlCommand(_)
@@ -271,6 +274,9 @@ fn render_filter(filter: &Filter, params: &mut Params) -> Result<String, EscapeE
         }
         Filter::FileMode(mode) => format!("(file-mode #o{mode:o})"),
         Filter::IoctlCommand(command) => format!("(ioctl-command #x{command:x})"),
+        Filter::IpcPosixName(s) => {
+            format!("(ipc-posix-name {})", string_value(s.as_bytes(), params)?)
+        }
     })
 }
 

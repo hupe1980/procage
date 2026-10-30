@@ -23,8 +23,8 @@ use procage::macos::{
     probe, testing,
 };
 use procage::policy::{
-    AbsPath, Access, EnvPolicy, FsRule, FsTarget, Glob, Grant, GrantName, Network, Policy, Port,
-    Ports, Tty,
+    AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Glob, Grant, GrantName, Network, Policy,
+    Port, Ports, Tty,
 };
 use procage::policy::{linux, seatbelt};
 
@@ -932,4 +932,134 @@ fn latency() {
         "latency: plain {plain:?}, caged {caged:?}, overhead {:?}",
         caged.saturating_sub(plain)
     );
+}
+
+// ---- 006: base profile ----
+
+fn base_v1() -> Policy {
+    let mut p = Policy::default();
+    p.base = Base::V1;
+    p
+}
+
+fn outside(program: &str, args: &[&str]) -> String {
+    let out = Command::new(program).args(args).output().unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn base_runs_ordinary_programs() {
+    let work = scratch("base-work");
+    let mut p = base_v1();
+    p.fs.push(rule(Access::Read, &work));
+    let cage = Cage::new(&p).unwrap();
+    let cases: &[(&str, &[&str], Option<String>)] = &[
+        (
+            "/usr/bin/id",
+            &["-un"],
+            Some(outside("/usr/bin/id", &["-un"])),
+        ),
+        (
+            "/usr/bin/whoami",
+            &[],
+            Some(outside("/usr/bin/whoami", &[])),
+        ),
+        ("/bin/date", &["+%Z"], Some(outside("/bin/date", &["+%Z"]))),
+        ("/usr/bin/uname", &["-s"], Some("Darwin".into())),
+        ("/bin/sh", &["-c", "echo ok"], Some("ok".into())),
+        ("/bin/zsh", &["-c", "echo ok"], Some("ok".into())),
+        (
+            "/bin/bash",
+            &["-c", "pwd >/dev/null && echo ok"],
+            Some("ok".into()),
+        ),
+        ("/bin/cat", &["/etc/hosts"], None),
+        ("/usr/bin/sort", &["/dev/null"], Some(String::new())),
+        ("/usr/bin/sed", &["-n", "1p", "/etc/hosts"], None),
+        ("/usr/bin/awk", &["BEGIN { print 1 + 1 }"], Some("2".into())),
+        ("/usr/bin/xxd", &["-l", "4", "/dev/urandom"], None),
+        ("/usr/bin/perl", &["-e", "print 42"], Some("42".into())),
+        ("/usr/bin/tar", &["--version"], None),
+        ("/usr/bin/gzip", &["-V"], None),
+    ];
+    let mut failures = Vec::new();
+    for (program, args, expected) in cases {
+        let mut cmd = Command::new(program);
+        cmd.args(*args)
+            .current_dir(&work)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let out = run(&cage, cmd, &Grants::new());
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let ok = out.status.success() && expected.as_ref().is_none_or(|e| *e == stdout);
+        if !ok {
+            failures.push(format!(
+                "{program} {args:?}: {:?} stdout={stdout:?} stderr={:?}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn base_runs_a_rust_program_and_dev_null_stdio() {
+    // The test binary itself, with nothing but its own exec added: the base
+    // covers the Rust runtime's sysctl reads.
+    let exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
+    let mut p = base_v1();
+    p.fs.push(FsRule::new(Access::Exec, FsTarget::Literal(abs(&exe))));
+    let cage = Cage::new(&p).unwrap();
+    let out = run(&cage, child_command("session"), &Grants::new());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("procage-result: leader=true"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut cmd = Command::new("/bin/echo");
+    cmd.arg("hi")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let status = cage
+        .spawn(&mut cmd, &Grants::new())
+        .unwrap()
+        .wait()
+        .unwrap();
+    assert!(
+        status.success(),
+        "a child with /dev/null stdio failed: {status:?}"
+    );
+}
+
+#[test]
+fn base_grants_nothing_personal() {
+    let home = std::env::var("HOME").unwrap();
+    let tmp_file = scratch("base-personal").join("f");
+    std::fs::write(&tmp_file, "secret").unwrap();
+    let marker = PathBuf::from(format!("/tmp/procage-{}-base-marker", std::process::id()));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let cage = Cage::new(&base_v1()).unwrap();
+    let refused = |program: &str, args: &[&str]| {
+        let mut cmd = Command::new(program);
+        cmd.args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let out = run(&cage, cmd, &Grants::new());
+        assert!(
+            !out.status.success(),
+            "{program} {args:?} succeeded under the base alone"
+        );
+    };
+    refused("/bin/ls", &[&home]);
+    refused("/usr/bin/stat", &[&home]);
+    refused("/bin/cat", &[tmp_file.to_str().unwrap()]);
+    refused("/usr/bin/touch", &[marker.to_str().unwrap()]);
+    refused("/usr/bin/nc", &["-z", "-n", "-w", "2", "127.0.0.1", &port]);
+    assert!(!marker.exists());
 }
