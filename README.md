@@ -5,8 +5,11 @@ child process in a cage on macOS (Seatbelt, applied through libsandbox rather
 than the deprecated `/usr/bin/sandbox-exec`) and on Linux (Landlock, seccomp
 and namespaces), without helper binaries.
 
-**Status:** version 0.0.1 only reserves the name. It contains no sandboxing
-API and enforces nothing.
+**Status:** the published 0.0.1 only reserves the name. The development
+version on `main` (0.0.2, unreleased) spawns caged children on macOS. It does
+not yet close inherited file descriptors, kill descendants, ship a base
+profile, or support Linux. Do not rely on any release before 0.1.0 to
+contain a process.
 
 ## Threat model
 

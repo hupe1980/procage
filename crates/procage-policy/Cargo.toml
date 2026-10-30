@@ -1,13 +1,15 @@
 [package]
 name = "procage-policy"
-version = "0.0.0"
+version = "0.0.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Portable sandbox policy and its lowering for procage (unpublished)"
-publish = false
+description = "Portable sandbox policy for procage: the policy IR and its lowering to Seatbelt and Linux plans"
+readme = false
+keywords = ["sandbox", "seatbelt", "landlock", "policy", "security"]
+categories = ["os", "no-std"]
 
 [features]
 # A versioned data format for policies (serde, no_std + alloc).

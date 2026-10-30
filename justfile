@@ -62,21 +62,25 @@ doc:
     @echo "==> gate: doc"
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
-# The published package contains the threat model, and its docs build from the
-# package alone (outside the workspace).
+# The published packages (procage and its companion procage-policy) contain the
+# threat model, and the docs build from the packages alone (outside the workspace).
 package-docs:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> gate: package-docs"
     cargo package -p procage --allow-dirty --list | grep -qx THREAT_MODEL.md \
         || { echo "THREAT_MODEL.md is not in the package" >&2; exit 1; }
-    cargo package -p procage --allow-dirty --no-verify --quiet
+    cargo package -p procage -p procage-policy --allow-dirty --no-verify --quiet
     version=$(cargo pkgid -p procage | sed 's/.*[#@]//')
+    policy=$(cargo pkgid -p procage-policy | sed 's/.*[#@]//')
     dir=$(mktemp -d)
     trap 'rm -rf "$dir"' EXIT
     tar -xzf "target/package/procage-$version.crate" -C "$dir"
-    (cd "$dir/procage-$version" && RUSTDOCFLAGS="-D warnings" CARGO_TARGET_DIR="$dir/target" cargo doc --no-deps --quiet)
+    tar -xzf "target/package/procage-policy-$policy.crate" -C "$dir"
+    (cd "$dir/procage-$version" && RUSTDOCFLAGS="-D warnings" CARGO_TARGET_DIR="$dir/target" \
+        cargo doc --no-deps --quiet --config "patch.crates-io.procage-policy.path=\"$dir/procage-policy-$policy\"")
     test -f "$dir/target/doc/procage/threat_model/index.html"
+    if [[ "$(uname -s)" == Darwin ]]; then test -f "$dir/target/doc/procage/macos/index.html"; fi
 
 deny:
     @echo "==> gate: deny"
