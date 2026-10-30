@@ -15,11 +15,16 @@ spelling the kernel matches, compiles the policy once, and applies it in the
 child with system calls only. If any step fails, the target never runs. Its
 integration tests observe the kernel refusing access outside the policy.
 
+It also closes every inherited descriptor the caller did not hand over,
+kills the child and the descendants it can find when the run ends, drops
+secret-looking variables from a passed-through environment, and can give
+each run a private temporary directory.
+
 It does **not** yet:
 
-- close inherited file descriptors, which bypass path rules;
-- kill descendants when a run ends;
-- ship a base profile or the preset hard-deny data;
+- stop a descendant that double-forks and starts its own session on macOS
+  from outliving the run;
+- provide pseudo-terminals, a base profile or the preset hard-deny data;
 - support Linux.
 
 Do not rely on any release before 0.1.0 to contain a process.

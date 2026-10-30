@@ -1,9 +1,9 @@
 //! Preparing a spawn in the parent: grant tokens, the environment, resource
 //! limits, and decoding a failed step.
 
-use std::collections::BTreeSet;
 use std::ffi::{CString, OsString};
 use std::io;
+use std::path::PathBuf;
 use std::process::Command;
 
 use procage_policy::{EnvPolicy, Rlimits};
@@ -41,37 +41,37 @@ pub(super) fn tokens(
     Ok(out)
 }
 
-/// Sets the command's environment to what the policy yields, keeping the
-/// variables the caller set (or removed) explicitly on the command.
-pub(super) fn environment(command: &mut Command, policy: &EnvPolicy) {
+/// Sets the command's environment to what the policy yields (see
+/// [`crate::hygiene::environment`]); returns the names the passthrough
+/// denylist dropped.
+pub(super) fn environment(command: &mut Command, policy: &EnvPolicy) -> Vec<String> {
     let explicit: Vec<(OsString, Option<OsString>)> = command
         .get_envs()
         .map(|(k, v)| (k.to_owned(), v.map(|v| v.to_owned())))
         .collect();
+    let decision = crate::hygiene::environment(std::env::vars_os(), policy, &explicit);
     command.env_clear();
-    match policy {
-        EnvPolicy::Allowlist(names) => {
-            for name in names {
-                if let Some(value) = std::env::var_os(name) {
-                    command.env(name, value);
-                }
-            }
-        }
-        EnvPolicy::Passthrough { deny } => {
-            let deny: BTreeSet<&str> = deny.iter().map(String::as_str).collect();
-            for (key, value) in std::env::vars_os() {
-                if !key.to_str().is_some_and(|k| deny.contains(k)) {
-                    command.env(key, value);
-                }
-            }
-        }
-    }
-    for (key, value) in explicit {
-        match value {
-            Some(value) => command.env(key, value),
-            None => command.env_remove(key),
-        };
-    }
+    command.envs(decision.set);
+    decision.dropped
+}
+
+/// A fresh directory, accessible only to the user, under the caller's
+/// temporary directory.
+pub(super) fn private_tmpdir() -> io::Result<PathBuf> {
+    use std::os::unix::fs::DirBuilderExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let base = std::fs::canonicalize(std::env::temp_dir())?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    let dir = base.join(format!(
+        "procage-{}-{}-{nanos}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
+    Ok(dir)
 }
 
 /// The `setrlimit` calls for the policy's limits. The core size is always

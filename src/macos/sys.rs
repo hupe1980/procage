@@ -293,6 +293,16 @@ pub(crate) fn setsid() -> Result<(), i32> {
     }
 }
 
+/// `setpgid(0, 0)`: a new process group led by the caller.
+pub(crate) fn setpgid_self() -> Result<(), i32> {
+    // SAFETY: a plain system call.
+    if unsafe { libc::setpgid(0, 0) } == 0 {
+        Ok(())
+    } else {
+        Err(errno())
+    }
+}
+
 /// `setrlimit(resource, {cur, max})`.
 pub(crate) fn setrlimit(resource: c_int, cur: u64, max: u64) -> Result<(), i32> {
     let lim = libc::rlimit {
@@ -322,6 +332,12 @@ pub(crate) fn getrlimit(resource: c_int) -> Option<(u64, u64)> {
 pub(crate) fn is_session_leader() -> bool {
     // SAFETY: plain system calls.
     unsafe { libc::getsid(0) == libc::getpid() }
+}
+
+/// Whether the calling process leads its own process group.
+pub(crate) fn is_group_leader() -> bool {
+    // SAFETY: plain system calls.
+    unsafe { libc::getpgid(0) == libc::getpid() }
 }
 
 /// Opens `path` read-only and closes it again; `Err` carries errno. A system
@@ -358,7 +374,12 @@ pub(crate) struct ChildPlan {
     pub(crate) bytecode: std::sync::Arc<[u8]>,
     pub(crate) tokens: Vec<CString>,
     pub(crate) limits: Vec<(c_int, u64, u64)>,
+    /// `setsid()` when true, else `setpgid(0, 0)`.
     pub(crate) new_session: bool,
+    /// Descriptors handed to the child (close-on-exec cleared).
+    pub(crate) keep: Vec<c_int>,
+    /// Buffer for `proc_pidinfo(PROC_PIDLISTFDS)`, allocated in the parent.
+    pub(crate) fd_buffer: Vec<libc::proc_fdinfo>,
 }
 
 /// Step numbers of [`ChildPlan::run`]; they match `super::Step`.
@@ -368,21 +389,194 @@ pub(crate) mod steps {
     pub(crate) const APPLY: u32 = 3;
     pub(crate) const VERIFY: u32 = 4;
     pub(crate) const CONSUME: u32 = 5;
+    pub(crate) const FDS: u32 = 6;
+}
+
+/// `fcntl(fd, F_SETFD, flags)`.
+fn set_fd_flags(fd: c_int, flags: c_int) -> Result<(), i32> {
+    // SAFETY: a plain system call on an integer descriptor.
+    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags) } == 0 {
+        Ok(())
+    } else {
+        Err(errno())
+    }
+}
+
+/// Marks every descriptor >= 3 close-on-exec except `keep`, and clears the
+/// flag on `keep`. Lists the open descriptors with `proc_pidinfo` into
+/// `buf`; when the list fails or may be truncated, sweeps every number up to
+/// `getdtablesize()`. System calls only, no allocation.
+fn mark_fds(buf: &mut [libc::proc_fdinfo], keep: &[c_int]) -> Result<(), i32> {
+    let mark = |fd: c_int| {
+        if fd < 3 || keep.contains(&fd) {
+            return Ok(());
+        }
+        match set_fd_flags(fd, libc::FD_CLOEXEC) {
+            Err(libc::EBADF) | Ok(()) => Ok(()),
+            Err(e) => Err(e),
+        }
+    };
+    let size = std::mem::size_of_val(buf);
+    // SAFETY: getpid is a system call; proc_pidinfo writes at most `size`
+    // bytes into `buf`, which the parent allocated and the closure owns.
+    let filled = unsafe {
+        libc::proc_pidinfo(
+            libc::getpid(),
+            libc::PROC_PIDLISTFDS,
+            0,
+            buf.as_mut_ptr().cast(),
+            c_int::try_from(size).unwrap_or(c_int::MAX),
+        )
+    };
+    let entry = std::mem::size_of::<libc::proc_fdinfo>();
+    match usize::try_from(filled) {
+        Ok(bytes) if bytes > 0 && bytes + entry <= size => {
+            for info in &buf[..bytes / entry] {
+                mark(info.proc_fd)?;
+            }
+        }
+        _ => {
+            // SAFETY: a plain system call.
+            let table = unsafe { libc::getdtablesize() };
+            for fd in 3..table {
+                mark(fd)?;
+            }
+        }
+    }
+    for &fd in keep {
+        set_fd_flags(fd, 0)?;
+    }
+    Ok(())
+}
+
+/// A buffer for the child's descriptor listing: twice the caller's current
+/// descriptor count plus 1,024 entries.
+pub(crate) fn fd_buffer() -> Vec<libc::proc_fdinfo> {
+    // SAFETY: with a null buffer proc_pidinfo only returns the size needed.
+    let needed = unsafe {
+        libc::proc_pidinfo(
+            libc::getpid(),
+            libc::PROC_PIDLISTFDS,
+            0,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    let entries = usize::try_from(needed).unwrap_or(0) / std::mem::size_of::<libc::proc_fdinfo>();
+    vec![
+        libc::proc_fdinfo {
+            proc_fd: 0,
+            proc_fdtype: 0
+        };
+        entries * 2 + 1024
+    ]
+}
+
+/// Whether `fd` is an open descriptor of the calling process.
+pub(crate) fn fd_is_open(fd: c_int) -> bool {
+    // SAFETY: a plain system call on an integer descriptor.
+    unsafe { libc::fcntl(fd, libc::F_GETFD) != -1 }
+}
+
+/// Clears close-on-exec on `fd` (for tests that need an inheritable fd).
+pub(crate) fn clear_cloexec(fd: c_int) -> Result<(), i32> {
+    set_fd_flags(fd, 0)
+}
+
+/// Whether process `pid` exists (signal 0).
+pub(crate) fn alive(pid: libc::pid_t) -> bool {
+    // SAFETY: kill with signal 0 only checks for existence.
+    unsafe { libc::kill(pid, 0) == 0 || errno() == libc::EPERM }
+}
+
+/// The child processes of `pid`.
+fn children(pid: libc::pid_t) -> Vec<libc::pid_t> {
+    let mut buf = vec![0 as libc::pid_t; 256];
+    loop {
+        let bytes = c_int::try_from(std::mem::size_of_val(buf.as_slice())).unwrap_or(c_int::MAX);
+        // SAFETY: proc_listchildpids writes at most `bytes` bytes into `buf`.
+        let n = unsafe { libc::proc_listchildpids(pid, buf.as_mut_ptr().cast(), bytes) };
+        let Ok(n) = usize::try_from(n) else {
+            return Vec::new();
+        };
+        // The call returns the number of pids on macOS.
+        if n < buf.len() {
+            buf.truncate(n);
+            return buf;
+        }
+        buf.resize(buf.len() * 2, 0);
+    }
+}
+
+/// Every descendant of `pid` that can be found from it, repeating the walk
+/// until it is stable (at most 8 rounds).
+pub(crate) fn descendants(pid: libc::pid_t) -> Vec<libc::pid_t> {
+    let mut found: Vec<libc::pid_t> = Vec::new();
+    for _ in 0..8 {
+        let before = found.len();
+        let mut queue = vec![pid];
+        while let Some(p) = queue.pop() {
+            for c in children(p) {
+                if c > 0 && !found.contains(&c) {
+                    found.push(c);
+                }
+                if c > 0 {
+                    queue.push(c);
+                }
+            }
+        }
+        if found.len() == before {
+            break;
+        }
+    }
+    found
+}
+
+/// Sends SIGKILL to `pid`.
+pub(crate) fn kill(pid: libc::pid_t) {
+    // SAFETY: a plain system call.
+    unsafe { libc::kill(pid, libc::SIGKILL) };
+}
+
+/// Sends SIGKILL to process group `pgid`.
+pub(crate) fn killpg(pgid: libc::pid_t) {
+    // SAFETY: a plain system call.
+    unsafe { libc::killpg(pgid, libc::SIGKILL) };
+}
+
+/// Spawns `/bin/sleep 30`, in a new session when `setsid`; returns its pid
+/// (for lifetime tests).
+pub(crate) fn spawn_sleeper(setsid_first: bool) -> std::io::Result<u32> {
+    use std::os::unix::process::CommandExt;
+    let mut command = std::process::Command::new("/bin/sleep");
+    // Inherited stdio: a caged caller may not be allowed to open /dev/null.
+    command.arg("30");
+    if setsid_first {
+        // SAFETY: the closure only calls setsid, a system call.
+        unsafe {
+            command.pre_exec(|| setsid().map_err(std::io::Error::from_raw_os_error));
+        }
+    }
+    let child = command.spawn()?;
+    Ok(child.id())
 }
 
 impl ChildPlan {
     /// The in-child sequence. Only system calls (and libsandbox functions
     /// that issue them without allocating or locking) on data prepared in
     /// the parent; the error value is built from integers.
-    fn run(&self) -> std::io::Result<()> {
+    fn run(&mut self) -> std::io::Result<()> {
         let fail =
             |step: u32, errno: i32| std::io::Error::from_raw_os_error(step_code(step, errno));
         if self.new_session {
             setsid().map_err(|e| fail(steps::SESSION, e))?;
+        } else {
+            setpgid_self().map_err(|e| fail(steps::SESSION, e))?;
         }
         for &(resource, cur, max) in &self.limits {
             setrlimit(resource, cur, max).map_err(|e| fail(steps::RLIMIT, e))?;
         }
+        mark_fds(&mut self.fd_buffer, &self.keep).map_err(|e| fail(steps::FDS, e))?;
         self.ops
             .apply(&self.bytecode)
             .map_err(|e| fail(steps::APPLY, e))?;
@@ -398,14 +592,16 @@ impl ChildPlan {
     /// Makes `command` run this plan in the child before `execve`.
     pub(crate) fn install(self, command: &mut std::process::Command) {
         use std::os::unix::process::CommandExt;
-        // SAFETY: `run` issues only system calls (setsid, setrlimit,
+        let mut plan = self;
+        // SAFETY: `run` issues only system calls (setsid or setpgid,
+        // setrlimit, proc_info through proc_pidinfo, fcntl, getdtablesize,
         // __mac_syscall, getpid) and the libsandbox functions sandbox_check
         // and sandbox_extension_consume, which issue system calls without
         // allocating or locking (verified by disassembly on 26.6.2 and by
         // the multithreaded spawn test). Everything it reads was allocated
         // in the parent and is owned by the closure.
         unsafe {
-            command.pre_exec(move || self.run());
+            command.pre_exec(move || plan.run());
         }
     }
 }

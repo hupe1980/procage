@@ -10,9 +10,8 @@
 //! [`macos`] module documentation lists what its tests observe on a real
 //! kernel and what is not done yet:
 //!
-//! - inherited file descriptors are not closed, and they bypass path rules;
-//! - descendants are not killed when a run ends;
-//! - there is no base profile;
+//! - a double-forked descendant can outlive a run on macOS;
+//! - there are no pseudo-terminals and no base profile;
 //! - there is no Linux support.
 //!
 //! Do not rely on any release before 0.1.0 to contain a process.
@@ -48,6 +47,8 @@
 //! limits of an OS sandbox and the status of every known escape class.
 
 pub use procage_policy as policy;
+
+pub mod hygiene;
 
 #[cfg(target_os = "macos")]
 pub mod macos;

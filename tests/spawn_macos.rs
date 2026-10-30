@@ -13,14 +13,14 @@
 use std::io::Read;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use procage::macos::{
-    ApplyMethod, Cage, CageOptions, GrantError, Grants, SpawnError, Step, Unsupported, probe,
-    testing,
+    ApplyMethod, Cage, CageOptions, Child, GrantError, Grants, SpawnError, Step, Unsupported,
+    probe, testing,
 };
 use procage::policy::{
     AbsPath, Access, EnvPolicy, FsRule, FsTarget, Glob, Grant, GrantName, Network, Policy, Port,
@@ -465,7 +465,12 @@ fn one_cage_spawns_from_several_threads() {
 
 /// Runs this test binary as a caged child performing `action`; returns its
 /// `result:` line.
-fn in_child(action: &str, mut policy: Policy) -> String {
+fn in_child(action: &str, policy: Policy) -> String {
+    in_child_with(action, policy, &[], |_| {})
+}
+
+/// The policy for running this test binary as a caged child.
+fn child_policy(mut policy: Policy) -> Policy {
     let exe = std::env::current_exe().unwrap();
     policy.fs.push(FsRule::new(
         Access::Exec,
@@ -481,18 +486,39 @@ fn in_child(action: &str, mut policy: Policy) -> String {
             ops: vec![seatbelt::Operation::SysctlRead],
             filters: vec![],
         });
-    let cage = Cage::new(&policy).unwrap();
-    let mut cmd = Command::new(&exe);
+    policy
+}
+
+/// This test binary as a caged child performing `action`.
+fn child_command(action: &str) -> Command {
+    let mut cmd = Command::new(std::env::current_exe().unwrap());
     cmd.args(["--exact", "child_entry", "--nocapture", "--test-threads=1"])
         .env("PROCAGE_CHILD", action)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let out = run(&cage, cmd, &Grants::new());
+    cmd
+}
+
+/// Runs `action` in a caged child with `fds` handed over; `adjust` may
+/// change the command first. Returns the child's `result:` line.
+fn in_child_with(
+    action: &str,
+    policy: Policy,
+    fds: &[std::os::fd::BorrowedFd<'_>],
+    adjust: impl FnOnce(&mut Command),
+) -> String {
+    let cage = Cage::new(&child_policy(policy)).unwrap();
+    let mut cmd = child_command(action);
+    adjust(&mut cmd);
+    let child = cage
+        .spawn_with_fds(&mut cmd, &Grants::new(), fds)
+        .unwrap_or_else(|e| panic!("spawn: {e}"));
+    let out = finish(child, Duration::from_secs(10));
     let stdout = String::from_utf8_lossy(&out.stdout);
     stdout
         .lines()
-        .find_map(|l| l.split_once("result: ").map(|(_, r)| r))
+        .find_map(|l| l.split_once("procage-result: ").map(|(_, r)| r))
         .map(str::to_string)
         .unwrap_or_else(|| {
             panic!(
@@ -515,6 +541,11 @@ fn child_entry() {
             other => format!("unexpected {other:?}"),
         },
         "session" => format!("leader={}", testing::is_session_leader()),
+        "group" => format!(
+            "session-leader={} group-leader={}",
+            testing::is_session_leader(),
+            testing::is_group_leader()
+        ),
         "rlimit" => {
             let (nofile, core) = testing::nofile_and_core().unwrap();
             format!("nofile={nofile} core={core}")
@@ -526,9 +557,256 @@ fn child_entry() {
             names.sort();
             names.join(",")
         }
+        "fdcount" => {
+            let open = (3..4096).filter(|&fd| testing::fd_is_open(fd)).count();
+            format!("fdcount={open}")
+        }
+        fd if fd.starts_with("fd:") => {
+            let n: i32 = fd[3..].parse().unwrap();
+            format!("open={}", testing::fd_is_open(n))
+        }
+        "sleepers" => {
+            let same = testing::spawn_sleeper(false).unwrap();
+            let session = testing::spawn_sleeper(true).unwrap();
+            println!("procage-result: {same} {session}");
+            std::thread::sleep(Duration::from_secs(30));
+            return;
+        }
+        "sleeper-exit" => format!("{}", testing::spawn_sleeper(false).unwrap()),
+        "tmpdir" => {
+            let dir = std::env::var("TMPDIR").unwrap_or_default();
+            let wrote = std::fs::write(Path::new(&dir).join("f"), "x").is_ok();
+            format!("{dir} wrote={wrote}")
+        }
+        "outer-env" => outer_env(),
         other => format!("unknown action {other}"),
     };
-    println!("result: {result}");
+    println!("procage-result: {result}");
+}
+
+/// Runs uncaged with secret-looking variables in its environment and
+/// reports what a passthrough child sees.
+fn outer_env() -> String {
+    let mut p = base();
+    p.env = EnvPolicy::Passthrough { deny: vec![] };
+    let cage = Cage::new(&child_policy(p)).unwrap();
+    let mut cmd = child_command("env");
+    let child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    let dropped = child.dropped_env().join(",");
+    let seen = String::from_utf8_lossy(&finish(child, Duration::from_secs(10)).stdout).into_owned();
+    let mut cmd = child_command("env");
+    cmd.env("GITHUB_TOKEN", "explicit");
+    let child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    let explicit =
+        String::from_utf8_lossy(&finish(child, Duration::from_secs(10)).stdout).into_owned();
+    let has = |out: &str, name: &str| {
+        out.lines()
+            .any(|l| l.contains("procage-result: ") && l.split([',', ' ']).any(|w| w == name))
+    };
+    format!(
+        "dropped={dropped} token={} sock={} dyld={} explicit-token={}",
+        has(&seen, "GITHUB_TOKEN"),
+        has(&seen, "SSH_AUTH_SOCK"),
+        has(&seen, "DYLD_PROCAGE_PROBE"),
+        has(&explicit, "GITHUB_TOKEN")
+    )
+}
+
+// ---- 005: hygiene ----
+
+#[test]
+fn an_inherited_descriptor_does_not_reach_the_child() {
+    let dir = scratch("fd-leak");
+    std::fs::write(dir.join("secret"), "secret").unwrap();
+    let file = std::fs::File::open(dir.join("secret")).unwrap();
+    use std::os::fd::{AsFd, AsRawFd};
+    let fd = file.as_raw_fd();
+    assert!(testing::clear_cloexec(fd));
+    assert_eq!(in_child(&format!("fd:{fd}"), base()), "open=false");
+    assert_eq!(
+        in_child_with(&format!("fd:{fd}"), base(), &[file.as_fd()], |_| {}),
+        "open=true"
+    );
+    // Naming a standard descriptor is a no-op.
+    let stdout = std::io::stdout();
+    assert_eq!(
+        in_child_with(&format!("fd:{fd}"), base(), &[stdout.as_fd()], |_| {}),
+        "open=false"
+    );
+}
+
+#[test]
+fn a_thousand_open_descriptors_are_all_closed() {
+    let dir = scratch("fd-flood");
+    std::fs::write(dir.join("f"), "x").unwrap();
+    let files: Vec<std::fs::File> = (0..1000)
+        .map(|_| std::fs::File::open(dir.join("f")).unwrap())
+        .collect();
+    use std::os::fd::AsRawFd;
+    for f in &files {
+        assert!(testing::clear_cloexec(f.as_raw_fd()));
+    }
+    assert_eq!(in_child("fdcount", base()), "fdcount=0");
+}
+
+#[test]
+fn a_failed_step_after_the_sweep_is_still_reported() {
+    let mut p = base();
+    p.limits.nofile = Some(u64::MAX);
+    let cage = Cage::new(&p).unwrap();
+    let err = cage
+        .spawn(&mut Command::new("/usr/bin/true"), &Grants::new())
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            SpawnError::Apply {
+                step: Step::Rlimit,
+                ..
+            }
+        ),
+        "{err}"
+    );
+}
+
+fn forking_policy() -> Policy {
+    let mut p = base();
+    p.process.fork = true;
+    p
+}
+
+/// Spawns `action` in a caged child and returns the handle and the first
+/// `result:` line, without waiting for the child to exit.
+fn start(action: &str, policy: Policy) -> (Child, String) {
+    use std::io::BufRead;
+    let cage = Cage::new(&child_policy(policy)).unwrap();
+    let mut child = cage
+        .spawn(&mut child_command(action), &Grants::new())
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut lines = std::io::BufReader::new(stdout).lines();
+    let line = lines.find_map(|l| {
+        l.ok()
+            .and_then(|l| l.split_once("procage-result: ").map(|(_, r)| r.to_string()))
+    });
+    let Some(line) = line else {
+        let mut err = String::new();
+        let _ = child.stderr.take().unwrap().read_to_string(&mut err);
+        panic!("no result from the child: {err}");
+    };
+    (child, line)
+}
+
+fn gone_within(pid: u32, timeout: Duration) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if !testing::alive(pid) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+#[test]
+fn dropping_the_handle_kills_every_descendant() {
+    let (child, pids) = start("sleepers", forking_policy());
+    let pids: Vec<u32> = pids.split(' ').map(|p| p.parse().unwrap()).collect();
+    assert!(pids.iter().all(|&p| testing::alive(p)));
+    let leader = child.id();
+    drop(child);
+    assert!(gone_within(leader, Duration::from_secs(1)));
+    for pid in pids {
+        assert!(
+            gone_within(pid, Duration::from_secs(1)),
+            "descendant {pid} survived"
+        );
+    }
+}
+
+#[test]
+fn a_reaped_leader_still_takes_its_group_down() {
+    let (mut child, pid) = start("sleeper-exit", forking_policy());
+    let pid: u32 = pid.parse().unwrap();
+    child.wait().unwrap();
+    assert!(testing::alive(pid));
+    drop(child);
+    assert!(
+        gone_within(pid, Duration::from_secs(1)),
+        "group member {pid} survived"
+    );
+}
+
+#[test]
+fn a_detached_child_keeps_running() {
+    let (child, pids) = start("sleepers", forking_policy());
+    let mut inner = child.detach();
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(
+        inner.try_wait().unwrap().is_none(),
+        "the detached child was killed"
+    );
+    inner.kill().unwrap();
+    inner.wait().unwrap();
+    for pid in pids.split(' ') {
+        let _ = Command::new("/bin/kill").args(["-9", pid]).status();
+    }
+}
+
+#[test]
+fn passthrough_drops_secrets_unless_set_explicitly() {
+    let mut cmd = child_command("outer-env");
+    cmd.env("GITHUB_TOKEN", "t")
+        .env("SSH_AUTH_SOCK", "/tmp/agent.sock")
+        .env("DYLD_PROCAGE_PROBE", "1");
+    let out = cmd.output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let result = stdout
+        .lines()
+        .find_map(|l| l.split_once("procage-result: ").map(|(_, r)| r.to_string()))
+        .unwrap_or_else(|| panic!("{stdout}\n{}", String::from_utf8_lossy(&out.stderr)));
+    assert!(
+        result.contains("token=false sock=false dyld=false explicit-token=true"),
+        "{result}"
+    );
+    for name in ["DYLD_PROCAGE_PROBE", "GITHUB_TOKEN", "SSH_AUTH_SOCK"] {
+        assert!(result.contains(name), "{name} not reported: {result}");
+    }
+}
+
+#[test]
+fn each_run_gets_its_own_private_tmpdir() {
+    let mut p = base();
+    p.grants.push(Grant {
+        name: GrantName::new("tmpdir").unwrap(),
+        access: Access::Write,
+    });
+    let first = in_child("tmpdir", p.clone());
+    let second = in_child("tmpdir", p.clone());
+    let (a, b) = (
+        first.split(' ').next().unwrap(),
+        second.split(' ').next().unwrap(),
+    );
+    assert!(
+        first.ends_with("wrote=true") && second.ends_with("wrote=true"),
+        "{first} / {second}"
+    );
+    assert_ne!(a, b);
+    assert!(
+        !Path::new(a).exists() && !Path::new(b).exists(),
+        "tmpdirs were not removed"
+    );
+    let cage = Cage::new(&p).unwrap();
+    let err = cage
+        .spawn(
+            &mut Command::new("/usr/bin/true"),
+            &Grants::new().bind("tmpdir", "/tmp"),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(err, SpawnError::Grant(GrantError::Reserved { .. })),
+        "{err}"
+    );
 }
 
 #[test]
@@ -542,6 +820,20 @@ fn the_child_leads_its_own_session_unless_the_terminal_is_inherited() {
     let mut p = base();
     p.tty = Tty::Inherit;
     assert_eq!(in_child("session", p), "leader=false");
+}
+
+#[test]
+fn with_an_inherited_terminal_the_child_still_has_its_own_group() {
+    let mut p = base();
+    p.tty = Tty::Inherit;
+    assert_eq!(
+        in_child("group", p),
+        "session-leader=false group-leader=true"
+    );
+    assert_eq!(
+        in_child("group", base()),
+        "session-leader=true group-leader=true"
+    );
 }
 
 #[test]
@@ -610,6 +902,12 @@ fn refusals_before_any_child() {
 #[test]
 #[ignore = "measurement; run with --release --ignored --nocapture"]
 fn latency() {
+    // The caller holds 1,000 extra descriptors (SC-004 of the hygiene feature).
+    let dir = scratch("latency");
+    std::fs::write(dir.join("f"), "x").unwrap();
+    let _files: Vec<std::fs::File> = (0..1000)
+        .map(|_| std::fs::File::open(dir.join("f")).unwrap())
+        .collect();
     let cage = Cage::new(&base()).unwrap();
     let median = |mut f: Box<dyn FnMut() -> Duration>| {
         let mut v: Vec<Duration> = (0..50).map(|_| f()).collect();

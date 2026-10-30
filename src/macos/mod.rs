@@ -30,18 +30,34 @@
 //! - a caged process that tries to spawn gets [`SpawnError::AlreadySandboxed`];
 //! - with [`Tty::None`] the child leads its own
 //!   session; its environment and resource limits are the policy's;
-//! - 100 children spawned while other threads load libraries are all caged.
+//! - 100 children spawned while other threads load libraries are all caged;
+//! - a descriptor the caller left open without close-on-exec does not exist
+//!   in the child; one handed over with [`Cage::spawn_with_fds`] does; with
+//!   1,000 extra descriptors open, none reaches the child;
+//! - dropping the [`Child`] handle kills the child, a grandchild in its
+//!   process group and a grandchild that started its own session; a
+//!   detached handle leaves the child running;
+//! - with environment passthrough, `GITHUB_TOKEN`, `SSH_AUTH_SOCK` and
+//!   `DYLD_*` variables do not reach the child unless set explicitly on the
+//!   command, and the handle lists them as dropped;
+//! - a policy with the grant `tmpdir` gives each run its own `TMPDIR`, which
+//!   is removed when the handle is dropped.
 //!
 //! **Not yet done** (later features):
 //!
-//! - inherited file descriptors are not closed, and an inherited descriptor
-//!   bypasses path rules;
-//! - descendants are not killed when the run ends;
+//! - a descendant that double-forks and starts its own session is
+//!   reparented away from the child; macOS gives no way to find it, so it
+//!   escapes lifetime control;
+//! - there are no pseudo-terminals (`Tty::NewPty`);
 //! - there is no curated base profile: the policy must grant what the
-//!   program needs to start;
+//!   program needs to start, and opening `/dev/null` is denied unless granted;
 //! - there is no helper process (path B).
+//!
+//! With `Tty::Inherit` the child runs in its own process group, so its reads
+//! from the shared terminal stop with SIGTTIN, like a background job.
 
 mod canon;
+mod child;
 mod probe;
 mod spawn;
 mod sys;
@@ -49,13 +65,15 @@ mod sys;
 use std::collections::HashMap;
 use std::fmt;
 use std::io;
+use std::os::fd::{AsRawFd, BorrowedFd};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use procage_policy::lower::GrantSlot;
 use procage_policy::{LowerError, LowerOptions, Plan, Policy, SeatbeltPlan, Target, Tty, lower};
 
+pub use child::Child;
 pub use probe::{ApplyMethod, probe};
 
 /// A step of the in-child sequence.
@@ -71,6 +89,8 @@ pub enum Step {
     Verify,
     /// Consuming a grant token.
     Consume,
+    /// Marking inherited descriptors close-on-exec.
+    Fds,
 }
 
 impl Step {
@@ -81,6 +101,7 @@ impl Step {
             sys::steps::APPLY => Step::Apply,
             sys::steps::VERIFY => Step::Verify,
             sys::steps::CONSUME => Step::Consume,
+            sys::steps::FDS => Step::Fds,
             _ => return None,
         })
     }
@@ -94,6 +115,7 @@ impl fmt::Display for Step {
             Step::Apply => "apply profile",
             Step::Verify => "verify sandbox",
             Step::Consume => "consume grant token",
+            Step::Fds => "close inherited descriptors",
         })
     }
 }
@@ -161,6 +183,11 @@ pub enum GrantError {
         /// Why.
         error: io::Error,
     },
+    /// The grant name is reserved for procage (`tmpdir`).
+    Reserved {
+        /// The name.
+        name: String,
+    },
     /// libsandbox issued no token for the path.
     Issue {
         /// The grant.
@@ -181,6 +208,12 @@ impl fmt::Display for GrantError {
                     f,
                     "grant {name}: cannot resolve {}: {error}",
                     path.display()
+                )
+            }
+            GrantError::Reserved { name } => {
+                write!(
+                    f,
+                    "grant {name} is bound by procage itself (a private temporary directory)"
                 )
             }
             GrantError::Issue { name, path } => {
@@ -221,6 +254,13 @@ pub enum SpawnError {
     },
     /// A grant binding is wrong.
     Grant(GrantError),
+    /// A descriptor handed to the spawn is not open.
+    Fd {
+        /// The descriptor.
+        fd: i32,
+    },
+    /// The run's private temporary directory could not be created.
+    Tmpdir(io::Error),
     /// A step in the child failed; the target did not run.
     Apply {
         /// The step.
@@ -249,6 +289,10 @@ impl fmt::Display for SpawnError {
                 )
             }
             SpawnError::Grant(e) => write!(f, "{e}"),
+            SpawnError::Fd { fd } => write!(f, "descriptor {fd} handed to the spawn is not open"),
+            SpawnError::Tmpdir(e) => {
+                write!(f, "cannot create the private temporary directory: {e}")
+            }
             SpawnError::Apply { step, errno } => write!(
                 f,
                 "the child failed at step `{step}`: {}; the target did not run",
@@ -263,7 +307,9 @@ impl std::error::Error for SpawnError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             SpawnError::Lower(e) => Some(e),
-            SpawnError::Path { error, .. } | SpawnError::Io(error) => Some(error),
+            SpawnError::Path { error, .. } | SpawnError::Io(error) | SpawnError::Tmpdir(error) => {
+                Some(error)
+            }
             SpawnError::Grant(GrantError::Missing { error, .. }) => Some(error),
             _ => None,
         }
@@ -454,24 +500,105 @@ impl Cage {
     ///
     /// The command's program must be executable under the policy. Fails
     /// without forking when the caller is already sandboxed, when the
-    /// apply method failed its probe, or when a grant binding is wrong.
+    /// apply method failed its probe, or when a grant binding is wrong. The
+    /// child receives only standard input, output and error.
     pub fn spawn(&self, command: &mut Command, grants: &Grants) -> Result<Child, SpawnError> {
+        self.spawn_with_fds(command, grants, &[])
+    }
+
+    /// Like [`Cage::spawn`], and also hands `fds` to the child: they stay
+    /// open across the exec, at the same numbers. Every other descriptor
+    /// numbered 3 or higher is closed in the child.
+    pub fn spawn_with_fds(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+    ) -> Result<Child, SpawnError> {
         let lib = libsandbox()?;
         if lib.is_sandboxed() {
             return Err(SpawnError::AlreadySandboxed);
         }
         probe()?;
-        let tokens = spawn::tokens(lib, self, grants)?;
-        spawn::environment(command, &self.plan.hygiene.env);
+        let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
+        if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
+            return Err(SpawnError::Grant(GrantError::Reserved {
+                name: TMPDIR_GRANT.into(),
+            }));
+        }
+        let tmpdir = match self.grant_slot(TMPDIR_GRANT) {
+            Some(_) => Some(spawn::private_tmpdir().map_err(SpawnError::Tmpdir)?),
+            None => None,
+        };
+        let removal = TmpdirGuard(tmpdir.clone());
+        let mut grants = grants.clone();
+        if let Some(dir) = &tmpdir {
+            grants = grants.bind(TMPDIR_GRANT, dir);
+            if !command.get_envs().any(|(k, _)| k == "TMPDIR") {
+                command.env("TMPDIR", dir);
+            }
+        }
+        let tokens = spawn::tokens(lib, self, &grants)?;
+        let dropped = spawn::environment(command, &self.plan.hygiene.env);
         sys::ChildPlan {
             ops: lib.child_ops(),
             bytecode: self.bytecode.clone(),
             tokens,
             limits: spawn::limits(&self.plan.hygiene.limits),
             new_session: self.plan.hygiene.tty != Tty::Inherit,
+            keep,
+            fd_buffer: sys::fd_buffer(),
         }
         .install(command);
-        command.spawn().map_err(spawn::decode)
+        let inner = command.spawn().map_err(spawn::decode)?;
+        Ok(Child::new(inner, dropped, removal.disarm()))
+    }
+}
+
+/// The descriptors to hand over: those above the standard three, each of
+/// which must be open.
+fn kept_fds(fds: impl IntoIterator<Item = i32>) -> Result<Vec<i32>, SpawnError> {
+    let keep: Vec<i32> = fds.into_iter().filter(|&fd| fd > 2).collect();
+    match keep.iter().find(|&&fd| !sys::fd_is_open(fd)) {
+        Some(&fd) => Err(SpawnError::Fd { fd }),
+        None => Ok(keep),
+    }
+}
+
+/// The grant name procage binds to a private temporary directory.
+pub const TMPDIR_GRANT: &str = "tmpdir";
+
+/// Removes a private temporary directory unless the spawn succeeded.
+struct TmpdirGuard(Option<PathBuf>);
+
+impl TmpdirGuard {
+    fn disarm(mut self) -> Option<PathBuf> {
+        self.0.take()
+    }
+}
+
+impl Drop for TmpdirGuard {
+    fn drop(&mut self) {
+        if let Some(dir) = self.0.take() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_descriptor_that_is_not_open_is_refused() {
+        // `BorrowedFd` guarantees an open descriptor in safe code; the check
+        // guards against one closed by another thread.
+        let closed = 1_000_000;
+        assert!(matches!(kept_fds([closed]), Err(SpawnError::Fd { fd }) if fd == closed));
+        assert_eq!(kept_fds([0, 1, 2]).unwrap(), Vec::<i32>::new());
+        let file = std::fs::File::open("/").unwrap();
+        let fd = file.as_raw_fd();
+        assert_eq!(kept_fds([fd]).unwrap(), vec![fd]);
     }
 }
 
@@ -497,9 +624,34 @@ pub mod testing {
         sys::is_session_leader()
     }
 
+    /// Whether the calling process leads its own process group.
+    pub fn is_group_leader() -> bool {
+        sys::is_group_leader()
+    }
+
     /// Contends for dyld's locks until `stop` is set.
     pub fn dyld_churn(stop: &std::sync::atomic::AtomicBool) {
         sys::dyld_churn(stop);
+    }
+
+    /// Clears close-on-exec on `fd`.
+    pub fn clear_cloexec(fd: i32) -> bool {
+        sys::clear_cloexec(fd).is_ok()
+    }
+
+    /// Whether `fd` is open in the calling process.
+    pub fn fd_is_open(fd: i32) -> bool {
+        sys::fd_is_open(fd)
+    }
+
+    /// Whether process `pid` exists.
+    pub fn alive(pid: u32) -> bool {
+        libc::pid_t::try_from(pid).is_ok_and(sys::alive)
+    }
+
+    /// Spawns `/bin/sleep 30`, in a new session when `setsid`.
+    pub fn spawn_sleeper(setsid: bool) -> std::io::Result<u32> {
+        sys::spawn_sleeper(setsid)
     }
 
     /// The soft limits for open files and core size.

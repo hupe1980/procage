@@ -6,9 +6,9 @@ than the deprecated `/usr/bin/sandbox-exec`) and on Linux (Landlock, seccomp
 and namespaces), without helper binaries.
 
 **Status:** the published 0.0.1 only reserves the name. The development
-version on `main` (0.0.2, unreleased) spawns caged children on macOS. It does
-not yet close inherited file descriptors, kill descendants, ship a base
-profile, or support Linux. Do not rely on any release before 0.1.0 to
+version on `main` (0.0.2, unreleased) spawns caged children on macOS, with
+inherited descriptors closed and descendants killed when a run ends. It
+does not yet ship a base profile or pseudo-terminals, or support Linux. Do not rely on any release before 0.1.0 to
 contain a process.
 
 ## Threat model
