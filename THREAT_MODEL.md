@@ -29,8 +29,16 @@ can give each run a private temporary directory.
 
 It does **not** yet:
 
-- stop a descendant that double-forks and starts its own session on macOS
-  from outliving the run;
+- stop a descendant that double-forks and starts its own session from
+  outliving the run, on either system (R-23);
+- keep a caged child on macOS from reading the arguments and environment of
+  other processes of the same user (R-25): the sandbox does not mediate
+  that query, so do not pass secrets to the calling program through its
+  arguments or environment;
+- report or refuse a hard link made before the run that gives a protected
+  file a second name (R-08);
+- protect a helper program from replacement (R-26): this release runs no
+  helper, so the class does not apply yet;
 - provide pseudo-terminals (its macOS base profile, V1, is curated for
   macOS 26.6.2 and grants nothing in the user's home);
 - deny secrets, trust-handoff files and persistence locations on Linux
@@ -43,8 +51,8 @@ It does **not** yet:
 Do not rely on any release before 0.1.0 to contain a process.
 
 Everything below describes the design that upcoming releases implement. The
-escape-class catalog shows, per class, whether a release has an escape-suite
-test that proves the class is handled. In this version none has.
+escape-class catalog shows, per class, whether this release has escape-suite
+tests that prove the class is handled, and which variants remain open.
 
 ## Adversary
 
@@ -140,8 +148,18 @@ Each row is one way a caged process could escape or leak. The fields are:
   it. `harness`: the calling program must handle it, with help from procage.
 - **Status**: what the current release does. `planned` and `documented` make
   no enforcement claim. `mitigated` or `detected` is only used together with
-  evidence: a test in this repository that runs a caged child on a real
-  kernel. `retired` marks a class that no longer applies.
+  evidence on every platform the class applies to, and only when no variant
+  of the class is known to be open. `partial` means the evidence covers some
+  variants or platforms and the rest are listed under
+  [Open variants](#open-variants). `retired` marks a class that no longer
+  applies.
+- **Evidence**: canaries of procage's escape suite: tests that spawn a
+  caged child on a real kernel, attempt the escape and assert the refusal,
+  next to a control showing the same operation succeeds where the policy
+  allows it. They ran on macOS 26.6.2 (25G83, arm64) and Linux
+  7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tier T1 and
+  tier T2. On Linux, a class that a tier cannot enforce is refused before
+  any child runs, which the canary asserts for that tier.
 - **Observed on**: kernel facts from procage's kernel-facts suite that
   observe the underlying OS behaviour. They were recorded on macOS 26.6.2
   (25G83) and Linux 7.0.14-linuxkit on 2026-10-29. An observation shows how
@@ -154,26 +172,26 @@ why the numbering has gaps.
 
 | Id | Class | Description | Platforms | Disposition | Status | Evidence | Observed on |
 |---|---|---|---|---|---|---|---|
-| R-02 | Non-canonical path rules | A rule spelled through an alias or symbolic link (`/etc` instead of `/private/etc`) silently matches nothing. | macOS, Linux | mitigate | planned | — | KF-M07, KF-M08 |
-| R-03 | Pattern characters in paths | A resolved path that contains glob or regular-expression characters widens a rule beyond the intended file. | macOS | mitigate | planned | — | — |
-| R-04 | Ancestor rename | Renaming a parent directory moves protected files out from under path-based rules. | macOS, Linux | mitigate | planned | — | — |
-| R-05 | Writes through read-only descriptors | Some file-control operations modify a file through a descriptor that was opened read-only. | macOS | mitigate | planned | — | — |
-| R-06 | Work handed to unsandboxed services | Launch Services, Apple events, the pasteboard or XPC services act on the child's behalf outside the sandbox. | macOS | mitigate | planned | — | — |
-| R-07 | Trust handoff | The child writes files that an unsandboxed program later runs or trusts: version-control config and hooks, shell startup files, tool config, programs on the search path. | macOS, Linux | harness | documented | — | — |
+| R-02 | Non-canonical path rules | A rule spelled through an alias or symbolic link (`/etc` instead of `/private/etc`) silently matches nothing. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r02_a_protect_rule_spelled_through_a_symlink_holds, tests/escape_linux.rs::r02_a_rule_spelled_through_a_symlink_binds_its_target | KF-M07, KF-M08 |
+| R-03 | Pattern characters in paths | A resolved path that contains glob or regular-expression characters widens a rule beyond the intended file. | macOS | mitigate | mitigated | tests/escape_macos.rs::r03_glob_characters_in_a_path_stay_literal | — |
+| R-04 | Ancestor rename | Renaming a parent directory moves protected files out from under path-based rules. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r04_a_protected_ancestor_cannot_be_renamed, tests/escape_linux.rs::r04_a_protected_file_stays_protected_when_an_ancestor_is_renamed | — |
+| R-05 | Writes through read-only descriptors | Some file-control operations modify a file through a descriptor that was opened read-only. | macOS | mitigate | mitigated | tests/escape_macos.rs::r05_modifying_fcntl_commands_are_refused | — |
+| R-06 | Work handed to unsandboxed services | Launch Services, Apple events, the pasteboard or XPC services act on the child's behalf outside the sandbox. | macOS | mitigate | mitigated | tests/escape_macos.rs::r06_service_handoff_lookups_are_refused | — |
+| R-07 | Trust handoff | The child writes files that an unsandboxed program later runs or trusts: version-control config and hooks, shell startup files, tool config, programs on the search path. | macOS, Linux | harness | documented | tests/escape_macos.rs::r07_trust_handoff_files_are_refused_in_a_writable_workspace, tests/escape_linux.rs::r07_trust_handoff_files_are_protected_in_a_writable_workspace | — |
 | R-08 | Pre-existing hard links | A hard link created before the run gives a protected file a second name that a literal-path deny does not cover. | macOS, Linux | detect | planned | — | — |
-| R-09 | Local daemons | Loopback ports or Unix-domain sockets reach privileged local daemons, such as a container engine's socket. | macOS, Linux | mitigate | planned | — | — |
-| R-10 | Shared temporary directory | Runs that share the per-user temporary directory can read or change each other's files. | macOS, Linux | mitigate | planned | — | — |
-| R-11 | Unsandboxed exec modifier | A Seatbelt profile modifier that runs an exec'd program without any sandbox reaches the compiled profile. | macOS | mitigate | planned | — | KF-M12 |
-| R-12 | Firmlink spelling | A rule spelled with the data-volume path does not cover the path as programs see it. | macOS | mitigate | planned | — | KF-M21 |
-| R-21 | Inherited file descriptors | A descriptor opened before the sandbox was applied reads or writes past every path rule. | macOS, Linux | mitigate | planned | — | KF-M19 |
-| R-22 | Terminal input injection | A child that shares the caller's terminal pushes keystrokes into its input queue, which the shell then runs outside the sandbox. | macOS, Linux | mitigate | planned | — | KF-M26 |
-| R-23 | Outliving the run | Descendants keep running after the run ends, or register launch agents, cron jobs or login items that later run unsandboxed. | macOS, Linux | mitigate | planned | — | — |
-| R-24 | Secrets in the environment | Inherited environment variables carry tokens, keys or agent sockets into the child. | macOS, Linux | mitigate | planned | — | — |
-| R-25 | Process introspection | The child reads other processes' arguments and environment through same-user process information. | macOS, Linux | mitigate | planned | — | — |
+| R-09 | Local daemons | Loopback ports or Unix-domain sockets reach privileged local daemons, such as a container engine's socket. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r09_other_ports_and_daemon_sockets_are_unreachable, tests/escape_linux.rs::r09_daemons_are_unreachable_without_network_access | — |
+| R-10 | Shared temporary directory | Runs that share the per-user temporary directory can read or change each other's files. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r10_runs_do_not_share_temporary_files, tests/escape_linux.rs::r10_runs_do_not_share_temporary_files | — |
+| R-11 | Unsandboxed exec modifier | A Seatbelt profile modifier that runs an exec'd program without any sandbox reaches the compiled profile. | macOS | mitigate | mitigated | tests/escape_macos.rs::r11_executed_programs_stay_caged | KF-M12 |
+| R-12 | Firmlink spelling | A rule spelled with the data-volume path does not cover the path as programs see it. | macOS | mitigate | mitigated | tests/escape_macos.rs::r12_a_data_volume_spelling_protects_the_visible_path | KF-M21 |
+| R-21 | Inherited file descriptors | A descriptor opened before the sandbox was applied reads or writes past every path rule. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r21_an_inherited_descriptor_does_not_reach_the_child, tests/escape_linux.rs::r21_an_inherited_descriptor_does_not_reach_the_child | KF-M19 |
+| R-22 | Terminal input injection | A child that shares the caller's terminal pushes keystrokes into its input queue, which the shell then runs outside the sandbox. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r22_terminal_input_injection_is_refused, tests/escape_linux.rs::r22_terminal_input_injection_is_refused | KF-M26 |
+| R-23 | Outliving the run | Descendants keep running after the run ends, or register launch agents, cron jobs or login items that later run unsandboxed. | macOS, Linux | mitigate | partial | tests/escape_macos.rs::r23_descendants_die_with_the_run, tests/escape_macos.rs::r23_a_launch_agent_cannot_be_planted, tests/escape_linux.rs::r23_descendants_die_with_the_run, tests/escape_linux.rs::r23_a_user_unit_cannot_be_planted | — |
+| R-24 | Secrets in the environment | Inherited environment variables carry tokens, keys or agent sockets into the child. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r24_secret_variables_do_not_reach_the_child, tests/escape_linux.rs::r24_secret_variables_do_not_reach_the_child | — |
+| R-25 | Process introspection | The child reads other processes' arguments and environment through same-user process information. | macOS, Linux | mitigate | partial | tests/escape_macos.rs::r25_other_processes_cannot_be_signalled, tests/escape_linux.rs::r25_other_processes_are_opaque | — |
 | R-26 | Helper replacement | A helper program that procage runs is overwritten from inside the sandbox and runs uncaged at the next start. | macOS, Linux | mitigate | planned | — | — |
-| R-28 | Filter-bypassing kernel interfaces | io_uring, VM sockets or netlink perform I/O that socket and file filters do not see. | Linux | mitigate | planned | — | — |
-| R-29 | Nested user namespaces | A user namespace created inside the sandbox is used to remount, unmount or remap and so undo the sandbox's mounts. | Linux | mitigate | planned | — | KF-L09, KF-L10 |
-| R-30 | Landlock rule loss | Landlock rules attach to existing files: replacing a file by rename drops its rule, and paths that do not exist yet cannot be ruled. On a tier without mount isolation this is reported as a capability gap. | Linux | mitigate | planned | — | — |
+| R-28 | Filter-bypassing kernel interfaces | io_uring, VM sockets or netlink perform I/O that socket and file filters do not see. | Linux | mitigate | mitigated | tests/escape_linux.rs::r28_filter_bypassing_interfaces_are_refused | — |
+| R-29 | Nested user namespaces | A user namespace created inside the sandbox is used to remount, unmount or remap and so undo the sandbox's mounts. | Linux | mitigate | mitigated | tests/escape_linux.rs::r29_nested_user_namespaces_and_mount_changes_are_refused | KF-L09, KF-L10 |
+| R-30 | Landlock rule loss | Landlock rules attach to existing files: replacing a file by rename drops its rule, and paths that do not exist yet cannot be ruled. On a tier without mount isolation this is reported as a capability gap. | Linux | mitigate | mitigated | tests/escape_linux.rs::r30_a_protected_file_cannot_be_replaced | — |
 
 ### Harness responsibilities
 
@@ -181,10 +199,30 @@ why the numbering has gaps.
   trust-handoff locations in every policy, last and waivable only by name:
   version-control hooks and config, shell startup files, common tool
   configuration, editor and agent directories, user program directories and
-  launch agents. On Linux this is still to come. The calling harness must
+  launch agents. On Linux, tier T1 makes the paths of these locations that
+  exist at spawn read-only, and tier T2 refuses a policy whose rules reach
+  them unless the class is waived. The calling harness must
   still treat everything the sandbox wrote as untrusted before an
   unsandboxed program uses it. This covers project-specific build scripts,
   generated code, and any location outside these lists.
+
+### Open variants
+
+- **R-08** Neither system reports or refuses a hard link made before the
+  run; a protected or hidden file stays reachable through its second name.
+- **R-23** A descendant whose parent exits, in a session of its own, is
+  reparented outside the child's tree and outlives the run on both systems.
+  Launch agents (macOS) and systemd user units (Linux, tier T1) cannot be
+  planted.
+- **R-25** On macOS any process of the same user can read another's
+  arguments and environment through the `KERN_PROCARGS2` query, which the
+  sandbox does not mediate (observed on macOS 26.6.2). Signals to other
+  processes and task ports are refused. On Linux the base profile does not
+  grant `/proc`; a policy that grants it exposes other processes'
+  arguments, because Linux children have no PID namespace yet, while their
+  environment stays out of reach.
+- **R-26** procage runs no helper program in this release; the class
+  applies once it does.
 
 Report a suspected escape privately as described in the security policy:
 <https://github.com/hupe1980/procage/blob/main/SECURITY.md>.

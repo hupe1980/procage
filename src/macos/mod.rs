@@ -65,7 +65,10 @@
 //! - the base profile ([`Base::V1`](procage_policy::Base::V1)) is curated
 //!   for macOS 26.6.2; tools that are Xcode shims (`/usr/bin/git`,
 //!   `/usr/bin/python3`) need developer-tool paths it does not include;
-//! - there is no helper process (path B).
+//! - there is no helper process (path B);
+//! - the `KERN_PROCARGS2` query gives a caged child the arguments and
+//!   environment of any process of the same user: the sandbox does not
+//!   mediate it, even under `(deny sysctl-read)` (macOS 26.6.2).
 //!
 //! With `Tty::Inherit` the child runs in its own process group, so its reads
 //! from the shared terminal stop with SIGTTIN, like a background job.
@@ -657,5 +660,43 @@ pub mod testing {
             sys::getrlimit(libc::RLIMIT_NOFILE)?.0,
             sys::getrlimit(libc::RLIMIT_CORE)?.0,
         ))
+    }
+
+    /// Looks up the Mach service `name`; the `kern_return_t` (0: found).
+    pub fn mach_lookup(name: &str) -> i32 {
+        std::ffi::CString::new(name).map_or(libc::EINVAL, |c| sys::mach_lookup(&c))
+    }
+
+    /// `fcntl(fd, cmd, 0)`; the errno, or 0 on success.
+    pub fn fcntl_errno(fd: i32, cmd: i32) -> i32 {
+        sys::fcntl_errno(fd, cmd)
+    }
+
+    /// Reads another process's arguments and environment
+    /// (`KERN_PROCARGS2`); the errno, or 0.
+    pub fn procargs_errno(pid: u32) -> i32 {
+        libc::pid_t::try_from(pid).map_or(libc::EINVAL, sys::procargs_errno)
+    }
+
+    /// `kill(pid, sig)`; the errno, or 0.
+    pub fn kill_errno(pid: u32, sig: i32) -> i32 {
+        libc::pid_t::try_from(pid).map_or(libc::EINVAL, |p| sys::kill_errno(p, sig))
+    }
+
+    /// A new pseudo-terminal: the controller and the path of the device.
+    pub fn open_pty() -> std::io::Result<(std::os::fd::OwnedFd, std::path::PathBuf)> {
+        sys::open_pty()
+    }
+
+    /// Makes the terminal `fd` the caller's controlling terminal
+    /// (`TIOCSCTTY`); the errno, or 0.
+    pub fn make_controlling(fd: i32) -> i32 {
+        sys::ioctl_errno(fd, libc::TIOCSCTTY.into())
+    }
+
+    /// Pushes `byte` into the input of terminal `fd` (`TIOCSTI`); the
+    /// errno, or 0.
+    pub fn tiocsti_errno(fd: i32, byte: u8) -> i32 {
+        sys::tiocsti_errno(fd, byte)
     }
 }

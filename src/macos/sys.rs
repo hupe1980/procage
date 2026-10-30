@@ -652,3 +652,131 @@ pub(crate) fn dyld_churn(stop: &std::sync::atomic::AtomicBool) {
         }
     }
 }
+
+// ---- Probes for the escape suite (procage's tests only) ----
+
+// SAFETY: libSystem's bootstrap and Mach declarations, with the C types of
+// <servers/bootstrap.h> and <mach/mach_port.h>.
+unsafe extern "C" {
+    static bootstrap_port: libc::mach_port_t;
+    static mach_task_self_: libc::mach_port_t;
+    fn bootstrap_look_up(
+        bp: libc::mach_port_t,
+        name: *const c_char,
+        sp: *mut libc::mach_port_t,
+    ) -> libc::kern_return_t;
+    fn mach_port_deallocate(
+        task: libc::mach_port_t,
+        name: libc::mach_port_t,
+    ) -> libc::kern_return_t;
+}
+
+/// Looks up the Mach service `name`; the `kern_return_t` (0: found). The
+/// port is released at once: a lookup sends nothing to the service.
+pub(crate) fn mach_lookup(name: &CStr) -> i32 {
+    let mut port: libc::mach_port_t = 0;
+    // SAFETY: `name` is NUL-terminated; `port` is a local out-parameter;
+    // the statics are set by libSystem before main.
+    unsafe {
+        let kr = bootstrap_look_up(bootstrap_port, name.as_ptr(), &raw mut port);
+        if kr == 0 {
+            mach_port_deallocate(mach_task_self_, port);
+        }
+        kr
+    }
+}
+
+/// `fcntl(fd, cmd, 0)`; the errno, or 0 on success.
+pub(crate) fn fcntl_errno(fd: c_int, cmd: c_int) -> i32 {
+    // SAFETY: an integer command with a zero argument.
+    if unsafe { libc::fcntl(fd, cmd, 0) } == -1 {
+        errno()
+    } else {
+        0
+    }
+}
+
+/// Reads `KERN_PROCARGS2` (argv and environment) of `pid`; the errno, or 0.
+pub(crate) fn procargs_errno(pid: libc::pid_t) -> i32 {
+    let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
+    let mut buf = vec![0u8; 1 << 20];
+    let mut len = buf.len();
+    // SAFETY: `mib` has three entries; `buf` is `len` bytes long.
+    let rc = unsafe {
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            3,
+            buf.as_mut_ptr().cast(),
+            &raw mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc == 0 { 0 } else { errno() }
+}
+
+/// `kill(pid, sig)`; the errno, or 0.
+pub(crate) fn kill_errno(pid: libc::pid_t, sig: c_int) -> i32 {
+    // SAFETY: a plain system call.
+    if unsafe { libc::kill(pid, sig) } == 0 {
+        0
+    } else {
+        errno()
+    }
+}
+
+/// A new pseudo-terminal: the controller and the device path of the other
+/// end.
+pub(crate) fn open_pty() -> std::io::Result<(std::os::fd::OwnedFd, std::path::PathBuf)> {
+    use std::os::fd::FromRawFd;
+    use std::os::unix::ffi::OsStrExt;
+    let (mut controller, mut device) = (-1, -1);
+    let mut name = [0 as c_char; 128];
+    // SAFETY: out-parameters on this frame; `name` holds the 128 bytes
+    // openpty may write; no termios or window size.
+    let rc = unsafe {
+        libc::openpty(
+            &raw mut controller,
+            &raw mut device,
+            name.as_mut_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors are fresh and owned here; the device end is
+    // closed (the caller opens it by path).
+    let controller = unsafe {
+        drop(std::os::fd::OwnedFd::from_raw_fd(device));
+        std::os::fd::OwnedFd::from_raw_fd(controller)
+    };
+    // SAFETY: openpty wrote a NUL-terminated name.
+    let name = unsafe { CStr::from_ptr(name.as_ptr()) };
+    Ok((
+        controller,
+        std::ffi::OsStr::from_bytes(name.to_bytes()).into(),
+    ))
+}
+
+/// `ioctl(fd, request)` without an argument; the errno, or 0.
+pub(crate) fn ioctl_errno(fd: c_int, request: libc::c_ulong) -> i32 {
+    // SAFETY: requests that take no argument (TIOCSCTTY's is ignored).
+    if unsafe { libc::ioctl(fd, request, 0) } == -1 {
+        errno()
+    } else {
+        0
+    }
+}
+
+/// `ioctl(fd, TIOCSTI, &byte)`: pushes one byte into a terminal's input.
+pub(crate) fn tiocsti_errno(fd: c_int, byte: u8) -> i32 {
+    let c = byte as c_char;
+    // SAFETY: TIOCSTI reads one byte from the pointer.
+    if unsafe { libc::ioctl(fd, libc::TIOCSTI, &raw const c) } == -1 {
+        errno()
+    } else {
+        0
+    }
+}

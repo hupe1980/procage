@@ -77,6 +77,8 @@
 //! **Not yet done** (later features):
 //!
 //! - no PID namespace or fresh `/proc`; signal scoping needs Landlock ABI 6;
+//! - a descendant that double-forks and starts its own session is
+//!   reparented away from the child and outlives the run;
 //! - loopback and proxy networks need a relay (a gap on both tiers); a
 //!   unix-socket allowlist needs Landlock ABI 9; hide on T2 and glob rules
 //!   are gaps;
@@ -758,6 +760,26 @@ pub mod testing {
             "perf_event_open" => (libc::SYS_perf_event_open, [0, 0, -1, -1, 0]),
             // Invalid flags: EINVAL.
             "userfaultfd" => (libc::SYS_userfaultfd, [-1, 0, 0, 0, 0]),
+            // A routing socket needs no privilege: a descriptor.
+            "socket_netlink" => (
+                libc::SYS_socket,
+                [libc::AF_NETLINK.into(), libc::SOCK_RAW.into(), 0, 0, 0],
+            ),
+            // Without a VM transport: EAFNOSUPPORT.
+            "socket_vsock" => (
+                libc::SYS_socket,
+                [libc::AF_VSOCK.into(), libc::SOCK_STREAM.into(), 0, 0, 0],
+            ),
+            // A nested user namespace: allowed in a user namespace, EINVAL
+            // in a multithreaded process.
+            "unshare_user" => (libc::SYS_unshare, [libc::CLONE_NEWUSER.into(), 0, 0, 0, 0]),
+            // No arguments: EFAULT or EINVAL; never a process.
+            "clone3" => (libc::SYS_clone3, none),
+            // No vectors, at the parent: 0 or ESRCH.
+            "process_vm_readv" => (
+                libc::SYS_process_vm_readv,
+                [libc::c_long::from(sys::parent_pid()), 0, 0, 0, 0],
+            ),
             // `/` without flags needs no privilege: a descriptor.
             "open_tree" => (
                 libc::SYS_open_tree,
@@ -772,6 +794,23 @@ pub mod testing {
             _ => return None,
         };
         Some(sys::syscall_errno(nr, args))
+    }
+
+    /// A new pseudo-terminal: the controller and the path of the device.
+    pub fn open_pty() -> std::io::Result<(std::os::fd::OwnedFd, std::path::PathBuf)> {
+        sys::open_pty()
+    }
+
+    /// Makes the terminal `fd` the caller's controlling terminal
+    /// (`TIOCSCTTY`); the errno, or 0.
+    pub fn make_controlling(fd: i32) -> i32 {
+        sys::tty_ioctl_errno(fd, None)
+    }
+
+    /// Pushes `byte` into the input of terminal `fd` (`TIOCSTI`); the
+    /// errno, or 0.
+    pub fn tiocsti_errno(fd: i32, byte: u8) -> i32 {
+        sys::tty_ioctl_errno(fd, Some(byte))
     }
 
     /// Calls `umount2(path, 0)` and returns the errno (0 on success).

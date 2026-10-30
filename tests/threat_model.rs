@@ -7,11 +7,16 @@
 //!   the published ids (append-only), and the evidence and kernel-fact rules;
 //! - the links from the README and the crate docs.
 //!
-//! A class may be `mitigated` or `detected` only with evidence: an
-//! integration test under `tests/`, outside the kernel-facts suite, that
-//! exists. Every check is a function over the file contents. The unit tests
-//! at the end apply one defect to the real files and assert that exactly the
-//! expected rule fires.
+//! - the escape suite: every class has a canary (a test function named
+//!   `rNN_…`) in the escape-suite file of every platform it lists.
+//!
+//! A class may be `mitigated` or `detected` only with evidence: canaries of
+//! the escape suite that are not ignored, one in the file of every platform
+//! the class lists, and no open (ignored) canary for the class. A `partial`
+//! class needs at least one such canary and a note under `### Open
+//! variants`. Every check is a function over the file contents. The unit
+//! tests at the end apply one defect to the real files and assert that
+//! exactly the expected rule fires.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -63,6 +68,11 @@ enum Rule {
     EvidenceRequired,
     EvidenceLocation,
     EvidenceMissing,
+    EvidenceIgnored,
+    EvidencePlatform,
+    CanaryMissing,
+    OpenCanary,
+    OpenVariantNote,
     KernelFact,
     Heading,
     ReleaseStatus,
@@ -82,6 +92,11 @@ impl Rule {
             Rule::EvidenceRequired => "evidence-required",
             Rule::EvidenceLocation => "evidence-location",
             Rule::EvidenceMissing => "evidence-missing",
+            Rule::EvidenceIgnored => "evidence-ignored",
+            Rule::EvidencePlatform => "evidence-platform",
+            Rule::CanaryMissing => "canary-missing",
+            Rule::OpenCanary => "open-canary",
+            Rule::OpenVariantNote => "open-variant-note",
             Rule::KernelFact => "kernel-fact",
             Rule::Heading => "heading",
             Rule::ReleaseStatus => "release-status",
@@ -127,6 +142,7 @@ enum Disposition {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Status {
     Planned,
+    Partial,
     Mitigated,
     Detected,
     Documented,
@@ -137,14 +153,14 @@ impl Disposition {
     fn allows(self, status: Status) -> bool {
         use Status::*;
         match self {
-            Disposition::Mitigate => matches!(status, Planned | Mitigated | Retired),
-            Disposition::Detect => matches!(status, Planned | Detected | Retired),
+            Disposition::Mitigate => matches!(status, Planned | Partial | Mitigated | Retired),
+            Disposition::Detect => matches!(status, Planned | Partial | Detected | Retired),
             Disposition::Harness => matches!(status, Documented | Retired),
         }
     }
 }
 
-/// `<path>::<fn>`, the evidence for a `mitigated` or `detected` class.
+/// `<path>::<fn>`, a canary that is evidence for a class.
 #[derive(Debug)]
 struct EvidenceRef {
     path: String,
@@ -152,7 +168,6 @@ struct EvidenceRef {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)] // `platforms` is parsed for the format check and kept for the escape suite.
 struct EscapeClass {
     id: String,
     platforms: Platforms,
@@ -162,6 +177,29 @@ struct EscapeClass {
     observed_on: Vec<String>,
 }
 
+impl Platforms {
+    fn covers(self, platform: Platforms) -> bool {
+        self == Platforms::Both || self == platform
+    }
+
+    fn listed(self) -> &'static [Platforms] {
+        match self {
+            Platforms::Macos => &[Platforms::Macos],
+            Platforms::Linux => &[Platforms::Linux],
+            Platforms::Both => &[Platforms::Macos, Platforms::Linux],
+        }
+    }
+}
+
+/// The escape-suite file of each platform.
+const SUITES: [(Platforms, &str); 2] = [
+    (Platforms::Macos, "tests/escape_macos.rs"),
+    (Platforms::Linux, "tests/escape_linux.rs"),
+];
+
+/// The canaries of one escape-suite file: function name → ignored.
+type Canaries = std::collections::BTreeMap<String, bool>;
+
 /// Everything the gate reads, so the tests can substitute any part.
 struct Inputs<'a> {
     doc: &'a str,
@@ -169,7 +207,44 @@ struct Inputs<'a> {
     lib_rs: &'a str,
     kernel_facts: &'a BTreeSet<String>,
     version: &'a str,
-    root: &'a Path,
+    /// Per platform, the canaries of its escape-suite file.
+    canaries: &'a [(Platforms, Canaries)],
+}
+
+/// The `rNN_` prefix of the canaries for class `id`.
+fn canary_prefix(id: &str) -> String {
+    format!("r{}_", &id[2..])
+}
+
+/// The canary functions of an escape-suite file: every `fn rNN_…(`, and
+/// whether an `#[ignore` attribute sits in the attribute lines above it.
+fn canaries(src: &str) -> Canaries {
+    let lines: Vec<&str> = src.lines().map(str::trim).collect();
+    let mut out = Canaries::new();
+    for (i, line) in lines.iter().enumerate() {
+        let Some(rest) = line.strip_prefix("fn ") else {
+            continue;
+        };
+        let Some((name, _)) = rest.split_once('(') else {
+            continue;
+        };
+        let b = name.as_bytes();
+        let canary = b.len() > 4
+            && b[0] == b'r'
+            && b[1].is_ascii_digit()
+            && b[2].is_ascii_digit()
+            && b[3] == b'_';
+        if !canary {
+            continue;
+        }
+        let ignored = lines[..i]
+            .iter()
+            .rev()
+            .take_while(|l| l.starts_with("#[") || l.starts_with("///"))
+            .any(|l| l.starts_with("#[ignore"));
+        out.insert(name.to_owned(), ignored);
+    }
+    out
 }
 
 fn violation(rule: Rule, subject: impl Into<String>, detail: impl Into<String>) -> Violation {
@@ -290,6 +365,7 @@ fn parse_row(c: &[String], id: &str, out: &mut Vec<Violation>) -> Option<EscapeC
     };
     let status = match c[5].as_str() {
         "planned" => Some(Status::Planned),
+        "partial" => Some(Status::Partial),
         "mitigated" => Some(Status::Mitigated),
         "detected" => Some(Status::Detected),
         "documented" => Some(Status::Documented),
@@ -298,7 +374,7 @@ fn parse_row(c: &[String], id: &str, out: &mut Vec<Violation>) -> Option<EscapeC
             bad(
                 "status",
                 v,
-                "planned | mitigated | detected | documented | retired",
+                "planned | partial | mitigated | detected | documented | retired",
             );
             None
         }
@@ -449,35 +525,89 @@ fn check_row(row: &EscapeClass, inputs: &Inputs<'_>, out: &mut Vec<Violation>) {
             ),
         ));
     }
-    if matches!(row.status, Status::Mitigated | Status::Detected) && row.evidence.is_empty() {
+    let claims = matches!(row.status, Status::Mitigated | Status::Detected);
+    if (claims || row.status == Status::Partial) && row.evidence.is_empty() {
         out.push(violation(
             Rule::EvidenceRequired,
             id,
-            "mitigated or detected needs a caged-child test as evidence",
+            "mitigated, detected or partial needs a canary of the escape suite as evidence",
         ));
     }
+    let prefix = canary_prefix(id);
+    let mut proven = Vec::new();
     for e in &row.evidence {
         let reference = format!("{}::{}", e.path, e.func);
-        let located = e.path.starts_with("tests/")
-            && !e.path.starts_with("tests/kernel_facts/")
-            && e.path.ends_with(".rs")
-            && !e.path.contains("..");
-        if !located {
+        let suite = SUITES.iter().find(|(_, path)| *path == e.path);
+        let Some(&(platform, _)) = suite.filter(|_| e.func.starts_with(&prefix)) else {
             out.push(violation(
                 Rule::EvidenceLocation,
                 format!("{id} {reference}"),
-                "evidence must be an integration test under tests/, outside tests/kernel_facts/",
+                format!(
+                    "evidence must be a canary `{prefix}…` in {} or {}",
+                    SUITES[0].1, SUITES[1].1
+                ),
             ));
             continue;
-        }
-        let defined = fs::read_to_string(inputs.root.join(&e.path))
-            .is_ok_and(|src| src.contains(&format!("fn {}(", e.func)));
-        if !defined {
-            out.push(violation(
+        };
+        let found = inputs
+            .canaries
+            .iter()
+            .find(|(p, _)| *p == platform)
+            .and_then(|(_, c)| c.get(&e.func));
+        match found {
+            None => out.push(violation(
                 Rule::EvidenceMissing,
                 format!("{id} {reference}"),
-                "no such file or test function",
+                "no such canary",
+            )),
+            Some(true) => out.push(violation(
+                Rule::EvidenceIgnored,
+                format!("{id} {reference}"),
+                "an ignored (open) canary is never evidence",
+            )),
+            Some(false) if !row.platforms.covers(platform) => out.push(violation(
+                Rule::EvidencePlatform,
+                format!("{id} {reference}"),
+                "evidence for a platform the class does not list",
+            )),
+            Some(false) => proven.push(platform),
+        }
+    }
+    if claims && !row.evidence.is_empty() {
+        for &platform in row.platforms.listed() {
+            if !proven.contains(&platform) {
+                out.push(violation(
+                    Rule::EvidencePlatform,
+                    format!("{id} {platform:?}"),
+                    "mitigated or detected needs a passing canary on every listed platform",
+                ));
+            }
+        }
+    }
+    if row.status == Status::Retired {
+        return;
+    }
+    for (platform, canaries) in inputs.canaries {
+        let mine = || {
+            canaries
+                .iter()
+                .filter(|(name, _)| name.starts_with(&prefix))
+        };
+        if row.platforms.covers(*platform) && mine().next().is_none() {
+            out.push(violation(
+                Rule::CanaryMissing,
+                format!("{id} {platform:?}"),
+                format!("no canary `{prefix}…` for a listed platform"),
             ));
+        }
+        if claims {
+            for (name, _) in mine().filter(|(_, ignored)| **ignored) {
+                out.push(violation(
+                    Rule::OpenCanary,
+                    format!("{id} {name}"),
+                    "a mitigated or detected class has an open canary",
+                ));
+            }
         }
     }
     for k in &row.observed_on {
@@ -491,13 +621,15 @@ fn check_row(row: &EscapeClass, inputs: &Inputs<'_>, out: &mut Vec<Violation>) {
     }
 }
 
-fn check_harness_notes(doc: &str, rows: &[EscapeClass], out: &mut Vec<Violation>) {
+/// The ids with an entry `- **R-NN** …` under `### <title>`.
+fn notes(doc: &str, title: &str) -> BTreeSet<String> {
     let body = section(doc, "Escape classes").unwrap_or_default();
+    let heading = format!("### {title}");
     let mut in_notes = false;
     let mut noted = BTreeSet::new();
     for (_, line) in body {
         if line.starts_with("### ") {
-            in_notes = line.trim_end() == "### Harness responsibilities";
+            in_notes = line.trim_end() == heading;
         } else if in_notes
             && let Some(rest) = line.strip_prefix("- **")
             && let Some((id, _)) = rest.split_once("**")
@@ -505,12 +637,25 @@ fn check_harness_notes(doc: &str, rows: &[EscapeClass], out: &mut Vec<Violation>
             noted.insert(id.to_owned());
         }
     }
+    noted
+}
+
+fn check_notes(doc: &str, rows: &[EscapeClass], out: &mut Vec<Violation>) {
+    let harness = notes(doc, "Harness responsibilities");
+    let open = notes(doc, "Open variants");
     for row in rows {
-        if row.disposition == Disposition::Harness && !noted.contains(&row.id) {
+        if row.disposition == Disposition::Harness && !harness.contains(&row.id) {
             out.push(violation(
                 Rule::HarnessNote,
                 &row.id,
                 "a harness class needs an entry under `### Harness responsibilities`",
+            ));
+        }
+        if row.status == Status::Partial && !open.contains(&row.id) {
+            out.push(violation(
+                Rule::OpenVariantNote,
+                &row.id,
+                "a partial class needs an entry under `### Open variants`",
             ));
         }
     }
@@ -541,7 +686,7 @@ fn check(inputs: &Inputs<'_>) -> (Vec<EscapeClass>, Vec<Violation>) {
     for row in &rows {
         check_row(row, inputs, &mut out);
     }
-    check_harness_notes(inputs.doc, &rows, &mut out);
+    check_notes(inputs.doc, &rows, &mut out);
     check_links(inputs.readme, inputs.lib_rs, &mut out);
     (rows, out)
 }
@@ -561,6 +706,8 @@ struct Files {
     readme: String,
     lib_rs: String,
     kernel_facts: BTreeSet<String>,
+    /// The escape-suite files, in the order of `SUITES`.
+    suites: [String; 2],
 }
 
 fn root() -> &'static Path {
@@ -576,17 +723,23 @@ fn load() -> Files {
         readme: read("README.md"),
         lib_rs: read("src/lib.rs"),
         kernel_facts: kernel_fact_ids(&read("tests/kernel_facts/tests/kernel_facts.rs")),
+        suites: SUITES.map(|(_, path)| read(path)),
     }
 }
 
 fn run(files: &Files) -> (Vec<EscapeClass>, Vec<Violation>) {
+    let canaries: Vec<(Platforms, Canaries)> = SUITES
+        .iter()
+        .zip(&files.suites)
+        .map(|((platform, _), src)| (*platform, canaries(src)))
+        .collect();
     check(&Inputs {
         doc: &files.doc,
         readme: &files.readme,
         lib_rs: &files.lib_rs,
         kernel_facts: &files.kernel_facts,
         version: env!("CARGO_PKG_VERSION"),
-        root: root(),
+        canaries: &canaries,
     })
 }
 
@@ -690,6 +843,10 @@ fn unknown_id_is_caught() {
             let line = row_line(&f.doc, "R-10");
             let extra = line.replacen("R-10", "R-99", 1);
             f.doc = f.doc.replace(&line, &format!("{line}\n{extra}"));
+            f.doc = edit_row(&f.doc, "R-99", |c| {
+                c[5] = "retired".into();
+                c[6] = EMPTY.into();
+            });
         },
         Rule::BaselineUnknown,
         "R-99",
@@ -727,26 +884,50 @@ fn harness_class_cannot_be_planned() {
     );
 }
 
+/// Appends `extra` to the evidence of `id`.
+fn add_evidence(extra: &'static str) -> impl Fn(&mut Vec<String>) {
+    move |c| c[6] = format!("{}, {extra}", c[6])
+}
+
 #[test]
 fn mitigated_without_evidence_is_caught() {
     assert_caught(
-        |f| f.doc = edit_row(&f.doc, "R-10", set(5, "mitigated")),
+        |f| f.doc = edit_row(&f.doc, "R-10", set(6, EMPTY)),
         Rule::EvidenceRequired,
         "R-10",
     );
 }
 
 #[test]
+fn partial_without_evidence_is_caught() {
+    assert_caught(
+        |f| f.doc = edit_row(&f.doc, "R-23", set(6, EMPTY)),
+        Rule::EvidenceRequired,
+        "R-23",
+    );
+}
+
+#[test]
 fn evidence_in_library_source_is_caught() {
     assert_caught(
-        |f| {
-            f.doc = edit_row(&f.doc, "R-10", |c| {
-                c[5] = "mitigated".into();
-                c[6] = "src/lib.rs::caged".into();
-            })
-        },
+        |f| f.doc = edit_row(&f.doc, "R-10", add_evidence("src/lib.rs::caged")),
         Rule::EvidenceLocation,
         "R-10 src/lib.rs::caged",
+    );
+}
+
+#[test]
+fn evidence_in_another_test_file_is_caught() {
+    assert_caught(
+        |f| {
+            f.doc = edit_row(
+                &f.doc,
+                "R-10",
+                add_evidence("tests/spawn_macos.rs::each_run_gets_its_own_private_tmpdir"),
+            )
+        },
+        Rule::EvidenceLocation,
+        "R-10 tests/spawn_macos.rs",
     );
 }
 
@@ -754,10 +935,11 @@ fn evidence_in_library_source_is_caught() {
 fn kernel_fact_as_evidence_is_caught() {
     assert_caught(
         |f| {
-            f.doc = edit_row(&f.doc, "R-10", |c| {
-                c[5] = "mitigated".into();
-                c[6] = "tests/kernel_facts/tests/kernel_facts.rs::main".into();
-            })
+            f.doc = edit_row(
+                &f.doc,
+                "R-10",
+                add_evidence("tests/kernel_facts/tests/kernel_facts.rs::main"),
+            )
         },
         Rule::EvidenceLocation,
         "R-10 tests/kernel_facts",
@@ -765,16 +947,97 @@ fn kernel_fact_as_evidence_is_caught() {
 }
 
 #[test]
+fn another_class_canary_as_evidence_is_caught() {
+    assert_caught(
+        |f| {
+            f.doc = edit_row(
+                &f.doc,
+                "R-10",
+                add_evidence(
+                    "tests/escape_linux.rs::r21_an_inherited_descriptor_does_not_reach_the_child",
+                ),
+            )
+        },
+        Rule::EvidenceLocation,
+        "R-10 tests/escape_linux.rs::r21",
+    );
+}
+
+#[test]
 fn nonexistent_evidence_is_caught() {
     assert_caught(
         |f| {
-            f.doc = edit_row(&f.doc, "R-10", |c| {
-                c[5] = "mitigated".into();
-                c[6] = "tests/threat_model.rs::absent_canary_for_gate".into();
-            })
+            f.doc = edit_row(
+                &f.doc,
+                "R-10",
+                add_evidence("tests/escape_linux.rs::r10_absent"),
+            )
         },
         Rule::EvidenceMissing,
-        "R-10 tests/threat_model.rs::absent_canary_for_gate",
+        "R-10 tests/escape_linux.rs::r10_absent",
+    );
+}
+
+#[test]
+fn ignored_canary_as_evidence_is_caught() {
+    assert_caught(
+        |f| {
+            f.doc = edit_row(
+                &f.doc,
+                "R-08",
+                set(
+                    6,
+                    "tests/escape_macos.rs::r08_a_hard_link_to_a_hidden_file_is_refused",
+                ),
+            )
+        },
+        Rule::EvidenceIgnored,
+        "R-08",
+    );
+}
+
+#[test]
+fn mitigated_on_one_platform_only_is_caught() {
+    assert_caught(
+        |f| {
+            f.doc = edit_row(
+                &f.doc,
+                "R-10",
+                set(
+                    6,
+                    "tests/escape_macos.rs::r10_runs_do_not_share_temporary_files",
+                ),
+            )
+        },
+        Rule::EvidencePlatform,
+        "R-10 Linux",
+    );
+}
+
+#[test]
+fn missing_canary_is_caught() {
+    assert_caught(
+        |f| f.suites[1] = f.suites[1].replace("fn r26_", "fn helper_"),
+        Rule::CanaryMissing,
+        "R-26 Linux",
+    );
+}
+
+#[test]
+fn mitigated_with_an_open_canary_is_caught() {
+    assert_caught(
+        |f| f.doc = edit_row(&f.doc, "R-23", set(5, "mitigated")),
+        Rule::OpenCanary,
+        "R-23 r23_a_double_forked_descendant_dies_with_the_run",
+    );
+}
+
+#[test]
+fn partial_without_a_note_is_caught() {
+    assert_caught(
+        |f| f.doc = f.doc.replace("- **R-25**", "- R-25"),
+        Rule::OpenVariantNote,
+        "R-25",
     );
 }
 
@@ -835,16 +1098,13 @@ fn missing_crate_docs_link_is_caught() {
     );
 }
 
-/// Valid evidence passes: the rule rejects missing proof, not every proof.
+/// The real catalog parses with the statuses the escape suite supports.
 #[test]
-fn valid_evidence_is_accepted() {
-    let mut files = load();
-    files.doc = edit_row(&files.doc, "R-10", |c| {
-        c[5] = "mitigated".into();
-        c[6] = "tests/threat_model.rs::gate".into();
-    });
-    let (rows, violations) = run(&files);
+fn statuses_are_parsed() {
+    let (rows, violations) = run(&load());
     assert!(violations.is_empty(), "{violations:?}");
-    let r10 = rows.iter().find(|r| r.id == "R-10").expect("R-10 parsed");
-    assert_eq!(r10.status, Status::Mitigated);
+    let status = |id: &str| rows.iter().find(|r| r.id == id).map(|r| r.status);
+    assert_eq!(status("R-10"), Some(Status::Mitigated));
+    assert_eq!(status("R-23"), Some(Status::Partial));
+    assert_eq!(status("R-26"), Some(Status::Planned));
 }

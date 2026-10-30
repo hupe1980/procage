@@ -116,6 +116,11 @@ planning-paths:
         exit 1
     fi
 
+# The macOS escape suite: one or more canaries per escape class (run outside any other sandbox).
+escape:
+    @echo "==> gate: escape (macOS)"
+    cargo test --locked -p procage --test escape_macos
+
 # Linux facts in a container under Docker's default seccomp profile (tier T2).
 kf-linux tier="T2":
     @echo "==> gate: kf-linux ({{tier}})"
@@ -147,7 +152,7 @@ linux tier="T2":
         -e HOME=/tmp -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/target \
         -e PROCAGE_EXPECT_TIER={{tier}} \
         -v "$PWD":/src:ro -w /src {{rust_image}} \
-        cargo test --locked -p procage --lib --test spawn_linux --test unsafe_confined
+        cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined
 
 # The Linux backend's tests with seccomp and AppArmor unconfined, so user namespaces work (tier T1).
 linux-t1 tier="T1":
@@ -157,4 +162,4 @@ linux-t1 tier="T1":
         -e HOME=/tmp -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/target \
         -e PROCAGE_EXPECT_TIER={{tier}} \
         -v "$PWD":/src:ro -w /src {{rust_image}} \
-        cargo test --locked -p procage --lib --test spawn_linux --test unsafe_confined
+        cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined

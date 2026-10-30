@@ -69,6 +69,8 @@ jobs:
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts --target ${{ matrix.target }}
       - name: Caged children (spawn tests)
         run: cargo test --locked -p procage --test spawn_macos --target ${{ matrix.target }}
+      - name: Escape suite
+        run: cargo test --locked -p procage --test escape_macos --target ${{ matrix.target }}
       - name: Lowered profiles compile (well-formedness only)
         run: cargo test --locked -p procage-kernel-facts --test policy_compiles --target ${{ matrix.target }}
 
@@ -86,6 +88,7 @@ jobs:
           - { config: userns-unrestricted, tier: T1 }
     env:
       PROCAGE_KF_EXPECT_TIER: ${{ matrix.tier }}
+      PROCAGE_EXPECT_TIER: ${{ matrix.tier }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,6 +104,8 @@ jobs:
         run: uname -a; cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
+      - name: Caged children and escape suite
+        run: cargo test --locked -p procage --test spawn_linux --test escape_linux
 
   linux-next:
     name: facts ubuntu-26.04 (preview, recorded only)
@@ -117,6 +122,8 @@ jobs:
           rustup default "$RUST_TOOLCHAIN"
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
+      - name: Caged children and escape suite
+        run: cargo test --locked -p procage --test spawn_linux --test escape_linux
 
   linux-container:
     name: facts debian 13 container (Docker default seccomp)
@@ -125,12 +132,15 @@ jobs:
     container: rust:1.99-trixie
     env:
       PROCAGE_KF_EXPECT_TIER: T2
+      PROCAGE_EXPECT_TIER: T2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
+      - name: Caged children and escape suite
+        run: cargo test --locked -p procage --test spawn_linux --test escape_linux
 
   fuzz:
     name: fuzz smoke (policy crate, nightly)

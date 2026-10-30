@@ -11,7 +11,9 @@
 //! documentation lists what its tests observe on a real kernel and what is
 //! not done yet, among them:
 //!
-//! - a double-forked descendant can outlive a run on macOS;
+//! - a double-forked descendant can outlive a run, on both systems;
+//! - on macOS a caged child can read other same-user processes' arguments
+//!   and environment (the sandbox does not mediate that query);
 //! - there are no pseudo-terminals, and the macOS base profile is curated
 //!   for macOS 26.6.2;
 //! - on Linux there is no PID namespace yet, loopback and proxy networks

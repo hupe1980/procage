@@ -202,6 +202,12 @@ pub(crate) fn pid() -> libc::pid_t {
     unsafe { libc::getpid() }
 }
 
+/// The parent's process id.
+pub(crate) fn parent_pid() -> libc::pid_t {
+    // SAFETY: no arguments, cannot fail.
+    unsafe { libc::getppid() }
+}
+
 // ------------------------------------------------------- the child sequence
 
 /// Step numbers, as encoded in a step code.
@@ -705,6 +711,57 @@ pub(crate) fn spawn_sleeper(setsid: bool) -> std::io::Result<u32> {
     }
     let child = cmd.spawn()?;
     Ok(child.id())
+}
+
+/// A new pseudo-terminal: the controller and the device path of the other
+/// end (for procage's tests).
+pub(crate) fn open_pty() -> std::io::Result<(OwnedFd, std::path::PathBuf)> {
+    use std::os::unix::ffi::OsStrExt;
+    let (mut controller, mut device) = (-1, -1);
+    let mut name = [0 as libc::c_char; 128];
+    // SAFETY: out-parameters on this frame; `name` holds the 128 bytes
+    // openpty may write; no termios or window size.
+    let rc = unsafe {
+        libc::openpty(
+            &raw mut controller,
+            &raw mut device,
+            name.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors are fresh and owned here; the device end is
+    // closed (the caller opens it by path).
+    let controller = unsafe {
+        drop(OwnedFd::from_raw_fd(device));
+        OwnedFd::from_raw_fd(controller)
+    };
+    // SAFETY: openpty wrote a NUL-terminated name.
+    let name = unsafe { CStr::from_ptr(name.as_ptr()) };
+    Ok((
+        controller,
+        std::ffi::OsStr::from_bytes(name.to_bytes()).into(),
+    ))
+}
+
+/// `ioctl(fd, TIOCSCTTY, 0)`, or with `byte`, `ioctl(fd, TIOCSTI, &byte)`;
+/// the errno, or 0 (for procage's tests).
+pub(crate) fn tty_ioctl_errno(fd: c_int, byte: Option<u8>) -> i32 {
+    let c = byte.unwrap_or(0) as libc::c_char;
+    // The request type is `c_ulong` on glibc and `c_int` on musl.
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
+    // SAFETY: TIOCSCTTY takes an integer; TIOCSTI reads one byte from the
+    // pointer.
+    let rc = unsafe {
+        match byte {
+            None => libc::ioctl(fd, libc::TIOCSCTTY as _, 0),
+            Some(_) => libc::ioctl(fd, libc::TIOCSTI as _, &raw const c),
+        }
+    };
+    if rc == -1 { errno() } else { 0 }
 }
 
 #[cfg(test)]

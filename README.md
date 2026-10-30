@@ -12,9 +12,14 @@ killed when a run ends, and an opt-in base profile that lets ordinary
 programs start. Every policy denies reading secrets and writing git hooks,
 shell startup files and launch agents; on Linux these hold exactly where no
 rule reaches them, by masks at spawn on tier T1, and otherwise are a
-capability gap. Four frozen presets cover common shapes. It does not yet
-provide pseudo-terminals, a PID namespace, or loopback and proxy networks
-on Linux. Do not rely on any release before 0.1.0 to contain a process.
+capability gap. Four frozen presets cover common shapes. An escape suite
+runs a caged canary for every known escape class; the threat model shows
+which classes it proves handled and which variants are still open: a
+double-forked descendant can outlive a run, a pre-existing hard link is not
+reported, and on macOS a caged child can read the arguments and environment
+of your other processes. It does not yet provide pseudo-terminals, a PID
+namespace, or loopback and proxy networks on Linux. Do not rely on any
+release before 0.1.0 to contain a process.
 
 ## Threat model
 
@@ -34,8 +39,11 @@ the [security policy](SECURITY.md).
 dependency policy, the minimum Rust version (1.99), the `no_std` build of the
 policy crate, semver checks, a check for internal planning paths, and a docs
 build from the packaged crate. The tests include a gate that checks the
-threat model's escape-class catalog: its format, stable ids, and that no class
-is marked handled without a test as evidence.
+threat model's escape-class catalog: its format, stable ids, that every class
+has a canary in the escape suite (`tests/escape_macos.rs`,
+`tests/escape_linux.rs`) for each platform it applies to, and that no class is
+marked handled without passing canaries as evidence. `just escape` runs the
+macOS suite; `just linux` and `just linux-t1` run the Linux suite.
 
 The workspace includes a kernel-facts suite (`tests/kernel_facts`). It
 re-verifies, on the running kernel, the macOS Seatbelt and Linux Landlock,
