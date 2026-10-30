@@ -1,0 +1,30 @@
+# cargo-deny policy (`just deny`). Licences must be compatible with shipping
+# procage as MIT OR Apache-2.0; dependencies come from crates.io only.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+confidence-threshold = 0.8
+unused-allowed-license = "allow"
+
+[licenses.private]
+# Unpublished workspace members (the policy placeholder, the kernel facts)
+# inherit the workspace licence and are checked like any other crate.
+ignore = false
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,0 +1,25 @@
+[package]
+name = "procage-policy"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Portable sandbox policy and its lowering for procage (unpublished)"
+publish = false
+
+[features]
+# A versioned data format for policies (serde, no_std + alloc).
+serde = ["dep:serde"]
+# `seatbelt::Operation::Other`: operation names outside the closed list.
+unstable-operations = []
+
+[dependencies]
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

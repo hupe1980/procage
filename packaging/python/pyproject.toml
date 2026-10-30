@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "procage"
+version = "0.0.1"
+description = "Process sandboxing: macOS Seatbelt without sandbox-exec (name reserved; Python bindings under development)"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+authors = [{ name = "hupe1980" }]
+requires-python = ">=3.9"
+keywords = ["sandbox", "seatbelt", "macos", "security", "isolation"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Operating System :: MacOS",
+    "Topic :: Security",
+]
+
+[project.urls]
+Repository = "https://github.com/hupe1980/procage"

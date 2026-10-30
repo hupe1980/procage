@@ -1,0 +1,36 @@
+[package]
+name = "procage-kernel-facts"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Re-verifies the kernel and libsandbox behaviour procage relies on, on the running kernel"
+publish = false
+
+[dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# For the well-formedness check of lowered profiles (policy_compiles).
+procage-policy = { path = "../../crates/procage-policy" }
+
+[[bin]]
+name = "kf-probe"
+path = "src/bin/kf-probe/main.rs"
+
+[[test]]
+name = "kernel_facts"
+path = "tests/kernel_facts.rs"
+harness = false
+
+# The workspace set, except that unsafe code is denied rather than forbidden so
+# that the `sys` module alone can allow it.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+undocumented_unsafe_blocks = "deny"
