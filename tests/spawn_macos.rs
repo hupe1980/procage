@@ -22,9 +22,10 @@ use procage::macos::{
     ApplyMethod, Cage, CageOptions, Child, GrantError, Grants, SpawnError, Step, Unsupported,
     probe, testing,
 };
+use procage::policy::presets;
 use procage::policy::{
-    AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Glob, Grant, GrantName, Network, Policy,
-    Port, Ports, Tty,
+    AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Glob, Grant, GrantName, HardDenyClass,
+    Network, Policy, Port, Ports, Tty,
 };
 use procage::policy::{linux, seatbelt};
 
@@ -1062,4 +1063,192 @@ fn base_grants_nothing_personal() {
     refused("/usr/bin/touch", &[marker.to_str().unwrap()]);
     refused("/usr/bin/nc", &["-z", "-n", "-w", "2", "127.0.0.1", &port]);
     assert!(!marker.exists());
+}
+
+// ---- 007: data-driven hard denies and presets ----
+
+fn succeeds(cage: &Cage, program: &str, args: &[&Path]) -> bool {
+    run(cage, command(program, args), &Grants::new())
+        .status
+        .success()
+}
+
+#[test]
+fn hard_deny_secrets() {
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    for dir in [".ssh", ".aws", ".gnupg"] {
+        assert!(home.join(dir).exists(), "this test needs ~/{dir} to exist");
+    }
+    let mut p = base_v1();
+    p.fs.push(rule(Access::Read, &home));
+    let cage = Cage::new(&p).unwrap();
+    assert!(succeeds(&cage, "/bin/ls", &[&home]), "listing HOME failed");
+    for dir in [".ssh", ".aws", ".gnupg", ".SSH"] {
+        assert!(
+            !succeeds(&cage, "/bin/ls", &[&home.join(dir)]),
+            "~/{dir} was readable"
+        );
+    }
+    p.waive.insert(HardDenyClass::Secrets);
+    let waived = Cage::new(&p).unwrap();
+    assert_eq!(waived.plan().waivers, vec![HardDenyClass::Secrets]);
+    assert!(
+        succeeds(&waived, "/bin/ls", &[&home.join(".ssh")]),
+        "waiving secrets did not allow ~/.ssh"
+    );
+}
+
+/// A writable workspace with `.git/hooks`, `.git/objects` and `src`.
+fn repo(tag: &str) -> PathBuf {
+    let w = scratch(tag);
+    for dir in [".git/hooks", ".git/objects", ".git/refs/heads", "src"] {
+        std::fs::create_dir_all(w.join(dir)).unwrap();
+    }
+    w
+}
+
+#[test]
+fn hard_deny_trust_handoff() {
+    let w = repo("handoff");
+    let mut p = base_v1();
+    p.fs.push(rule(Access::Write, &w));
+    let cage = Cage::new(&p).unwrap();
+    for refused in [
+        ".git/hooks/pre-commit",
+        ".git/config",
+        ".gitmodules",
+        ".zshrc",
+        ".ZSHRC",
+        ".envrc",
+        ".GIT/HOOKS/post-checkout",
+        "src/.bashrc",
+    ] {
+        assert!(
+            !succeeds(&cage, "/usr/bin/touch", &[&w.join(refused)]),
+            "{refused} was writable"
+        );
+    }
+    assert!(
+        !succeeds(&cage, "/bin/mkdir", &[&w.join(".vscode")]),
+        ".vscode was creatable"
+    );
+    assert!(
+        !succeeds(&cage, "/bin/mv", &[&w.join(".git"), &w.join("moved")]),
+        ".git could be renamed"
+    );
+    assert!(w.join(".git").is_dir() && !w.join("moved").exists());
+    for allowed in [
+        "src/main.rs",
+        ".git/objects/ab",
+        ".git/index",
+        ".git/HEAD",
+        ".git/refs/heads/main",
+        "notes.txt",
+    ] {
+        assert!(
+            succeeds(&cage, "/usr/bin/touch", &[&w.join(allowed)]),
+            "{allowed} was not writable"
+        );
+    }
+    p.waive.insert(HardDenyClass::TrustHandoff);
+    let waived = Cage::new(&p).unwrap();
+    assert!(succeeds(
+        &waived,
+        "/usr/bin/touch",
+        &[&w.join(".git/hooks/pre-commit")]
+    ));
+}
+
+#[test]
+fn hard_deny_persistence() {
+    let agents = PathBuf::from(std::env::var("HOME").unwrap()).join("Library/LaunchAgents");
+    assert!(agents.is_dir(), "this test needs ~/Library/LaunchAgents");
+    let plist = agents.join(format!("procage-test-{}.plist", std::process::id()));
+    let mut p = base_v1();
+    p.fs.push(rule(Access::Write, &agents));
+    let cage = Cage::new(&p).unwrap();
+    let created = succeeds(&cage, "/usr/bin/touch", &[&plist]);
+    let exists = plist.exists();
+    let _ = std::fs::remove_file(&plist);
+    assert!(!created && !exists, "a launch agent could be planted");
+}
+
+#[test]
+fn preset_agent_workspace() {
+    let w = repo("preset-ws");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let cage = Cage::new(&presets::agent_workspace::v1(&abs(&w))).unwrap();
+    assert!(succeeds(&cage, "/usr/bin/touch", &[&w.join("src/x")]));
+    assert!(!succeeds(
+        &cage,
+        "/usr/bin/touch",
+        &[&w.join(".git/hooks/x")]
+    ));
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    assert!(!succeeds(&cage, "/bin/ls", &[&home.join(".ssh")]));
+    let mut nc = Command::new("/usr/bin/nc");
+    nc.args(["-z", "-n", "-w", "2", "127.0.0.1", &port])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    assert!(
+        !run(&cage, nc, &Grants::new()).status.success(),
+        "agent_workspace reached the network"
+    );
+}
+
+#[test]
+fn preset_agent_readonly() {
+    let w = scratch("preset-ro");
+    std::fs::write(w.join("f"), "content").unwrap();
+    let cage = Cage::new(&presets::agent_readonly::v1(&abs(&w))).unwrap();
+    assert!(succeeds(&cage, "/bin/cat", &[&w.join("f")]));
+    assert!(!succeeds(&cage, "/usr/bin/touch", &[&w.join("x")]));
+    assert!(!w.join("x").exists());
+}
+
+#[test]
+fn preset_build_runs_what_it_builds() {
+    let w = scratch("preset-build");
+    let cage = Cage::new(&presets::build::v1(&abs(&w))).unwrap();
+    let mut write = Command::new("/bin/sh");
+    write
+        .args([
+            "-c",
+            "printf '#!/bin/sh\\necho built\\n' > run.sh && chmod +x run.sh",
+        ])
+        .current_dir(&w)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let out = run(&cage, write, &Grants::new());
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = run(
+        &cage,
+        command(w.join("run.sh").to_str().unwrap(), &[]),
+        &Grants::new(),
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "built",
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn preset_minimal_runs_echo() {
+    let cage = Cage::new(&presets::minimal::v1()).unwrap();
+    let out = run(
+        &cage,
+        command("/bin/echo", &[Path::new("hi")]),
+        &Grants::new(),
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
+    assert_eq!(cage.plan().waivers, Vec::<HardDenyClass>::new());
 }

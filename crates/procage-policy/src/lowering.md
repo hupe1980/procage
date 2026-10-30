@@ -74,3 +74,6 @@ changes the profile.
 | `hd-kernel-surface` | n/a | exact | exact | io_uring, `bpf`, `perf_event_open`, `userfaultfd`, keyrings. |
 | `hd-namespaces` | n/a | exact | exact | `unshare`, `setns`, namespace-creating `clone`, `clone3`, mount syscalls. |
 | `hd-socket-families` | n/a | exact | exact | `socket` with AF_VSOCK or AF_NETLINK. |
+| `hd-secrets` | exact | n/a | n/a | Read and write denied for credential paths in every home (see the `presets` module). Not yet expressible on Linux; the Linux spawn backend must mask these before it ships. |
+| `hd-trust-handoff` | exact | n/a | n/a | Write denied for git hooks and config, rc files, editor and agent config, PATH bins; `.git` cannot be removed or renamed. Not yet expressible on Linux (as above). |
+| `hd-persistence` | exact | n/a | n/a | Write denied for launch agents, launch daemons and login items. Not yet expressible on Linux (as above). |

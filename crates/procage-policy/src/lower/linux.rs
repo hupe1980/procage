@@ -89,12 +89,18 @@ fn class_rules(class: HardDenyClass) -> Vec<SeccompRule> {
         // never granted and T1 protect/hide targets are mountpoints.
         HardDenyClass::Privilege | HardDenyClass::RenameAnchors => vec![],
         HardDenyClass::FcntlModify | HardDenyClass::ServiceHandoff => vec![],
+        // Not expressible in a Linux plan yet (see the lowering table).
+        HardDenyClass::Secrets | HardDenyClass::TrustHandoff | HardDenyClass::Persistence => vec![],
     }
 }
 
 fn class_outcome(class: HardDenyClass) -> Outcome {
     match class {
-        HardDenyClass::FcntlModify | HardDenyClass::ServiceHandoff => Outcome::NotApplicable,
+        HardDenyClass::FcntlModify
+        | HardDenyClass::ServiceHandoff
+        | HardDenyClass::Secrets
+        | HardDenyClass::TrustHandoff
+        | HardDenyClass::Persistence => Outcome::NotApplicable,
         _ => Outcome::Exact,
     }
 }

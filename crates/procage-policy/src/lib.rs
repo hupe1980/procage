@@ -52,6 +52,7 @@ pub mod lower;
 pub mod name;
 pub mod path;
 pub mod policy;
+pub mod presets;
 pub mod sbpl;
 pub mod seatbelt;
 
@@ -65,6 +66,6 @@ pub use name::{GrantName, NameError, Port, Tag};
 pub use path::{AbsPath, PathError};
 pub use policy::{
     Access, Base, EnvPolicy, Exec, FsRule, FsTarget, Grant, HardDenyClass, Ipc, Network, Policy,
-    PolicyError, Ports, Process, Rlimits, Signals, Tty,
+    PolicyError, Ports, PresetTag, Process, Rlimits, Signals, Tty,
 };
 pub use sbpl::EscapeError;

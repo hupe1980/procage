@@ -151,10 +151,29 @@ fn hard_deny(class: HardDenyClass, policy: &Policy) -> Vec<Rule> {
             &["file-ioctl"],
             vec![Filter::IoctlCommand(0x8001_7472)],
         )],
+        HardDenyClass::Secrets => vec![deny(&["file-read*", "file-write*"], folded(class))],
+        HardDenyClass::TrustHandoff => vec![
+            deny(&["file-write*"], folded(class)),
+            deny(
+                &["file-write-unlink"],
+                vec![Filter::Regex(
+                    crate::presets::git_dir().to_sbpl_regex_folded(),
+                )],
+            ),
+        ],
+        HardDenyClass::Persistence => vec![deny(&["file-write*"], folded(class))],
         HardDenyClass::KernelSurface
         | HardDenyClass::Namespaces
         | HardDenyClass::SocketFamilies => vec![],
     }
+}
+
+/// The case-folded pattern filters of a data-driven class.
+fn folded(class: HardDenyClass) -> Vec<Filter> {
+    crate::presets::patterns(class)
+        .iter()
+        .map(|g| Filter::Regex(g.to_sbpl_regex_folded()))
+        .collect()
 }
 
 fn class_outcome(class: HardDenyClass) -> Outcome {

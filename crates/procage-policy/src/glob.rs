@@ -188,6 +188,35 @@ impl Glob {
         self.tokens.iter().any(|t| !matches!(t, Token::Literal(_)))
     }
 
+    /// Like [`Glob::to_sbpl_regex`], with every ASCII letter matched in
+    /// either case (`.ssh` becomes `\\.[sS][sS][hH]`), for names on
+    /// case-insensitive volumes.
+    pub fn to_sbpl_regex_folded(&self) -> String {
+        let mut out = String::from("^");
+        for token in &self.tokens {
+            match token {
+                Token::Literal(c) if c.is_ascii_alphabetic() => {
+                    out.push('[');
+                    out.push(c.to_ascii_lowercase());
+                    out.push(c.to_ascii_uppercase());
+                    out.push(']');
+                }
+                Token::Literal(c) => {
+                    if REGEX_META.contains(c) {
+                        out.push('\\');
+                    }
+                    out.push(*c);
+                }
+                Token::Star => out.push_str("[^/]*"),
+                Token::Question => out.push_str("[^/]"),
+                Token::AnyDirs => out.push_str("(.*/)?"),
+                Token::AnyBelow => out.push_str("(/.*)?"),
+            }
+        }
+        out.push('$');
+        out
+    }
+
     /// The SBPL regular expression for this glob, anchored with `^` and `$`.
     ///
     /// The result is regex text, not a quoted SBPL string; the profile writer
@@ -294,6 +323,26 @@ mod tests {
         assert_eq!(
             Glob::new("/a\nb").unwrap_err(),
             GlobError::ControlCharacter { at: 2 }
+        );
+    }
+
+    #[test]
+    fn folding() {
+        assert_eq!(
+            Glob::new("/Users/*/.ssh/**")
+                .unwrap()
+                .to_sbpl_regex_folded(),
+            r"^/[uU][sS][eE][rR][sS]/[^/]*/\.[sS][sS][hH](/.*)?$"
+        );
+        assert_eq!(
+            Glob::new("/**/.git/hooks/**")
+                .unwrap()
+                .to_sbpl_regex_folded(),
+            r"^/(.*/)?\.[gG][iI][tT]/[hH][oO][oO][kK][sS](/.*)?$"
+        );
+        assert_eq!(
+            Glob::new("/a-1").unwrap().to_sbpl_regex_folded(),
+            r"^/[aA]-1$"
         );
     }
 

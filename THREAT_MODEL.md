@@ -24,8 +24,10 @@ It does **not** yet:
 
 - stop a descendant that double-forks and starts its own session on macOS
   from outliving the run;
-- provide pseudo-terminals or the preset hard-deny data (its base profile,
-  V1, is curated for macOS 26.6.2 and grants nothing in the user's home);
+- provide pseudo-terminals (its base profile, V1, is curated for macOS
+  26.6.2 and grants nothing in the user's home);
+- deny secrets, trust-handoff files and persistence locations on Linux (it
+  does on macOS, in every policy);
 - support Linux.
 
 Do not rely on any release before 0.1.0 to contain a process.
@@ -165,13 +167,14 @@ why the numbering has gaps.
 
 ### Harness responsibilities
 
-- **R-07** procage will ship versioned write-deny presets for the known
-  trust-handoff locations (version-control config and hooks, shell startup
-  files, common tool config, user program directories, launch agents). The
-  calling harness must still treat everything the sandbox wrote as untrusted
-  before an unsandboxed program uses it. This covers project-specific build
-  scripts, editor and agent configuration, and any location outside the
-  presets.
+- **R-07** On macOS, this development version denies writes to the known
+  trust-handoff locations in every policy, last and waivable only by name:
+  version-control hooks and config, shell startup files, common tool
+  configuration, editor and agent directories, user program directories and
+  launch agents. On Linux this is still to come. The calling harness must
+  still treat everything the sandbox wrote as untrusted before an
+  unsandboxed program uses it. This covers project-specific build scripts,
+  generated code, and any location outside these lists.
 
 Report a suspected escape privately as described in the security policy:
 <https://github.com/hupe1980/procage/blob/main/SECURITY.md>.

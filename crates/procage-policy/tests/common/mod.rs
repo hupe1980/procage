@@ -291,6 +291,17 @@ pub fn reference_policies() -> Vec<(String, Policy)> {
     out.push(("agent-workspace".into(), agent_workspace()));
     out.push(("build".into(), build()));
     out.push(("read-only".into(), read_only()));
+    let w = path("/work");
+    out.push(("preset-minimal".into(), presets::minimal::v1()));
+    out.push((
+        "preset-agent-readonly".into(),
+        presets::agent_readonly::v1(&w),
+    ));
+    out.push((
+        "preset-agent-workspace".into(),
+        presets::agent_workspace::v1(&w),
+    ));
+    out.push(("preset-build".into(), presets::build::v1(&w)));
     out
 }
 

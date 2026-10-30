@@ -46,7 +46,15 @@
 //!   `sed`, `awk`, `perl`, `tar`, `gzip` and Rust programs run with correct
 //!   output (user name, local time), and children with `/dev/null` stdio
 //!   work; the base alone still refuses the home directory, temporary files,
-//!   writes to `/tmp` and the network.
+//!   writes to `/tmp` and the network;
+//! - with read access to the whole home directory, `~/.ssh`, `~/.aws` and
+//!   `~/.gnupg` (also spelled `~/.SSH`) stay unreadable; with write access
+//!   to a workspace, git hooks and config, shell rc files and `.vscode`
+//!   cannot be written and `.git` cannot be renamed, while ordinary files
+//!   and `.git/objects` can; launch agents cannot be planted even with a
+//!   write grant; waiving a class by name lifts exactly that class;
+//! - the presets `minimal`, `agent_readonly`, `agent_workspace` and `build`
+//!   behave as documented in `procage_policy::presets`.
 //!
 //! **Not yet done** (later features):
 //!

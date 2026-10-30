@@ -133,6 +133,9 @@ constructs! {
     HdKernelSurface => "hd-kernel-surface",
     HdNamespaces => "hd-namespaces",
     HdSocketFamilies => "hd-socket-families",
+    HdSecrets => "hd-secrets",
+    HdTrustHandoff => "hd-trust-handoff",
+    HdPersistence => "hd-persistence",
 }
 
 impl Construct {
@@ -148,6 +151,9 @@ impl Construct {
             HardDenyClass::KernelSurface => Construct::HdKernelSurface,
             HardDenyClass::Namespaces => Construct::HdNamespaces,
             HardDenyClass::SocketFamilies => Construct::HdSocketFamilies,
+            HardDenyClass::Secrets => Construct::HdSecrets,
+            HardDenyClass::TrustHandoff => Construct::HdTrustHandoff,
+            HardDenyClass::Persistence => Construct::HdPersistence,
         }
     }
 }

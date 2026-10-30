@@ -8,8 +8,10 @@ and namespaces), without helper binaries.
 **Status:** the published 0.0.1 only reserves the name. The development
 version on `main` (0.0.2, unreleased) spawns caged children on macOS, with
 inherited descriptors closed, descendants killed when a run ends, and an
-opt-in base profile that lets ordinary programs start. It does not yet
-provide pseudo-terminals or support Linux. Do not rely on any release before 0.1.0 to
+opt-in base profile that lets ordinary programs start. Every policy denies
+reading secrets and writing git hooks, shell startup files and launch
+agents; four frozen presets cover common shapes. It does not yet provide
+pseudo-terminals or support Linux. Do not rely on any release before 0.1.0 to
 contain a process.
 
 ## Threat model

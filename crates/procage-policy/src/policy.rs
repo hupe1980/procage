@@ -289,6 +289,14 @@ pub enum HardDenyClass {
     /// Linux socket families that bypass socket and file filters (AF_VSOCK,
     /// AF_NETLINK).
     SocketFamilies,
+    /// Credentials and private data in home directories (read and write
+    /// denied).
+    Secrets,
+    /// Files an unsandboxed tool later runs or reads as configuration (git
+    /// hooks and config, rc files, editor and agent config; write denied).
+    TrustHandoff,
+    /// Launch agents, launch daemons and login items (write denied).
+    Persistence,
 }
 
 impl HardDenyClass {
@@ -303,6 +311,9 @@ impl HardDenyClass {
         HardDenyClass::KernelSurface,
         HardDenyClass::Namespaces,
         HardDenyClass::SocketFamilies,
+        HardDenyClass::Secrets,
+        HardDenyClass::TrustHandoff,
+        HardDenyClass::Persistence,
     ];
 
     /// The kebab-case name.
@@ -317,6 +328,9 @@ impl HardDenyClass {
             HardDenyClass::KernelSurface => "kernel-surface",
             HardDenyClass::Namespaces => "namespaces",
             HardDenyClass::SocketFamilies => "socket-families",
+            HardDenyClass::Secrets => "secrets",
+            HardDenyClass::TrustHandoff => "trust-handoff",
+            HardDenyClass::Persistence => "persistence",
         }
     }
 }
@@ -365,6 +379,20 @@ impl fmt::Display for HardDenyClass {
     }
 }
 
+/// The preset a policy was built from, for receipts.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
+pub struct PresetTag {
+    /// The preset's name, e.g. `agent_workspace`.
+    pub name: String,
+    /// The preset's version.
+    pub version: u32,
+}
+
 /// A named slot for a path that is bound per spawn.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(
@@ -404,6 +432,8 @@ pub struct Policy {
     pub tty: Tty,
     /// The base profile.
     pub base: Base,
+    /// The preset this policy was built from, if any (informational).
+    pub preset: Option<PresetTag>,
     /// Hard-deny classes removed by name.
     pub waive: BTreeSet<HardDenyClass>,
     /// Per-spawn grants.
