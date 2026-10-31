@@ -392,6 +392,17 @@ pub(crate) fn decode_step(code: i32) -> Option<(u32, i32)> {
         .then_some((((code >> 12) & 0xf) as u32, code & 0xfff))
 }
 
+/// What the session step does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Session {
+    /// `setsid()`: a new session and process group.
+    New,
+    /// `setpgid(0, 0)`: a new process group in the caller's session.
+    Group,
+    /// Nothing: the caller's session and process group (`Cage::exec`).
+    Keep,
+}
+
 /// Everything the child needs between `fork` and `execve`, prepared in the
 /// parent.
 pub(crate) struct ChildPlan {
@@ -399,8 +410,7 @@ pub(crate) struct ChildPlan {
     pub(crate) bytecode: std::sync::Arc<[u8]>,
     pub(crate) tokens: Vec<CString>,
     pub(crate) limits: Vec<(c_int, u64, u64)>,
-    /// `setsid()` when true, else `setpgid(0, 0)`.
-    pub(crate) new_session: bool,
+    pub(crate) session: Session,
     /// Descriptors handed to the child (close-on-exec cleared).
     pub(crate) keep: Vec<c_int>,
     /// Buffer for `proc_pidinfo(PROC_PIDLISTFDS)`, allocated in the parent.
@@ -626,10 +636,10 @@ impl ChildPlan {
     fn run(&mut self) -> std::io::Result<()> {
         let fail =
             |step: u32, errno: i32| std::io::Error::from_raw_os_error(step_code(step, errno));
-        if self.new_session {
-            setsid().map_err(|e| fail(steps::SESSION, e))?;
-        } else {
-            setpgid_self().map_err(|e| fail(steps::SESSION, e))?;
+        match self.session {
+            Session::New => setsid().map_err(|e| fail(steps::SESSION, e))?,
+            Session::Group => setpgid_self().map_err(|e| fail(steps::SESSION, e))?,
+            Session::Keep => {}
         }
         for &(resource, cur, max) in &self.limits {
             setrlimit(resource, cur, max).map_err(|e| fail(steps::RLIMIT, e))?;

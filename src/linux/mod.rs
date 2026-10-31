@@ -225,6 +225,12 @@ pub enum Unsupported {
         /// The setting.
         setting: &'static str,
     },
+    /// [`Cage::exec`] on tier T1 was called in a process with more than one
+    /// thread, which user namespaces refuse.
+    ExecThreads {
+        /// The threads the process has.
+        threads: usize,
+    },
     /// `EnvPolicy::Passthrough` cannot be used: this standard library does
     /// not show whether `Command::env_clear` was called, so procage cannot
     /// tell whether the caller's environment may be passed.
@@ -257,6 +263,12 @@ impl fmt::Display for Unsupported {
             Unsupported::Syscall { name } => {
                 write!(f, "syscall `{name}` has no number on this architecture")
             }
+            Unsupported::ExecThreads { threads } => write!(
+                f,
+                "Cage::exec on tier T1 needs a single-threaded process (this one has {threads} \
+                 threads, which user namespaces refuse): call it before starting threads, or \
+                 choose tier T2 with CageOptions::with_tier"
+            ),
             Unsupported::EnvClear => write!(
                 f,
                 "EnvPolicy::Passthrough needs to see whether Command::env_clear was called, \
@@ -291,6 +303,9 @@ pub enum GrantError {
         /// The name.
         name: String,
     },
+    /// The policy declares the `tmpdir` grant, which [`Cage::exec`] cannot
+    /// provide: no handle would remove the directory.
+    TmpdirWithExec,
     /// On tier T2, the bound path reaches paths of a hard-deny class that
     /// Landlock cannot deny inside it.
     CoversClass {
@@ -314,6 +329,11 @@ impl fmt::Display for GrantError {
                     path.display()
                 )
             }
+            GrantError::TmpdirWithExec => write!(
+                f,
+                "the tmpdir grant needs a handle that removes the directory, and Cage::exec \
+                 returns none: use Cage::spawn, or bind a directory of your own to another grant"
+            ),
             GrantError::Reserved { name } => {
                 write!(
                     f,
@@ -598,6 +618,80 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
     ) -> Result<Child, SpawnError> {
+        let session = if self.plan.hygiene.tty == Tty::Inherit {
+            sys::Session::Group
+        } else {
+            sys::Session::New
+        };
+        let (dropped, removal) = self.prepare(command, grants, fds, session)?;
+        let inner = command.spawn().map_err(spawn::decode)?;
+        Ok(Child::new(inner, dropped, removal.disarm()))
+    }
+
+    /// Turns the calling process into `command`, running in this cage: like
+    /// std's [`CommandExt::exec`](std::os::unix::process::CommandExt::exec),
+    /// it does not fork and returns only on failure.
+    ///
+    /// This is the entry point for a helper program that other code starts
+    /// and owns (an MCP client, a terminal, `tokio::process::Command` with
+    /// `kill_on_drop`): after `exec`, the helper's pid, standard streams,
+    /// process group and exit status are the command's, so whatever kills
+    /// or waits for the helper does so for the command. The confinement is
+    /// the one [`Cage::spawn`] gives, except that the session and process
+    /// group stay the caller's, and there is no [`Child`] handle:
+    ///
+    /// - the code that started the helper owns the lifetime. Start the
+    ///   helper in its own process group and kill the group to end it;
+    /// - under the default
+    ///   [`Lifetime::Run`](procage_policy::Lifetime::Run), descendants
+    ///   cannot leave that process group (`setsid` and `setpgid` fail), so
+    ///   the group kill reaches all of them;
+    /// - the command receives SIGKILL when the helper's parent exits.
+    ///
+    /// Everything that can be checked is checked before the process changes,
+    /// and a failure leaves it as it was: grant bindings, the `tmpdir` grant
+    /// (refused: nothing would remove the directory), on tier T1 a process
+    /// with more than one thread (user namespaces refuse it: call `exec`
+    /// before starting threads, or choose tier T2), the environment (see
+    /// [`Cage::spawn`]) and a program that cannot be found. A failure after
+    /// that ([`SpawnError::Apply`], or [`SpawnError::Io`] from `execvp`)
+    /// leaves the process partly confined: the caller should exit.
+    pub fn exec(&self, command: &mut Command, grants: &Grants) -> SpawnError {
+        self.exec_with_fds(command, grants, &[])
+    }
+
+    /// Like [`Cage::exec`], and also keeps `fds` open across the exec, at the
+    /// same numbers. Every other descriptor numbered 3 or higher is closed.
+    pub fn exec_with_fds(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+    ) -> SpawnError {
+        use std::os::unix::process::CommandExt;
+        if self.declared().contains(TMPDIR_GRANT) {
+            return SpawnError::Grant(GrantError::TmpdirWithExec);
+        }
+        let threads = sys::thread_count();
+        if self.plan.namespaces.is_some() && threads > 1 {
+            return SpawnError::Unsupported(Unsupported::ExecThreads { threads });
+        }
+        match self.prepare(command, grants, fds, sys::Session::Keep) {
+            Ok(_) => spawn::decode(command.exec()),
+            Err(e) => e,
+        }
+    }
+
+    /// Everything before the fork (or the exec), without changing the
+    /// calling process: checks, grant rules, the namespace plan, the
+    /// environment and the child sequence installed on `command`.
+    fn prepare(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+        session: sys::Session,
+    ) -> Result<(Vec<String>, TmpdirGuard), SpawnError> {
         let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
         if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
             return Err(SpawnError::Grant(GrantError::Reserved {
@@ -642,9 +736,17 @@ impl Cage {
         };
         let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
             .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
+        // The death signal refers to the parent of the process that runs the
+        // sequence: the caller for a spawn, the caller's parent for an exec.
+        let parent = if session == sys::Session::Keep {
+            crate::unix::find_program(command).map_err(SpawnError::Io)?;
+            sys::parent_pid()
+        } else {
+            sys::pid()
+        };
         sys::ChildPlan {
-            new_session: self.plan.hygiene.tty != Tty::Inherit,
-            parent: sys::pid(),
+            session,
+            parent,
             isolate,
             limits: crate::unix::limits(&self.plan.hygiene.limits),
             keep,
@@ -652,8 +754,7 @@ impl Cage {
             filter: self.filter.to_vec(),
         }
         .install(command);
-        let inner = command.spawn().map_err(spawn::decode)?;
-        Ok(Child::new(inner, dropped, removal.disarm()))
+        Ok((dropped, removal))
     }
 
     /// Resolves each binding: declared, existing, and on T2 not reaching a

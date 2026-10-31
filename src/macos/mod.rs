@@ -233,6 +233,9 @@ pub enum GrantError {
         /// The name.
         name: String,
     },
+    /// The policy declares the `tmpdir` grant, which [`Cage::exec`] cannot
+    /// provide: no handle would remove the directory.
+    TmpdirWithExec,
     /// libsandbox issued no token for the path.
     Issue {
         /// The grant.
@@ -255,6 +258,11 @@ impl fmt::Display for GrantError {
                     path.display()
                 )
             }
+            GrantError::TmpdirWithExec => write!(
+                f,
+                "the tmpdir grant needs a handle that removes the directory, and Cage::exec \
+                 returns none: use Cage::spawn, or bind a directory of your own to another grant"
+            ),
             GrantError::Reserved { name } => {
                 write!(
                     f,
@@ -586,6 +594,98 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
     ) -> Result<Child, SpawnError> {
+        let session = if self.plan.hygiene.tty == Tty::Inherit {
+            sys::Session::Group
+        } else {
+            sys::Session::New
+        };
+        let prepared = self.prepare(command, grants, fds, session)?;
+        // A failed spawn leaves no process behind, but the slot is retired
+        // (dropped) rather than freed, to stay on the safe side.
+        let inner = command.spawn().map_err(spawn::decode)?;
+        Ok(Child::new(
+            inner,
+            prepared.dropped,
+            prepared.tmpdir.disarm(),
+            prepared.run,
+        ))
+    }
+
+    /// Turns the calling process into `command`, running in this cage: like
+    /// std's [`CommandExt::exec`](std::os::unix::process::CommandExt::exec),
+    /// it does not fork and returns only on failure.
+    ///
+    /// This is the entry point for a helper program that other code starts
+    /// and owns (an MCP client, a terminal, `tokio::process::Command` with
+    /// `kill_on_drop`): after `exec`, the helper's pid, standard streams,
+    /// process group and exit status are the command's, so whatever kills
+    /// or waits for the helper does so for the command. The confinement is
+    /// the one [`Cage::spawn`] gives, except that the session and process
+    /// group stay the caller's, and there is no [`Child`] handle:
+    ///
+    /// - the code that started the helper owns the lifetime. Start the
+    ///   helper in its own process group and kill the group to end it;
+    /// - descendants that stay in the process group die with that kill.
+    ///   A descendant that starts its own session (which the macOS sandbox
+    ///   cannot prevent) is not reached: when that matters, use
+    ///   [`Cage::spawn`], whose handle finds such descendants.
+    ///
+    /// Everything that can be checked is checked before the process changes,
+    /// and a failure leaves it as it was: a caller that is already
+    /// sandboxed, the probe, grant bindings, the `tmpdir` grant (refused:
+    /// nothing would remove the directory), the environment (see
+    /// [`Cage::spawn`]) and a program that cannot be found. A failure after
+    /// that ([`SpawnError::Apply`], or [`SpawnError::Io`] from `execvp`)
+    /// leaves the process partly confined: the caller should exit.
+    ///
+    /// ```no_run
+    /// # fn main() {
+    /// use std::process::Command;
+    /// use procage::native::{Cage, Grants};
+    /// use procage::policy::{Base, Policy};
+    ///
+    /// let mut policy = Policy::default();
+    /// policy.base = Base::V1;
+    /// let cage = Cage::new(&policy).unwrap_or_else(|e| panic!("{e}"));
+    /// let err = cage.exec(&mut Command::new("/bin/date"), &Grants::new());
+    /// eprintln!("helper: {err}");
+    /// std::process::exit(126);
+    /// # }
+    /// ```
+    pub fn exec(&self, command: &mut Command, grants: &Grants) -> SpawnError {
+        self.exec_with_fds(command, grants, &[])
+    }
+
+    /// Like [`Cage::exec`], and also keeps `fds` open across the exec, at the
+    /// same numbers. Every other descriptor numbered 3 or higher is closed.
+    pub fn exec_with_fds(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+    ) -> SpawnError {
+        use std::os::unix::process::CommandExt;
+        if self.grant_slot(TMPDIR_GRANT).is_some() {
+            return SpawnError::Grant(GrantError::TmpdirWithExec);
+        }
+        match self.prepare(command, grants, fds, sys::Session::Keep) {
+            // On success `exec` does not return; the run marker (forking
+            // policies) is never searched: there is no handle.
+            Ok(_prepared) => spawn::decode(command.exec()),
+            Err(e) => e,
+        }
+    }
+
+    /// Everything before the fork (or the exec), without changing the
+    /// calling process: checks, grant tokens, the environment, the run
+    /// marker and the child sequence installed on `command`.
+    fn prepare(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+        session: sys::Session,
+    ) -> Result<Prepared, SpawnError> {
         let lib = libsandbox()?;
         if lib.is_sandboxed() {
             return Err(SpawnError::AlreadySandboxed);
@@ -612,21 +712,25 @@ impl Cage {
         let tokens = spawn::tokens(lib, self, &grants)?;
         let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
             .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
+        if session == sys::Session::Keep {
+            crate::unix::find_program(command).map_err(SpawnError::Io)?;
+        }
         let (run, bytecode) = self.run_and_bytecode(lib)?;
         sys::ChildPlan {
             ops: lib.child_ops(),
             bytecode,
             tokens,
             limits: crate::unix::limits(&self.plan.hygiene.limits),
-            new_session: self.plan.hygiene.tty != Tty::Inherit,
+            session,
             keep,
             fd_buffer: sys::fd_buffer(),
         }
         .install(command);
-        // A failed spawn leaves no process behind, but the slot is retired
-        // (dropped) rather than freed, to stay on the safe side.
-        let inner = command.spawn().map_err(spawn::decode)?;
-        Ok(Child::new(inner, dropped, removal.disarm(), run))
+        Ok(Prepared {
+            dropped,
+            tmpdir: removal,
+            run,
+        })
     }
 
     /// The run marker for a spawn of a forking policy, and the bytecode bound
@@ -651,6 +755,13 @@ impl Cage {
             }
         }
     }
+}
+
+/// What [`Cage::prepare`] made for one spawn.
+struct Prepared {
+    dropped: Vec<String>,
+    tmpdir: TmpdirGuard,
+    run: Option<lifetime::Run>,
 }
 
 /// The descriptors to hand over: those above the standard three, each of

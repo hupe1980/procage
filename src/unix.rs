@@ -95,6 +95,54 @@ fn observer_works() -> bool {
     })
 }
 
+/// Checks, as `execvp` will search, that `command`'s program exists as an
+/// executable file, so `Cage::exec` can refuse before confining the
+/// calling process. Call it after the environment is final: the search uses
+/// the command's `PATH` (else `/usr/bin:/bin`, the default of `execvp`).
+pub(crate) fn find_program(command: &Command) -> io::Result<PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::PermissionsExt;
+    let program = command.get_program();
+    let executable = |p: &std::path::Path| {
+        std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    };
+    let not_found = |searched: &str| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "program {} not found{searched}",
+                std::path::Path::new(program).display()
+            ),
+        )
+    };
+    if program.as_bytes().contains(&b'/') {
+        let path = match command.get_current_dir() {
+            Some(dir) => dir.join(program),
+            None => PathBuf::from(program),
+        };
+        return if executable(&path) {
+            Ok(path)
+        } else {
+            Err(not_found(""))
+        };
+    }
+    let set = command
+        .get_envs()
+        .find(|(k, _)| *k == "PATH")
+        .and_then(|(_, v)| v.map(OsString::from));
+    let searched = match &set {
+        Some(path) => format!(" in PATH {}", path.to_string_lossy()),
+        None => " in /usr/bin:/bin (the command's environment has no PATH: set one on the \
+                  command, or name the program by its path)"
+            .to_owned(),
+    };
+    let path = set.unwrap_or_else(|| OsString::from("/usr/bin:/bin"));
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(program))
+        .find(|p| executable(p))
+        .ok_or_else(|| not_found(&searched))
+}
+
 /// A fresh directory, accessible only to the user, under the caller's
 /// temporary directory.
 pub(crate) fn private_tmpdir() -> io::Result<PathBuf> {
@@ -157,6 +205,27 @@ impl Drop for TmpdirGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn programs_are_found_as_execvp_finds_them() {
+        let mut c = Command::new("sh");
+        c.env("PATH", "/nonexistent:/bin");
+        assert_eq!(find_program(&c).unwrap(), PathBuf::from("/bin/sh"));
+        let mut c = Command::new("procage-no-such-program");
+        c.env("PATH", "/bin:/usr/bin");
+        let err = find_program(&c).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert!(err.to_string().contains("procage-no-such-program"), "{err}");
+        assert!(find_program(&Command::new("/bin/sh")).is_ok());
+        assert!(find_program(&Command::new("/etc/hosts")).is_err());
+        let mut c = Command::new("./sh");
+        c.current_dir("/bin");
+        assert!(find_program(&c).is_ok());
+        // Without PATH in the environment, the execvp default applies.
+        let mut c = Command::new("sh");
+        c.env_clear();
+        assert!(find_program(&c).is_ok());
+    }
 
     #[test]
     fn the_observer_works_with_this_std() {

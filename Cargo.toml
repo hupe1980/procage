@@ -38,6 +38,12 @@ include = ["/src", "/README.md", "/THREAT_MODEL.md", "/LICENSE-APACHE", "/LICENS
 default-target = "aarch64-apple-darwin"
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 
+# Helpers run single-threaded, so the exec tests have their own `main`.
+[[test]]
+name = "exec"
+path = "tests/exec.rs"
+harness = false
+
 [dependencies]
 procage-policy = { path = "crates/procage-policy", version = "0.0.1" }
 

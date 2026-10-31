@@ -196,6 +196,12 @@ pub(crate) fn ids() -> (u32, u32) {
     unsafe { (libc::getuid(), libc::getgid()) }
 }
 
+/// How many threads the calling process has (entries of `/proc/self/task`;
+/// 0 when it cannot be read).
+pub(crate) fn thread_count() -> usize {
+    std::fs::read_dir("/proc/self/task").map_or(0, Iterator::count)
+}
+
 /// The calling process's id.
 pub(crate) fn pid() -> libc::pid_t {
     // SAFETY: no arguments, cannot fail.
@@ -267,11 +273,21 @@ pub(crate) struct Isolate {
     pub(crate) mounts: Vec<ChildMount>,
 }
 
+/// What the session step does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Session {
+    /// `setsid()`: a new session and process group.
+    New,
+    /// `setpgid(0, 0)`: a new process group in the caller's session.
+    Group,
+    /// Nothing: the caller's session and process group (`Cage::exec`).
+    Keep,
+}
+
 /// Everything the child needs between `fork` and `execve`, prepared in the
 /// parent.
 pub(crate) struct ChildPlan {
-    /// `setsid()` when true, else `setpgid(0, 0)`.
-    pub(crate) new_session: bool,
+    pub(crate) session: Session,
     /// The parent's pid, to detect a parent that died before the death
     /// signal was set.
     pub(crate) parent: libc::pid_t,
@@ -462,10 +478,10 @@ impl ChildPlan {
             |step: u32, errno: i32| std::io::Error::from_raw_os_error(step_code(step, errno));
         // SAFETY: setsid and setpgid are system calls without pointers.
         let rc = unsafe {
-            if self.new_session {
-                libc::setsid()
-            } else {
-                libc::setpgid(0, 0)
+            match self.session {
+                Session::New => libc::setsid(),
+                Session::Group => libc::setpgid(0, 0),
+                Session::Keep => 0,
             }
         };
         check_int(rc).map_err(|e| fail(steps::SESSION, e))?;

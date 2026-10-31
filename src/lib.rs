@@ -25,9 +25,8 @@
 //! portable intent layer, lowered for each backend.
 //!
 //! ```no_run
-//! # #[cfg(target_os = "macos")]
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use procage::macos::{Cage, Grants}; // procage::linux on Linux
+//! use procage::native::{Cage, Grants}; // procage::macos or procage::linux
 //! use procage::policy::{AbsPath, Access, Base, FsRule, FsTarget, Policy};
 //!
 //! let mut policy = Policy::default();
@@ -41,9 +40,59 @@
 //! # let _ = status;
 //! # Ok(())
 //! # }
-//! # #[cfg(not(target_os = "macos"))]
-//! # fn main() {}
 //! ```
+//!
+//! # Helpers: becoming the caged command
+//!
+//! Sometimes other code starts the process: an MCP client, a terminal,
+//! `tokio::process::Command` with `kill_on_drop`. It holds the pid, the
+//! pipes and the exit status, and it kills the process when it is done.
+//! Give that code a small helper program instead of the command. The helper
+//! builds the cage and calls `Cage::exec`, which confines the helper itself
+//! and executes the command in its place:
+//!
+//! ```no_run
+//! # fn main() {
+//! use std::process::Command;
+//! use procage::native::{Cage, Grants};
+//! use procage::policy::{Base, Policy};
+//!
+//! let mut policy = Policy::default();
+//! policy.base = Base::V1;
+//! let cage = Cage::new(&policy).unwrap_or_else(|e| panic!("{e}"));
+//! let mut command = Command::new("/usr/bin/env");
+//! command.current_dir("/tmp"); // a directory the policy lets it read
+//! let err = cage.exec(&mut command, &Grants::new()); // returns only on failure
+//! eprintln!("helper: {err}");
+//! std::process::exit(126);
+//! # }
+//! ```
+//!
+//! On the other side, start the helper in its own process group and end it
+//! by killing the group:
+//!
+//! ```no_run
+//! # fn main() -> std::io::Result<()> {
+//! use std::os::unix::process::CommandExt;
+//!
+//! let helper = std::process::Command::new("my-helper")
+//!     .arg("--")
+//!     .arg("server")
+//!     .process_group(0)
+//!     .spawn()?;
+//! // … later: kill -9 -<pid> ends the command and the descendants in its group.
+//! # let _ = helper;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The helper must be single-threaded on Linux tier T1 (call `exec` early
+//! in `main`). On Linux, descendants cannot leave the process group under
+//! the default [`Lifetime::Run`](policy::Lifetime::Run), and the command
+//! dies with the helper's parent. On macOS a descendant that starts its own
+//! session is not reached by the group kill; use `Cage::spawn`, whose handle
+//! finds it, when that matters. The `examples/exec_helper.rs` program in the
+//! repository is a complete helper.
 //!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.

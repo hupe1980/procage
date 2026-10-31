@@ -31,6 +31,13 @@ directory. To keep descendants in the run, `setsid` and `setpgid` fail inside
 a Linux cage unless the policy opts out with `Lifetime::Tree`; this also
 applies to the frozen presets.
 
+A helper program can also become the caged command (`Cage::exec`) instead
+of spawning it, for callers whose own code starts and kills the process.
+The confinement is the same; the lifetime then belongs to whoever started
+the helper. On Linux the command's descendants stay in its process group
+and the command dies with the helper's parent; on macOS a descendant that
+starts its own session is not reached when that group is killed.
+
 It does **not** yet:
 
 - keep a caged child on macOS from reading the arguments and environment of
