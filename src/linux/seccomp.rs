@@ -7,7 +7,7 @@
 //! condition on an argument, return the deny's errno. Blocks are independent,
 //! so every jump stays short. Everything else is allowed.
 
-use procage_policy::linux::{Action, Condition, SeccompRule, Syscall};
+use procage_policy::linux::{Action, Condition, O_ACCMODE, O_TRUNC, SeccompRule, Syscall};
 
 /// One classic BPF instruction (`struct sock_filter`).
 #[repr(C)]
@@ -24,6 +24,7 @@ const JMP_JA: u16 = 0x05;
 const JEQ_K: u16 = 0x15;
 const JGE_K: u16 = 0x35;
 const JSET_K: u16 = 0x45;
+const ALU_AND_K: u16 = 0x54;
 const RET_K: u16 = 0x06;
 
 pub(crate) const RET_KILL_PROCESS: u32 = 0x8000_0000;
@@ -107,7 +108,13 @@ fn native_number(call: &Syscall) -> Result<Option<u32>, ()> {
         Syscall::Msgget => SYS_msgget,
         Syscall::Msgrcv => SYS_msgrcv,
         Syscall::Msgsnd => SYS_msgsnd,
+        #[cfg(target_arch = "x86_64")]
+        Syscall::Open => SYS_open,
+        #[cfg(not(target_arch = "x86_64"))]
+        Syscall::Open => return Ok(None),
         Syscall::OpenTree => SYS_open_tree,
+        Syscall::Openat => SYS_openat,
+        Syscall::Openat2 => SYS_openat2,
         Syscall::PerfEventOpen => SYS_perf_event_open,
         Syscall::PidfdGetfd => SYS_pidfd_getfd,
         Syscall::PidfdSendSignal => SYS_pidfd_send_signal,
@@ -132,6 +139,7 @@ fn native_number(call: &Syscall) -> Result<Option<u32>, ()> {
         Syscall::Socket => SYS_socket,
         Syscall::Tgkill => SYS_tgkill,
         Syscall::Tkill => SYS_tkill,
+        Syscall::Truncate => SYS_truncate,
         Syscall::Umount2 => SYS_umount2,
         Syscall::Unshare => SYS_unshare,
         Syscall::Userfaultfd => SYS_userfaultfd,
@@ -197,6 +205,18 @@ fn body(condition: &Condition, deny: Insn) -> Result<Vec<Insn>, String> {
         }
         Condition::CloneWithoutThread => vec![ld(arg(0)), insn(JSET_K, 1, 0, CLONE_THREAD), deny],
         Condition::CloneNewNamespace => vec![ld(arg(0)), insn(JSET_K, 0, 1, CLONE_NEW_ANY), deny],
+        Condition::TruncWithoutWrite { flags_arg } => {
+            // `ld flags; and O_TRUNC|O_ACCMODE; jeq O_TRUNC (read-only) or
+            // O_TRUNC|3 (no access) -> deny`
+            vec![
+                ld(arg(u32::from(*flags_arg))),
+                insn(ALU_AND_K, 0, 0, O_TRUNC | O_ACCMODE),
+                insn(JEQ_K, 2, 0, O_TRUNC),
+                insn(JEQ_K, 1, 0, O_TRUNC | O_ACCMODE),
+                insn(JMP_JA, 0, 0, 1),
+                deny,
+            ]
+        }
     })
 }
 
@@ -259,6 +279,7 @@ mod tests {
             pc += 1;
             match i.code {
                 LD_W_ABS => a = word(i.k),
+                ALU_AND_K => a &= i.k,
                 JMP_JA => pc += i.k as usize,
                 JEQ_K | JGE_K | JSET_K => {
                     let taken = match i.code {
@@ -334,6 +355,29 @@ mod tests {
         assert_eq!(v(Syscall::Clone, [0x0001_0f00, 0, 0, 0, 0, 0]), RET_ALLOW);
         assert_eq!(v(Syscall::Clone3, [0; 6]), RET_ERRNO | libc::ENOSYS as u32);
         assert_eq!(v(Syscall::Kill, [0; 6]), RET_ALLOW);
+    }
+
+    #[test]
+    fn truncation_needs_write_access() {
+        let rules = vec![rule(
+            Syscall::Openat,
+            Condition::TruncWithoutWrite { flags_arg: 2 },
+        )];
+        let prog = build(&rules, &NATIVE).unwrap();
+        let v = |flags: i32| {
+            let flags = u64::from(flags as u32);
+            run(&prog, &call(Syscall::Openat, [0, 0, flags, 0, 0, 0]))
+        };
+        let (rd, wr, rw) = (libc::O_RDONLY, libc::O_WRONLY, libc::O_RDWR);
+        let trunc = libc::O_TRUNC;
+        assert_eq!(trunc as u32, O_TRUNC);
+        assert_eq!(v(rd | trunc), EPERM);
+        assert_eq!(v(3 | trunc), EPERM);
+        assert_eq!(v(rd | trunc | libc::O_CLOEXEC | libc::O_NOFOLLOW), EPERM);
+        assert_eq!(v(wr | trunc | libc::O_CREAT), RET_ALLOW);
+        assert_eq!(v(rw | trunc), RET_ALLOW);
+        assert_eq!(v(rd | libc::O_CLOEXEC), RET_ALLOW);
+        assert_eq!(v(3), RET_ALLOW);
     }
 
     #[test]

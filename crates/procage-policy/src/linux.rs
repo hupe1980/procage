@@ -259,7 +259,10 @@ syscalls! {
     Msgget => "msgget",
     Msgrcv => "msgrcv",
     Msgsnd => "msgsnd",
+    Open => "open",
     OpenTree => "open_tree",
+    Openat => "openat",
+    Openat2 => "openat2",
     PerfEventOpen => "perf_event_open",
     PidfdGetfd => "pidfd_getfd",
     PidfdSendSignal => "pidfd_send_signal",
@@ -284,6 +287,7 @@ syscalls! {
     Socket => "socket",
     Tgkill => "tgkill",
     Tkill => "tkill",
+    Truncate => "truncate",
     Umount2 => "umount2",
     Unshare => "unshare",
     Userfaultfd => "userfaultfd",
@@ -316,6 +320,10 @@ pub const AF_UNIX: u32 = 1;
 pub const AF_NETLINK: u32 = 16;
 /// `AF_VSOCK`.
 pub const AF_VSOCK: u32 = 40;
+/// `O_ACCMODE`.
+pub const O_ACCMODE: u32 = 0o3;
+/// `O_TRUNC`.
+pub const O_TRUNC: u32 = 0o1000;
 /// `TIOCSTI`.
 pub const TIOCSTI: u64 = 0x5412;
 /// `TIOCLINUX`.
@@ -336,6 +344,13 @@ pub enum Condition {
     CloneWithoutThread,
     /// `clone` with any `CLONE_NEW*` flag.
     CloneNewNamespace,
+    /// An `open`-like call whose argument `flags_arg` has `O_TRUNC` and an
+    /// access mode that is neither `O_WRONLY` nor `O_RDWR`: a truncation
+    /// Landlock does not check below ABI 3.
+    TruncWithoutWrite {
+        /// The index of the flags argument.
+        flags_arg: u8,
+    },
 }
 
 /// What a seccomp deny returns.

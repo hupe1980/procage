@@ -310,6 +310,12 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                 vec![Filter::Target("self"), Filter::Target("children")],
             ));
         }
+        // `hd-process-access` still denies signals to processes outside
+        // the sandbox: its block comes after this one.
+        Signals::SameUser => {
+            ledger.outcome(Construct::SignalsSameUser, Outcome::Exact, None, "");
+            allow.push(Rule::new(Effect::Allow, &["signal"], vec![]));
+        }
         Signals::None => {
             ledger.outcome(Construct::SignalsNone, Outcome::Exact, None, "");
         }

@@ -705,7 +705,8 @@ pub(crate) fn leadership() -> (bool, bool) {
 /// The errno of a raw system call (0 on success).
 pub(crate) fn syscall_errno(nr: c_long, args: [c_long; 5]) -> i32 {
     // SAFETY: only used by procage's tests, with arguments that make the
-    // kernel fail or do nothing (null pointers, invalid commands, flags 0).
+    // kernel fail or do nothing (null pointers, invalid commands, flags 0)
+    // or that point to memory the caller keeps alive across the call.
     let rc = unsafe { libc::syscall(nr, args[0], args[1], args[2], args[3], args[4]) };
     if rc < 0 { errno() } else { 0 }
 }

@@ -280,6 +280,16 @@ fn op(spec: &str) -> String {
         "umount" => code(testing::umount(arg)),
         "remount" => code(testing::remount_rw(arg)),
         "syscall" => code(testing::syscall_errno(arg).unwrap()),
+        "trunc" => {
+            let (route, path) = arg.split_once('|').unwrap();
+            testing::truncate_errno(route, Path::new(path)).map_or("n/a".into(), code)
+        }
+        "setlen" => errno_of(
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(arg)
+                .and_then(|f| f.set_len(1)),
+        ),
         other => format!("unknown-op-{other}"),
     }
 }
@@ -939,6 +949,65 @@ fn r29_nested_user_namespaces_and_mount_changes_are_refused() {
             Tier::T1,
         );
         assert_eq!(got, format!("{EPERM} {EPERM} {EROFS}"));
+    }
+}
+
+// ---- R-31 Truncation without write access ----
+
+/// Below Landlock ABI 3 the kernel cannot deny truncation, so the plan
+/// refuses truncating by path and opening with `O_TRUNC` without write
+/// access, on both tiers; files outside the writable paths keep their
+/// content. Writing a workspace file and truncating it through a write
+/// descriptor still work. From ABI 3 Landlock refuses the same calls
+/// outside the writable paths (EACCES) and allows them inside.
+#[test]
+fn r31_files_outside_the_writable_paths_cannot_be_truncated() {
+    let routes = ["truncate", "rdonly", "noaccess", "openat2", "open"];
+    for tier in tiers() {
+        for abi in [1, 2, 3] {
+            let w = scratch(&format!("r31-w-{tier}-{abi}"));
+            let o = scratch(&format!("r31-o-{tier}-{abi}"));
+            let mut p = policy();
+            p.fs.push(rule(Access::Write, &w));
+            p.fs.push(rule(Access::Read, &o));
+            let p = for_tier(p, tier);
+            let c = Cage::with_options(&p, &options(tier).with_landlock_abi(abi))
+                .unwrap_or_else(|e| panic!("{tier} ABI {abi}: {e}"));
+            assert_eq!(c.landlock_abi(), abi);
+            let mut ops = Vec::new();
+            for route in routes {
+                std::fs::write(o.join(route), "content").unwrap();
+                ops.push(format!("trunc:{route}|{}", o.join(route).display()));
+            }
+            let wf = w.join("f");
+            std::fs::write(&wf, "content").unwrap();
+            ops.push(format!("write:{}", wf.display()));
+            ops.push(format!("setlen:{}", wf.display()));
+            ops.push(format!("trunc:truncate|{}", wf.display()));
+            let got = run_in(&c, &ops.join(";"), &Grants::new());
+            let open = if cfg!(target_arch = "x86_64") {
+                "{e}"
+            } else {
+                "n/a"
+            };
+            let expected = if abi < 3 {
+                format!(
+                    "{EPERM} {EPERM} {EPERM} {ENOSYS} {} ok ok {EPERM}",
+                    open.replace("{e}", &EPERM.to_string())
+                )
+            } else {
+                let e = EACCES;
+                format!(
+                    "{e} {e} {e} {e} {} ok ok ok",
+                    open.replace("{e}", &e.to_string())
+                )
+            };
+            assert_eq!(got, expected, "{tier} ABI {abi}");
+            for route in routes {
+                let kept = std::fs::read_to_string(o.join(route)).unwrap();
+                assert_eq!(kept, "content", "{tier} ABI {abi} {route}");
+            }
+        }
     }
 }
 

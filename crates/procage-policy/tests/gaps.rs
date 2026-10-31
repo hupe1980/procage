@@ -73,7 +73,7 @@ fn an_allowed_approximation_is_recorded_once() {
 fn tiers_below_their_minimum_are_refused() {
     let p = read_only();
     let options = LowerOptions::default();
-    for (tier, abi, min) in [(Tier::T2, 3, 4), (Tier::T2, 0, 4), (Tier::T1, 0, 1)] {
+    for (tier, abi, min) in [(Tier::T2, 0, 1), (Tier::T1, 0, 1)] {
         let target = Target::Linux {
             tier,
             landlock_abi: abi,
@@ -426,4 +426,95 @@ fn unix_sockets_on_macos_are_path_filtered_and_respect_hide() {
         ),
         "{profile}"
     );
+}
+
+#[test]
+fn truncation_is_guarded_below_abi_3_on_both_tiers() {
+    use linux::{Action, Condition, Syscall};
+    let guard = |plan: &LinuxPlan| -> Vec<(Syscall, Condition, Action)> {
+        plan.seccomp
+            .iter()
+            .filter(|r| {
+                matches!(
+                    r.syscall,
+                    Syscall::Truncate | Syscall::Open | Syscall::Openat | Syscall::Openat2
+                )
+            })
+            .map(|r| (r.syscall.clone(), r.condition.clone(), r.action))
+            .collect()
+    };
+    let p = read_only();
+    for tier in [Tier::T1, Tier::T2] {
+        for abi in [1, 2] {
+            let plan = linux_plan(
+                &p,
+                Target::Linux {
+                    tier,
+                    landlock_abi: abi,
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                guard(&plan),
+                [
+                    (
+                        Syscall::Open,
+                        Condition::TruncWithoutWrite { flags_arg: 1 },
+                        Action::Eperm
+                    ),
+                    (
+                        Syscall::Openat,
+                        Condition::TruncWithoutWrite { flags_arg: 2 },
+                        Action::Eperm
+                    ),
+                    (Syscall::Openat2, Condition::Always, Action::Enosys),
+                    (Syscall::Truncate, Condition::Always, Action::Eperm),
+                ],
+                "{tier} ABI {abi}"
+            );
+        }
+        for abi in [3, 8] {
+            let plan = linux_plan(
+                &p,
+                Target::Linux {
+                    tier,
+                    landlock_abi: abi,
+                },
+            )
+            .unwrap();
+            assert!(guard(&plan).is_empty(), "{tier} ABI {abi}");
+        }
+    }
+}
+
+#[test]
+fn signals_need_abi_6_unless_the_caller_chooses_same_user() {
+    let mut p = read_only();
+    p.process.fork = true;
+    p.process.signals = Signals::SelfAndChildren;
+    for tier in [Tier::T1, Tier::T2] {
+        let target = |abi| Target::Linux {
+            tier,
+            landlock_abi: abi,
+        };
+        assert_eq!(
+            refused_construct(linux_plan(&p, target(5))),
+            [Construct::SignalsSelfAndChildren]
+        );
+        assert!(
+            linux_plan(&p, target(6)).unwrap().landlock.scopes.0 & linux::Scopes::SIGNAL.0 != 0
+        );
+        let mut q = p.clone();
+        q.process.signals = Signals::SameUser;
+        for abi in [1, 5, 8] {
+            let plan = linux_plan(&q, target(abi)).unwrap();
+            assert_eq!(plan.landlock.scopes.0 & linux::Scopes::SIGNAL.0, 0);
+            assert!(
+                !plan
+                    .seccomp
+                    .iter()
+                    .any(|r| r.syscall == linux::Syscall::Kill)
+            );
+        }
+    }
 }

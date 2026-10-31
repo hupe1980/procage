@@ -23,7 +23,7 @@ use procage::linux::{
 };
 use procage::policy::{
     AbsPath, Access, Base, Construct, EnvPolicy, FsRule, FsTarget, GapKind, Grant, GrantName,
-    HardDenyClass, LowerError, LowerOptions, Network, Policy, Tier,
+    HardDenyClass, LowerError, LowerOptions, Network, Policy, Signals, Tier,
 };
 
 const EACCES: i32 = 13;
@@ -220,6 +220,12 @@ fn op(spec: &str) -> String {
         "syscall" => {
             return testing::syscall_errno(arg).unwrap().to_string();
         }
+        "kill" => {
+            return match testing::kill_errno(arg.parse().unwrap(), 0) {
+                0 => "ok".into(),
+                e => e.to_string(),
+            };
+        }
         other => return format!("unknown-op-{other}"),
     };
     errno_of(r)
@@ -287,7 +293,11 @@ fn the_probe_reports_the_expected_tier() {
         "tier {:?} landlock abi {} errata {} userns {:?}",
         p.tier, p.landlock_abi, p.errata, p.userns_errno
     );
-    assert!(p.landlock_abi >= 4, "Landlock ABI {}", p.landlock_abi);
+    assert!(
+        p.landlock_abi >= Tier::T2.min_landlock_abi(),
+        "Landlock ABI {}",
+        p.landlock_abi
+    );
     if let Ok(expected) = std::env::var("PROCAGE_EXPECT_TIER") {
         let measured = format!("{}", host_tier());
         assert_eq!(measured, expected, "TIER MISMATCH");
@@ -1210,4 +1220,118 @@ fn latency() {
     }
     times.sort();
     println!("tier {} median {:?}", cage.tier(), times[times.len() / 2]);
+}
+
+// ---- Older kernels: the Landlock ABI cap ----
+
+/// The ABIs to try: the oldest of each kind of change, and the kernel's.
+fn abis() -> Vec<u8> {
+    let kernel = probe().landlock_abi.min(procage::linux::BACKEND_MAX_ABI);
+    let mut abis: Vec<u8> = [1, 2, 3, 5].into_iter().filter(|&a| a < kernel).collect();
+    abis.push(kernel);
+    abis
+}
+
+/// At every ABI from 1, on both tiers, writes stay in the workspace, the
+/// network is off and the hard-deny syscalls are refused.
+#[test]
+fn older_kernels_keep_writes_the_network_and_hard_denies() {
+    for tier in tiers() {
+        for abi in abis() {
+            let w = scratch(&format!("abi-w-{tier}-{abi}"));
+            let o = scratch(&format!("abi-o-{tier}-{abi}"));
+            let mut p = base();
+            p.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(abs(&w))));
+            let p = for_tier(p, tier);
+            let cage = Cage::with_options(&child_policy(p), &options(tier).with_landlock_abi(abi))
+                .unwrap_or_else(|e| panic!("{tier} ABI {abi}: {e}"));
+            assert_eq!(cage.landlock_abi(), abi);
+            let got = run_in(
+                &cage,
+                &format!(
+                    "write:{}/f;write:{}/f;socket;connect:9;syscall:ptrace",
+                    w.display(),
+                    o.display()
+                ),
+                &Grants::new(),
+            );
+            assert_eq!(
+                got,
+                format!("ok {EACCES} {EPERM} {EPERM} {EPERM}"),
+                "{tier} ABI {abi}"
+            );
+            assert!(!o.join("f").exists());
+        }
+    }
+}
+
+/// The cap never raises the ABI, and a cap of 0 is a kernel without
+/// Landlock.
+#[test]
+fn the_abi_cap_only_lowers() {
+    let kernel = probe().landlock_abi.min(procage::linux::BACKEND_MAX_ABI);
+    let cage = Cage::with_options(&base(), &CageOptions::default().with_landlock_abi(200)).unwrap();
+    assert_eq!(cage.landlock_abi(), kernel);
+    assert_eq!(cage.plan().landlock_abi, kernel);
+    let err =
+        Cage::with_options(&base(), &CageOptions::default().with_landlock_abi(0)).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            SpawnError::Unsupported(Unsupported::Landlock { abi: 0, needed: 1 })
+        ),
+        "{err}"
+    );
+}
+
+/// Signals reach a process outside the cage only with `SameUser`. Below
+/// ABI 6 `SelfAndChildren` is refused, never widened.
+#[test]
+fn signals_reach_outside_processes_only_when_the_policy_says_so() {
+    let mut sleeper = Command::new("/bin/sleep").arg("30").spawn().unwrap();
+    let action = format!("kill:{}", sleeper.id());
+    let kernel = probe().landlock_abi.min(procage::linux::BACKEND_MAX_ABI);
+    for tier in tiers() {
+        let with = |signals: Signals| {
+            let mut p = base();
+            p.process.fork = true;
+            p.process.signals = signals;
+            p
+        };
+        assert_eq!(
+            in_child(&action, with(Signals::SameUser), tier),
+            "ok",
+            "{tier}"
+        );
+        assert_eq!(
+            in_child(&action, with(Signals::None), tier),
+            EPERM.to_string(),
+            "{tier}"
+        );
+        if kernel >= 6 {
+            let got = in_child(&action, with(Signals::SelfAndChildren), tier);
+            assert_eq!(got, EPERM.to_string(), "{tier}");
+        } else {
+            println!("{tier}: ABI {kernel} has no signal scope");
+        }
+        let capped = options(tier).with_landlock_abi(5.min(kernel));
+        match Cage::with_options(&child_policy(with(Signals::SelfAndChildren)), &capped) {
+            Err(SpawnError::Lower(LowerError::Gaps(gaps))) => {
+                assert!(
+                    gaps.iter()
+                        .any(|g| g.construct == Construct::SignalsSelfAndChildren),
+                    "{gaps:?}"
+                );
+            }
+            other => panic!("{tier}: expected the signal gap, got {other:?}"),
+        }
+        let cage = Cage::with_options(&child_policy(with(Signals::SameUser)), &capped).unwrap();
+        assert_eq!(run_in(&cage, &action, &Grants::new()), "ok", "{tier} ABI 5");
+    }
+    assert!(
+        sleeper.try_wait().unwrap().is_none(),
+        "signal 0 kills nothing"
+    );
+    let _ = sleeper.kill();
+    let _ = sleeper.wait();
 }

@@ -19,7 +19,7 @@ use crate::sbpl::EscapeError;
 pub enum Tier {
     /// User namespace, mounts, Landlock and seccomp.
     T1,
-    /// Landlock (ABI 4 or later) and seccomp, without namespaces.
+    /// Landlock and seccomp, without namespaces.
     T2,
 }
 
@@ -28,7 +28,7 @@ impl Tier {
     pub fn min_landlock_abi(self) -> u8 {
         match self {
             Tier::T1 => 1,
-            Tier::T2 => 4,
+            Tier::T2 => 1,
         }
     }
 }
@@ -118,6 +118,7 @@ constructs! {
     LifetimeRun => "lifetime-run",
     LifetimeTree => "lifetime-tree",
     SignalsSelfAndChildren => "signals-self-and-children",
+    SignalsSameUser => "signals-same-user",
     SignalsNone => "signals-none",
     PosixShm => "posix-shm",
     SysvIpc => "sysv-ipc",

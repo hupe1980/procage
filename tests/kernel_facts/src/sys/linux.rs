@@ -29,6 +29,8 @@ const RULE_PATH_BENEATH: c_int = 1;
 pub const FS_WRITE_FILE: u64 = 1 << 1;
 /// `LANDLOCK_ACCESS_FS_MAKE_REG`.
 pub const FS_MAKE_REG: u64 = 1 << 8;
+/// `LANDLOCK_ACCESS_FS_TRUNCATE` (ABI 3).
+pub const FS_TRUNCATE: u64 = 1 << 14;
 
 fn check(rc: c_long) -> Result<c_long, i32> {
     if rc < 0 { Err(errno()) } else { Ok(rc) }
@@ -115,6 +117,27 @@ pub fn landlock_restrict(ruleset: &OwnedFd) -> Result<(), i32> {
     // SAFETY: restrict_self with an open ruleset fd and no flags.
     let rc = unsafe { libc::syscall(libc::SYS_landlock_restrict_self, ruleset.as_raw_fd(), 0u32) };
     check(rc).map(drop)
+}
+
+/// `truncate(path, 0)`.
+pub fn truncate(path: &str) -> Result<(), i32> {
+    let c = CString::new(path).map_err(|_| libc::EINVAL)?;
+    // SAFETY: a valid C string; no memory is written.
+    let rc = unsafe { libc::truncate(c.as_ptr(), 0) };
+    check(rc.into()).map(drop)
+}
+
+/// `open(path, flags)`, closing the descriptor it returns.
+pub fn open_close(path: &str, flags: c_int) -> Result<(), i32> {
+    let c = CString::new(path).map_err(|_| libc::EINVAL)?;
+    // SAFETY: a valid C string; the fd is owned immediately.
+    let fd = unsafe { libc::open(c.as_ptr(), flags | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    // SAFETY: fd is a fresh descriptor we own.
+    drop(unsafe { OwnedFd::from_raw_fd(fd) });
+    Ok(())
 }
 
 /// `prctl(PR_SET_NO_NEW_PRIVS, 1)`.

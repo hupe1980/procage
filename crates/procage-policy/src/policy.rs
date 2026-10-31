@@ -142,6 +142,11 @@ pub enum Exec {
 pub enum Signals {
     /// Itself and its descendants.
     SelfAndChildren,
+    /// Every process the operating system lets it signal: on Linux, every
+    /// process of the same user. Hard-deny classes still apply. For hosts
+    /// that cannot keep signals within the run (Linux below Landlock ABI 6),
+    /// chosen knowingly; procage never picks it on its own.
+    SameUser,
     /// None.
     #[default]
     None,

@@ -897,6 +897,14 @@ mod linux {
             run: l12,
         },
         Fact {
+            id: "KF-L14",
+            statement: "under Landlock without the truncate right (below ABI 3), truncate(2) and open with O_TRUNC but no write access empty a file that cannot be written; with it, all three are denied",
+            kind: Kind::Observation,
+            tiers: ALL,
+            slow: false,
+            run: l14,
+        },
+        Fact {
             id: "KF-L13",
             statement: "with /proc masked, a fresh /proc cannot be mounted in a PID namespace",
             kind: Kind::Enforcement,
@@ -969,6 +977,41 @@ mod linux {
         }
         expect(&s, &[("errno", "0"), ("has_lo", "1"), ("up", "0")])?;
         Ok(s.summary())
+    }
+
+    fn l14(c: &Ctx) -> Check {
+        let old = ran(c.step(&["landlock-truncate", scratch()?.as_str(), "unhandled"]))?;
+        control(&old, &[("write_errno", "13")])?;
+        expect(
+            &old,
+            &[
+                ("truncate_errno", "0"),
+                ("rdonly_trunc_errno", "0"),
+                ("noaccess_trunc_errno", "0"),
+                ("emptied", "3"),
+            ],
+        )?;
+        if probe(c).landlock_abi.unwrap_or(0) < 3 {
+            return Ok(format!(
+                "unhandled: {} | handled: needs ABI 3",
+                old.summary()
+            ));
+        }
+        let new = ran(c.step(&["landlock-truncate", scratch()?.as_str(), "handled"]))?;
+        expect(
+            &new,
+            &[
+                ("truncate_errno", "13"),
+                ("rdonly_trunc_errno", "13"),
+                ("noaccess_trunc_errno", "13"),
+                ("emptied", "0"),
+            ],
+        )?;
+        Ok(format!(
+            "unhandled: {} | handled: {}",
+            old.summary(),
+            new.summary()
+        ))
     }
 
     fn l08(c: &Ctx) -> Check {

@@ -204,3 +204,12 @@ fn lifetime_is_kebab_case() {
     doc["process"]["lifetime"] = json!("forever");
     assert!(read(doc).is_err());
 }
+
+#[test]
+fn same_user_signals_have_a_kebab_name() {
+    let mut p = Policy::default();
+    p.process.signals = Signals::SameUser;
+    let value = serde_json::to_value(&p).unwrap();
+    assert_eq!(value["process"]["signals"], json!("same-user"));
+    assert_eq!(round_trip(&p), p);
+}

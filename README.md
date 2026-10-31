@@ -7,7 +7,8 @@ and namespaces), without helper binaries.
 
 **Status:** the published 0.0.1 only reserves the name. The development
 version on `main` (0.0.2, unreleased) spawns caged children on macOS and on
-Linux (tiers T1 and T2), with inherited descriptors closed, every process a
+Linux (tiers T1 and T2, from Landlock ABI 1, Linux 5.13; a cage option tries
+a policy against an older kernel's Landlock), with inherited descriptors closed, every process a
 run started killed when the run ends (double-forked daemons included; on
 Linux, `setsid` and `setpgid` fail in the cage unless the policy opts out), an
 opt-in base profile that lets ordinary programs start (version 2 also runs

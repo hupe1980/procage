@@ -17,9 +17,13 @@ complete list of [`CapabilityGap`]s:
   plan.
 
 A cell of the form `exact (ABI ≥ 9) / unsupported` depends on the Landlock
-ABI the kernel reports. Tier T2 needs Landlock ABI 4 or later, and tier T1
-needs ABI 1 or later; a lower ABI is refused, and lowering never substitutes
-another tier.
+ABI the kernel reports. Both tiers need Landlock ABI 1 or later; a lower ABI
+is refused, and lowering never substitutes another tier. Below ABI 3,
+Landlock cannot deny truncation, so every Linux plan there also denies
+`truncate` (EPERM), `open` and `openat` with `O_TRUNC` unless the access
+mode is `O_WRONLY` or `O_RDWR` (EPERM), and `openat2` (ENOSYS). These
+refuse more than any policy asks: inside writable paths too, a file can then
+be truncated only through a descriptor opened for writing.
 
 A plan is data for procage's spawn backends. This crate applies nothing, and
 a plan says nothing about enforcement on its own: what a running kernel
@@ -58,7 +62,8 @@ changes the profile.
 | `fork-denied` | exact | exact | exact | Linux: seccomp denies `fork`, `vfork` and process-creating `clone`; `clone3` returns ENOSYS. |
 | `lifetime-run` | exact | exact | exact | With fork only. Linux: seccomp denies `setsid` and `setpgid` (EPERM), installed after the child's own session or group, so every descendant stays in the child's process group. macOS: the run-marker block ends the profile; the spawn backend binds `procage-run-prefix` and `procage-run-marker` and finds the run's processes by it. |
 | `lifetime-tree` | exact | exact | exact | With fork only. Linux: no lock; the run kills the group and the descendants found from the child. macOS: the same marker block as `lifetime-run`. |
-| `signals-self-and-children` | exact | exact (ABI ≥ 6) / unsupported | exact (ABI ≥ 6) / unsupported | Linux: the Landlock signal scope. There is no PID namespace yet. |
+| `signals-self-and-children` | exact | exact (ABI ≥ 6) / unsupported | exact (ABI ≥ 6) / unsupported | Linux: the Landlock signal scope. There is no PID namespace yet. Below ABI 6 a caller may choose `signals-same-user` instead. |
+| `signals-same-user` | exact | exact | exact | Signals reach every process the operating system allows: on Linux, every process of the same user. macOS: `signal` allowed; `hd-process-access` still denies signals to processes outside the sandbox. |
 | `signals-none` | exact | exact | exact | |
 | `posix-shm` | exact | exact | approximated | T1: a private `/dev/shm`. T2 shares the host's `/dev/shm`. |
 | `sysv-ipc` | exact | exact | approximated | T1: an IPC namespace. T2 shares the host's System V IPC. |

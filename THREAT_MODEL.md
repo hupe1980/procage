@@ -17,7 +17,10 @@ integration tests observe the kernel refusing access outside the policy.
 
 On Linux it spawns a caged child on tier T1 (user, mount, IPC, UTS and
 network namespaces, mounts, Landlock and seccomp) or tier T2 (Landlock and
-seccomp), whichever the host allows, and refuses to spawn without Landlock.
+seccomp), whichever the host allows, and refuses to spawn without Landlock
+(both tiers accept ABI 1 and later). Below ABI 3, where Landlock cannot deny
+truncation, it refuses truncating a file by path and opening one with
+`O_TRUNC` without write access everywhere.
 A construct the tier cannot enforce is an error unless the caller accepts
 it by name. Its integration tests run in containers for both tiers on one
 kernel (7.0, aarch64).
@@ -57,6 +60,10 @@ It does **not** yet:
   around them entry by entry, and any class a write rule reaches is
   refused unless waived;
 - hide or protect a path inside a writable tree on Linux tier T2;
+- keep Linux signals within the run below Landlock ABI 6 (a policy that
+  needs signals there must choose to let them reach every process of the
+  user), or stop an IP socket the caller hands over from connecting on
+  tier T2 below ABI 4;
 - give Linux children a PID namespace or loopback or proxy networking, or
   restrict which Unix sockets they reach on tier T2 below Landlock ABI 9
   (on tier T1, listening sockets outside the allowed paths are masked at
@@ -216,6 +223,7 @@ why the numbering has gaps.
 | R-28 | Filter-bypassing kernel interfaces | io_uring, VM sockets or netlink perform I/O that socket and file filters do not see. | Linux | mitigate | mitigated | tests/escape_linux.rs::r28_filter_bypassing_interfaces_are_refused | — |
 | R-29 | Nested user namespaces | A user namespace created inside the sandbox is used to remount, unmount or remap and so undo the sandbox's mounts. | Linux | mitigate | mitigated | tests/escape_linux.rs::r29_nested_user_namespaces_and_mount_changes_are_refused | KF-L09, KF-L10 |
 | R-30 | Landlock rule loss | Landlock rules attach to existing files: replacing a file by rename drops its rule, and paths that do not exist yet cannot be ruled. On a tier without mount isolation this is reported as a capability gap. | Linux | mitigate | mitigated | tests/escape_linux.rs::r30_a_protected_file_cannot_be_replaced | — |
+| R-31 | Truncation without write access | Below Landlock ABI 3 the kernel cannot deny truncation: truncating a file by path, or opening it with `O_TRUNC` but no write access, empties any file the child may read. | Linux | mitigate | mitigated | tests/escape_linux.rs::r31_files_outside_the_writable_paths_cannot_be_truncated | KF-L14 |
 
 ### Harness responsibilities
 

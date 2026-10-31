@@ -38,6 +38,10 @@ pub(crate) fn run(step: &str, args: &[String]) -> StepResult {
             scratch_arg(args, 0)?,
             choice(args, 1, &["rule", "no-rule"])? == "rule",
         ),
+        "landlock-truncate" => landlock_truncate(
+            scratch_arg(args, 0)?,
+            choice(args, 1, &["handled", "unhandled"])? == "handled",
+        ),
         "netns" => netns(),
         "nested-undo" => nested_undo(scratch_arg(args, 0)?),
         "nested-uidmap" => nested_uidmap(scratch_arg(args, 0)?),
@@ -284,6 +288,34 @@ fn landlock_devnull(scratch: &str, rule: bool) -> StepResult {
     restrict_to(scratch, if rule { &["/dev/null"] } else { &[] })?;
     let r = std::fs::OpenOptions::new().write(true).open("/dev/null");
     emit("errno", r.err().map_or(0, |e| io_errno(&e)));
+    Ok(())
+}
+
+/// Writes are handled and nothing is granted; truncation is handled only
+/// when `handled` (as from ABI 3). Each route tries to empty its own file.
+fn landlock_truncate(scratch: &str, handled: bool) -> StepResult {
+    let file = |n: &str| format!("{scratch}/{n}");
+    for n in ["w", "t", "r", "n"] {
+        std::fs::write(file(n), "content").map_err(|e| setup(e.to_string()))?;
+    }
+    let fs = sys::FS_WRITE_FILE | if handled { sys::FS_TRUNCATE } else { 0 };
+    let rs = sys::landlock_ruleset(fs).map_err(|e| setup(format!("ruleset errno {e}")))?;
+    sys::landlock_restrict(&rs).map_err(|e| setup(format!("restrict errno {e}")))?;
+    emit_result("write_errno", sys::open_close(&file("w"), libc::O_WRONLY));
+    emit_result("truncate_errno", sys::truncate(&file("t")));
+    emit_result(
+        "rdonly_trunc_errno",
+        sys::open_close(&file("r"), libc::O_RDONLY | libc::O_TRUNC),
+    );
+    emit_result(
+        "noaccess_trunc_errno",
+        sys::open_close(&file("n"), 3 | libc::O_TRUNC),
+    );
+    let emptied = ["t", "r", "n"]
+        .iter()
+        .filter(|n| std::fs::metadata(file(n)).is_ok_and(|m| m.len() == 0))
+        .count();
+    emit("emptied", emptied);
     Ok(())
 }
 

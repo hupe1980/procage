@@ -31,7 +31,7 @@ use procage::macos::{Cage, Child, Grants, testing};
 use procage::policy::seatbelt::{self, Effect, Filter, Operation};
 use procage::policy::{
     AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Lifetime,
-    Network, Policy, Port, Ports,
+    Network, Policy, Port, Ports, Signals,
 };
 
 const EPERM: &str = "1";
@@ -836,10 +836,31 @@ fn r24_secret_variables_do_not_reach_the_child() {
 
 // ---- R-25 Process introspection ----
 
-/// The child cannot signal the caller.
+/// The child cannot signal the caller, whatever the signal setting, while
+/// the process-access class is in force. Waived, `SameUser` reaches the
+/// caller and `SelfAndChildren` still does not.
 #[test]
 fn r25_other_processes_cannot_be_signalled() {
+    let with = |signals: Signals| {
+        let mut p = policy();
+        p.process.fork = true;
+        p.process.signals = signals;
+        p
+    };
     assert_eq!(in_child("signal-parent", &policy()), EPERM);
+    for signals in [Signals::SelfAndChildren, Signals::SameUser] {
+        assert_eq!(
+            in_child("signal-parent", &with(signals)),
+            EPERM,
+            "{signals:?}"
+        );
+    }
+    let waive = |signals| waived(with(signals), HardDenyClass::ProcessAccess);
+    assert_eq!(in_child("signal-parent", &waive(Signals::SameUser)), "ok");
+    assert_eq!(
+        in_child("signal-parent", &waive(Signals::SelfAndChildren)),
+        EPERM
+    );
 }
 
 /// The child cannot read the caller's arguments and environment; it can

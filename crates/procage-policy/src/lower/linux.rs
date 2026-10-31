@@ -389,6 +389,10 @@ pub(super) fn lower(
                 landlock.scopes = Scopes(landlock.scopes.0 | Scopes::SIGNAL.0);
             }
         }
+        // The kernel's own permission check decides.
+        Signals::SameUser => {
+            ledger.outcome(Construct::SignalsSameUser, Outcome::Exact, None, "");
+        }
         Signals::None => {
             ledger.outcome(Construct::SignalsNone, Outcome::Exact, None, "");
             for syscall in [
@@ -404,6 +408,22 @@ pub(super) fn lower(
         }
     }
     landlock.scopes = Scopes(landlock.scopes.0 | (scopes(abi).0 & Scopes::ABSTRACT_UNIX_SOCKET.0));
+    if abi < 3 {
+        // Landlock cannot deny truncation below ABI 3: `truncate` and an
+        // `open` with `O_TRUNC` but no write access would empty any readable
+        // file. This refuses them everywhere, inside writable paths too.
+        seccomp.push(deny(Syscall::Truncate));
+        seccomp.push(deny_if(
+            Syscall::Open,
+            Condition::TruncWithoutWrite { flags_arg: 1 },
+        ));
+        seccomp.push(deny_if(
+            Syscall::Openat,
+            Condition::TruncWithoutWrite { flags_arg: 2 },
+        ));
+        // Its flags sit in a structure seccomp cannot read.
+        seccomp.push(enosys(Syscall::Openat2));
+    }
 
     let dev_shm = AbsPath::new("/dev/shm").unwrap_or_else(|_| AbsPath::root());
     if policy.ipc.posix_shm {

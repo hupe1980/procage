@@ -6,9 +6,8 @@
 //! - **T1**: user, mount, IPC, UTS and (unless the policy allows all
 //!   networking) network namespaces, mounts, Landlock and seccomp. Needs
 //!   unprivileged user namespaces.
-//! - **T2**: Landlock (ABI 4 or later) and seccomp only, as in a Docker
-//!   container with default settings or on a host that restricts user
-//!   namespaces.
+//! - **T2**: Landlock and seccomp only, as in a Docker container with
+//!   default settings or on a host that restricts user namespaces.
 //! - Without either, preparing a cage fails with [`Unsupported`]. procage
 //!   never runs a child unsandboxed.
 //!
@@ -76,7 +75,30 @@
 //!   `LD_PRELOAD` do not reach the child, and the handle lists them;
 //! - the `tmpdir` grant gives each run a private `TMPDIR`, removed when the
 //!   handle is dropped;
-//! - 100 children spawned from four threads are all caged.
+//! - 100 children spawned from four threads are all caged;
+//! - with the Landlock ABI capped at 1, 2, 3 and 5 (see below), on both
+//!   tiers, writes stay in the workspace, the network is off, `ptrace` is
+//!   refused, and no file outside the writable paths can be truncated;
+//! - a process outside the cage can be signalled only with
+//!   [`Signals::SameUser`](procage_policy::Signals::SameUser).
+//!
+//! **Kernels.** Both tiers need Landlock, from ABI 1 (Linux 5.13). Each
+//! newer ABI makes more of a policy exact; what an older one cannot express
+//! is a capability gap or, where noted, a stricter rule:
+//!
+//! | ABI | Linux | For example | What changes below it |
+//! |---|---|---|---|
+//! | 1 | 5.13 | Ubuntu 22.04 (5.15) | No sandbox below. |
+//! | 3 | 6.2 | Ubuntu 22.04 HWE, 23.10 (6.5) | Landlock cannot deny truncation: procage refuses `truncate(2)` by path and `open` with `O_TRUNC` without write access everywhere, also inside writable paths (truncate through a descriptor opened for writing instead), and `openat2` fails with `ENOSYS`. Debian 12 (6.1) is at ABI 2. |
+//! | 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off, seccomp still refuses IP sockets, but an IP socket the caller hands over can connect. |
+//! | 6 | 6.12 | Debian 13, RHEL 10 | No signal scope: `Signals::SelfAndChildren` is a gap. A harness that needs signals may choose `Signals::SameUser` (every process of the same user) and tell its user. Abstract Unix sockets are not scoped. |
+//! | 9 | — | | Unix-socket rules on T2 (procage uses up to ABI 8 for now). |
+//!
+//! Distributions backport Landlock (RHEL 9.6 has ABI 5), so [`probe`] asks
+//! the kernel rather than reading its version.
+//! [`CageOptions::with_landlock_abi`] lowers and enforces a policy as on an
+//! older kernel: to test what your users' kernels give, or to run one plan
+//! on every host of a fleet.
 //!
 //! **Reading everything except secrets.** A policy that reads `/` reaches
 //! the paths of the `secrets`, `trust-handoff` and `persistence` classes.
@@ -101,7 +123,8 @@
 //!
 //! **Not yet done** (later features):
 //!
-//! - no PID namespace or fresh `/proc`; signal scoping needs Landlock ABI 6;
+//! - no PID namespace or fresh `/proc`, so signal scoping needs Landlock
+//!   ABI 6;
 //! - with `Lifetime::Tree`, a descendant that double-forks and starts its
 //!   own session is reparented away from the child and outlives the run;
 //! - loopback and proxy networks need a relay (a gap on both tiers);
@@ -109,8 +132,9 @@
 //!   inside a writable tree, on T2 and glob rules are gaps;
 //! - Landlock rights beyond ABI 8 are not used: they have not been verified
 //!   on a kernel;
-//! - the tests have run on one kernel (7.0.14, aarch64, Docker Desktop);
-//!   x86_64 and other kernels run in CI after a push;
+//! - the tests have run on one kernel (7.0.14, aarch64, Docker Desktop),
+//!   older ABIs through the cap; x86_64 and other kernels run in CI after a
+//!   push;
 //! - the probe is cached per process, not per boot.
 
 mod child;
@@ -475,6 +499,9 @@ pub struct CageOptions {
     pub walk_limit: usize,
     /// Home directories besides `/root`, those under `/home` and `$HOME`.
     pub homes: Vec<PathBuf>,
+    /// The highest Landlock ABI to use (default: the kernel's). It never
+    /// raises the ABI above the kernel's.
+    pub landlock_abi: Option<u8>,
 }
 
 impl Default for CageOptions {
@@ -484,6 +511,7 @@ impl Default for CageOptions {
             tier: None,
             walk_limit: 200_000,
             homes: Vec::new(),
+            landlock_abi: None,
         }
     }
 }
@@ -510,6 +538,27 @@ impl CageOptions {
     /// These options with `home` as one more home directory.
     pub fn with_home(mut self, home: impl AsRef<Path>) -> Self {
         self.homes.push(home.as_ref().to_path_buf());
+        self
+    }
+
+    /// These options using at most Landlock ABI `abi`, as on an older
+    /// kernel: the policy is lowered and enforced for that ABI, so its gaps
+    /// and plan are the ones such a kernel gives. Use it to test a policy
+    /// against the kernels your users run, or to give every host of a fleet
+    /// the same plan. A cap above the kernel's ABI has no effect.
+    ///
+    /// ```no_run
+    /// # use procage::linux::{Cage, CageOptions};
+    /// # use procage::policy::Policy;
+    /// # fn main() -> Result<(), procage::linux::SpawnError> {
+    /// // What does this policy get on Debian 12 (Linux 6.1, ABI 2)?
+    /// let cage = Cage::with_options(&Policy::default(), &CageOptions::default().with_landlock_abi(2))?;
+    /// assert_eq!(cage.landlock_abi(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_landlock_abi(mut self, abi: u8) -> Self {
+        self.landlock_abi = Some(abi);
         self
     }
 }
@@ -569,15 +618,20 @@ impl Cage {
             Some(tier) => tier,
             None => host.tier.unwrap_or(Tier::T2),
         };
-        if host.landlock_abi < tier.min_landlock_abi() {
+        // One ABI for the tier check, the lowering and the ruleset.
+        let abi = host
+            .landlock_abi
+            .min(BACKEND_MAX_ABI)
+            .min(options.landlock_abi.unwrap_or(u8::MAX));
+        if abi < tier.min_landlock_abi() {
             return Err(SpawnError::Unsupported(Unsupported::Landlock {
-                abi: host.landlock_abi,
+                abi,
                 needed: tier.min_landlock_abi(),
             }));
         }
         let target = Target::Linux {
             tier,
-            landlock_abi: host.landlock_abi.min(BACKEND_MAX_ABI),
+            landlock_abi: abi,
         };
         let Plan::Linux(mut plan) = lower(policy, target, &options.lower)? else {
             unreachable!("lowering for Linux yields a Linux plan");
@@ -604,6 +658,12 @@ impl Cage {
     /// The tier this cage applies.
     pub fn tier(&self) -> Tier {
         self.plan.tier
+    }
+
+    /// The Landlock ABI this cage is lowered and enforced for: the kernel's,
+    /// at most [`BACKEND_MAX_ABI`] and the cap in [`CageOptions`].
+    pub fn landlock_abi(&self) -> u8 {
+        self.plan.landlock_abi
     }
 
     fn declared(&self) -> BTreeSet<&str> {
@@ -1014,6 +1074,42 @@ pub mod testing {
                     0,
                 ],
             ),
+            _ => return None,
+        };
+        Some(sys::syscall_errno(nr, args))
+    }
+
+    /// The errno of sending `signal` to `pid` (0 if it was sent).
+    pub fn kill_errno(pid: u32, signal: i32) -> i32 {
+        sys::syscall_errno(
+            libc::SYS_kill,
+            [libc::c_long::from(pid), libc::c_long::from(signal), 0, 0, 0],
+        )
+    }
+
+    /// The errno of emptying the file at `path` by `route` (0 if the call
+    /// succeeded): `truncate` (by path), `rdonly` and `noaccess` (`openat`
+    /// with `O_TRUNC` and the read-only or the empty access mode), `openat2`
+    /// (read-only with `O_TRUNC`), or `open` (read-only with `O_TRUNC`,
+    /// x86_64 only). `None` for an unknown route.
+    pub fn truncate_errno(route: &str, path: &std::path::Path) -> Option<i32> {
+        use std::os::unix::ffi::OsStrExt;
+        let path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+        let p = path.as_ptr() as libc::c_long;
+        let at = libc::c_long::from(libc::AT_FDCWD);
+        let trunc = libc::c_long::from(libc::O_TRUNC);
+        // `struct open_how`: flags, mode, resolve.
+        let how: [u64; 3] = [(libc::O_RDONLY | libc::O_TRUNC) as u64, 0, 0];
+        let (nr, args) = match route {
+            "truncate" => (libc::SYS_truncate, [p, 0, 0, 0, 0]),
+            "rdonly" => (libc::SYS_openat, [at, p, trunc, 0, 0]),
+            "noaccess" => (libc::SYS_openat, [at, p, 3 | trunc, 0, 0]),
+            "openat2" => (
+                libc::SYS_openat2,
+                [at, p, how.as_ptr() as libc::c_long, 24, 0],
+            ),
+            #[cfg(target_arch = "x86_64")]
+            "open" => (libc::SYS_open, [p, trunc, 0, 0, 0]),
             _ => return None,
         };
         Some(sys::syscall_errno(nr, args))
