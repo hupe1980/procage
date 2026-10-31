@@ -9,11 +9,15 @@ use super::sys;
 
 /// A running caged child.
 ///
-/// It dereferences to [`std::process::Child`] for I/O and waiting. Dropping
-/// it, or calling [`Child::kill_all`], kills the child's process group and
-/// every descendant that can still be found from the child (including
-/// descendants that started their own session), then reaps the child.
-/// [`Child::detach`] gives up that control.
+/// It dereferences to [`std::process::Child`] for I/O and waiting. The run
+/// ends when the handle is dropped or [`Child::kill_all`] is called, not when
+/// the child exits by itself. Ending it kills the child's process group and
+/// every descendant that can still be found from the child, then reaps the
+/// child. Under the default [`Lifetime::Run`](procage_policy::Lifetime::Run)
+/// no process of the run can leave the group (`setsid` and `setpgid` fail),
+/// so the group kill reaches all of them, also after the child exited. With
+/// `Lifetime::Tree`, a descendant whose parent exits in a session of its own
+/// is out of reach. [`Child::detach`] gives up that control.
 ///
 /// `std::process::Child::kill`, reachable through `Deref`, kills only the
 /// direct child.

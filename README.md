@@ -7,17 +7,17 @@ and namespaces), without helper binaries.
 
 **Status:** the published 0.0.1 only reserves the name. The development
 version on `main` (0.0.2, unreleased) spawns caged children on macOS and on
-Linux (tiers T1 and T2), with inherited descriptors closed, descendants
-killed when a run ends, and an opt-in base profile that lets ordinary
-programs start. Every policy denies reading secrets and writing git hooks,
+Linux (tiers T1 and T2), with inherited descriptors closed, every process a
+run started killed when the run ends (double-forked daemons included; on
+Linux, `setsid` and `setpgid` fail in the cage unless the policy opts out),
+and an opt-in base profile that lets ordinary programs start. Every policy denies reading secrets and writing git hooks,
 shell startup files and launch agents; on Linux these hold exactly where no
 rule reaches them, by masks at spawn on tier T1, and otherwise are a
 capability gap. Four frozen presets cover common shapes. An escape suite
 runs a caged canary for every known escape class; the threat model shows
 which classes it proves handled and which variants are still open: a
-double-forked descendant can outlive a run, a pre-existing hard link is not
-reported, and on macOS a caged child can read the arguments and environment
-of your other processes. It does not yet provide pseudo-terminals, a PID
+pre-existing hard link is not reported, and on macOS a caged child can read
+the arguments and environment of your other processes. It does not yet provide pseudo-terminals, a PID
 namespace, or loopback and proxy networks on Linux. Do not rely on any
 release before 0.1.0 to contain a process.
 

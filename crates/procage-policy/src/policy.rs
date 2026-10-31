@@ -149,6 +149,36 @@ pub enum Signals {
     None,
 }
 
+/// How long the processes the child starts may live. It matters only when
+/// the child may fork.
+///
+/// The run ends when the child's handle is dropped or kills it. A child that
+/// exits by itself does not end the run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "kebab-case")
+)]
+pub enum Lifetime {
+    /// Every process the child starts belongs to the run and is killed when
+    /// it ends, wherever it was reparented and also after the child exited.
+    ///
+    /// On Linux, `setsid` and `setpgid` fail with `EPERM` inside the cage,
+    /// so every descendant stays in the child's process group. Programs that
+    /// daemonize or create job-control groups fail there. On macOS, where
+    /// the sandbox cannot filter those calls, the run's processes carry a
+    /// marker in their sandbox profile and are found by it.
+    #[default]
+    Run,
+    /// Programs may start their own sessions and process groups (job-control
+    /// shells). On Linux the run kills the child's process group and the
+    /// descendants found from the child, so a descendant whose parent exits
+    /// in a session of its own outlives the run. On macOS it behaves like
+    /// [`Lifetime::Run`].
+    Tree,
+}
+
 /// Process creation and signals.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(
@@ -163,6 +193,8 @@ pub struct Process {
     pub fork: bool,
     /// Which processes it may signal.
     pub signals: Signals,
+    /// How long the processes it starts may live.
+    pub lifetime: Lifetime,
 }
 
 /// Inter-process communication.
@@ -592,7 +624,8 @@ mod tests {
             Process {
                 exec: Exec::Granted,
                 fork: false,
-                signals: Signals::None
+                signals: Signals::None,
+                lifetime: Lifetime::Run,
             }
         );
         assert_eq!(

@@ -198,6 +198,11 @@ pub fn reference_policy(construct: Construct) -> Policy {
         Construct::ExecAny => p.process.exec = Exec::Any,
         Construct::ExecNever => p.process.exec = Exec::Never,
         Construct::ForkDenied => p.process.fork = false,
+        Construct::LifetimeRun => p.process.fork = true,
+        Construct::LifetimeTree => {
+            p.process.fork = true;
+            p.process.lifetime = Lifetime::Tree;
+        }
         Construct::SignalsSelfAndChildren => p.process.signals = Signals::SelfAndChildren,
         Construct::SignalsNone => p.process.signals = Signals::None,
         Construct::PosixShm => p.ipc.posix_shm = true,

@@ -67,7 +67,11 @@
 //!   does; the child leads its own session and has the policy's limits with
 //!   core dumps off;
 //! - dropping the [`Child`] handle kills the child, a grandchild in its
-//!   process group and a grandchild that started its own session;
+//!   process group and a grandchild that started its own session; under the
+//!   default [`Lifetime::Run`](procage_policy::Lifetime::Run), `setsid` and
+//!   `setpgid` fail with `EPERM` in the cage, and a descendant whose parent
+//!   exited, or whose child exited before the run ended, dies with the
+//!   child's process group; with `Lifetime::Tree` both calls work;
 //! - with environment passthrough, `GITHUB_TOKEN`, `SSH_AUTH_SOCK` and
 //!   `LD_PRELOAD` do not reach the child, and the handle lists them;
 //! - the `tmpdir` grant gives each run a private `TMPDIR`, removed when the
@@ -77,8 +81,8 @@
 //! **Not yet done** (later features):
 //!
 //! - no PID namespace or fresh `/proc`; signal scoping needs Landlock ABI 6;
-//! - a descendant that double-forks and starts its own session is
-//!   reparented away from the child and outlives the run;
+//! - with `Lifetime::Tree`, a descendant that double-forks and starts its
+//!   own session is reparented away from the child and outlives the run;
 //! - loopback and proxy networks need a relay (a gap on both tiers); a
 //!   unix-socket allowlist needs Landlock ABI 9; hide on T2 and glob rules
 //!   are gaps;
@@ -761,6 +765,10 @@ pub mod testing {
             "keyctl" => (libc::SYS_keyctl, [9999, 0, 0, 0, 0]),
             // No flags: succeeds.
             "unshare" => (libc::SYS_unshare, none),
+            // In a process that leads no group: succeeds (a new session).
+            "setsid" => (libc::SYS_setsid, none),
+            // In a process that leads no session: succeeds (a new group).
+            "setpgid" => (libc::SYS_setpgid, none),
             // A bad descriptor: EBADF.
             "setns" => (libc::SYS_setns, [-1, 0, 0, 0, 0]),
             // No attributes: EFAULT.

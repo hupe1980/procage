@@ -35,8 +35,12 @@
 //!   in the child; one handed over with [`Cage::spawn_with_fds`] does; with
 //!   1,000 extra descriptors open, none reaches the child;
 //! - dropping the [`Child`] handle kills the child, a grandchild in its
-//!   process group and a grandchild that started its own session; a
-//!   detached handle leaves the child running;
+//!   process group and a grandchild that started its own session; with a
+//!   forking policy it also kills a descendant that double-forked into a
+//!   session of its own and was reparented to `launchd`, and the
+//!   descendants of a child that already exited (found by the run's
+//!   marker); two concurrent runs of one cage end separately; a detached
+//!   handle leaves the child and its processes running;
 //! - with environment passthrough, `GITHUB_TOKEN`, `SSH_AUTH_SOCK` and
 //!   `DYLD_*` variables do not reach the child unless set explicitly on the
 //!   command, and the handle lists them as dropped;
@@ -58,9 +62,6 @@
 //!
 //! **Not yet done** (later features):
 //!
-//! - a descendant that double-forks and starts its own session is
-//!   reparented away from the child; macOS gives no way to find it, so it
-//!   escapes lifetime control;
 //! - there are no pseudo-terminals (`Tty::NewPty`);
 //! - the base profile ([`Base::V1`](procage_policy::Base::V1)) is curated
 //!   for macOS 26.6.2; tools that are Xcode shims (`/usr/bin/git`,
@@ -75,6 +76,7 @@
 
 mod canon;
 mod child;
+mod lifetime;
 mod probe;
 mod spawn;
 mod sys;
@@ -162,6 +164,14 @@ pub enum Unsupported {
         /// The setting.
         setting: &'static str,
     },
+    /// The query that finds a run's processes by their sandbox failed its
+    /// probe on this release.
+    RunMarker {
+        /// `kern.osversion`.
+        os_build: String,
+        /// What the probe observed.
+        detail: String,
+    },
 }
 
 impl fmt::Display for Unsupported {
@@ -181,6 +191,12 @@ impl fmt::Display for Unsupported {
             }
             Unsupported::Setting { setting } => {
                 write!(f, "{setting} is not supported in this release")
+            }
+            Unsupported::RunMarker { os_build, detail } => {
+                write!(
+                    f,
+                    "the run-marker query failed its probe on macOS build {os_build}: {detail}"
+                )
             }
         }
     }
@@ -412,6 +428,37 @@ fn cache() -> &'static Mutex<HashMap<CacheKey, Arc<[u8]>>> {
     CACHE.get_or_init(Default::default)
 }
 
+/// The bytecode for `plan` with the run-marker parameters `marker`, from the
+/// cache or compiled; `true` when it was compiled.
+fn compiled(
+    lib: &sys::Libsandbox,
+    plan: &SeatbeltPlan,
+    marker: &[(String, String)],
+) -> Result<(Arc<[u8]>, bool), SpawnError> {
+    let mut params = plan.params.clone();
+    params.extend_from_slice(marker);
+    let key = (plan.profile.clone(), params);
+    let cached = cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&key)
+        .cloned();
+    if let Some(bytecode) = cached {
+        return Ok((bytecode, false));
+    }
+    let bytecode: Arc<[u8]> = lib
+        .compile(&plan.profile, &key.1)
+        .map_err(|message| SpawnError::Compile {
+            message: message.unwrap_or_else(|| "<no error text>".into()),
+        })?
+        .into();
+    cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(key, bytecode.clone());
+    Ok((bytecode, true))
+}
+
 fn libsandbox() -> Result<&'static sys::Libsandbox, SpawnError> {
     sys::Libsandbox::get().map_err(|symbol| {
         SpawnError::Unsupported(Unsupported::Symbol {
@@ -466,28 +513,14 @@ impl Cage {
                 rules: plan.rule_count,
             });
         }
-        let key = (plan.profile.clone(), plan.params.clone());
-        let cached = cache()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&key)
-            .cloned();
-        let (bytecode, compiled) = match cached {
-            Some(bytecode) => (bytecode, false),
-            None => {
-                let bytecode: Arc<[u8]> = lib
-                    .compile(&plan.profile, &plan.params)
-                    .map_err(|message| SpawnError::Compile {
-                        message: message.unwrap_or_else(|| "<no error text>".into()),
-                    })?
-                    .into();
-                cache()
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(key, bytecode.clone());
-                (bytecode, true)
-            }
+        // A forking policy is compiled for the first run-marker slot, the one
+        // sequential runs use.
+        let marker = if plan.run_marker {
+            lifetime::first_params().to_vec()
+        } else {
+            Vec::new()
         };
+        let (bytecode, compiled) = compiled(lib, &plan, &marker)?;
         Ok(Cage {
             plan,
             bytecode,
@@ -566,10 +599,11 @@ impl Cage {
             }
         }
         let tokens = spawn::tokens(lib, self, &grants)?;
+        let (run, bytecode) = self.run_and_bytecode(lib)?;
         let dropped = crate::unix::environment(command, &self.plan.hygiene.env);
         sys::ChildPlan {
             ops: lib.child_ops(),
-            bytecode: self.bytecode.clone(),
+            bytecode,
             tokens,
             limits: crate::unix::limits(&self.plan.hygiene.limits),
             new_session: self.plan.hygiene.tty != Tty::Inherit,
@@ -577,8 +611,33 @@ impl Cage {
             fd_buffer: sys::fd_buffer(),
         }
         .install(command);
+        // A failed spawn leaves no process behind, but the slot is retired
+        // (dropped) rather than freed, to stay on the safe side.
         let inner = command.spawn().map_err(spawn::decode)?;
-        Ok(Child::new(inner, dropped, removal.disarm()))
+        Ok(Child::new(inner, dropped, removal.disarm(), run))
+    }
+
+    /// The run marker for a spawn of a forking policy, and the bytecode bound
+    /// to it (compiled before the fork when the slot is not the first).
+    fn run_and_bytecode(
+        &self,
+        lib: &sys::Libsandbox,
+    ) -> Result<(Option<lifetime::Run>, Arc<[u8]>), SpawnError> {
+        if !self.plan.run_marker {
+            return Ok((None, self.bytecode.clone()));
+        }
+        lifetime::probe(lib)?;
+        let run = lifetime::Run::take();
+        if run.is_first() {
+            return Ok((Some(run), self.bytecode.clone()));
+        }
+        match compiled(lib, &self.plan, &run.params()) {
+            Ok((bytecode, _)) => Ok((Some(run), bytecode)),
+            Err(e) => {
+                run.free();
+                Err(e)
+            }
+        }
     }
 }
 
@@ -624,6 +683,21 @@ pub mod testing {
                 os_build: sys::os_build(),
             }))
         }
+    }
+
+    /// The processes `child`'s run marker finds now (none without a marker).
+    pub fn run_members(child: &super::Child) -> std::io::Result<Vec<u32>> {
+        let Some(run) = child.run() else {
+            return Ok(Vec::new());
+        };
+        let lib = super::libsandbox().map_err(std::io::Error::other)?;
+        let pids = super::lifetime::members(lib, run)?;
+        Ok(pids.into_iter().map(i32::cast_unsigned).collect())
+    }
+
+    /// The run-marker slot of `child`.
+    pub fn run_slot(child: &super::Child) -> Option<u32> {
+        child.run().map(super::lifetime::Run::slot)
     }
 
     /// Whether the calling process leads its own session.

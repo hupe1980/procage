@@ -1252,3 +1252,58 @@ fn preset_minimal_runs_echo() {
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
     assert_eq!(cage.plan().waivers, Vec::<HardDenyClass>::new());
 }
+
+// ---- Run markers ----
+
+fn sleeper(cage: &Cage) -> Child {
+    let mut c = Command::new("/bin/sleep");
+    c.arg("30")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    cage.spawn(&mut c, &Grants::new()).unwrap()
+}
+
+/// The marker finds the run's child and nothing else: not the caller, not a
+/// process in a sandbox that allows every lookup, not another run.
+#[test]
+fn the_run_marker_matches_only_its_run() {
+    let mut p = base();
+    p.process.fork = true;
+    let cage = Cage::new(&p).unwrap();
+    let a = sleeper(&cage);
+    let b = sleeper(&cage);
+    let mut open = Command::new("/usr/bin/sandbox-exec")
+        .args(["-p", "(version 1)(allow default)", "/bin/sleep", "30"])
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    let found = testing::run_members(&a).unwrap();
+    let _ = open.kill();
+    let _ = open.wait();
+    assert_eq!(found, vec![a.id()], "b={} open={}", b.id(), open.id());
+    assert_eq!(testing::run_members(&b).unwrap(), vec![b.id()]);
+}
+
+/// Every run of a forking policy has a marker, and preparing the same
+/// policy again does not compile (the marker parameters are part of the cache
+/// key, not of the profile text); a policy without fork has no marker. Slot
+/// reuse itself is a unit test: tests in this binary share the slot pool.
+#[test]
+fn forking_runs_have_a_marker_and_reuse_the_cache() {
+    let mut p = base();
+    p.process.fork = true;
+    p.fs.push(rule(Access::Read, scratch("marker-slot")));
+    let cage = Cage::new(&p).unwrap();
+    assert!(cage.plan().run_marker);
+    for _ in 0..3 {
+        let child = sleeper(&cage);
+        assert!(testing::run_slot(&child).is_some());
+        drop(child);
+    }
+    let still = Cage::new(&p).unwrap();
+    assert!(!still.compiled(), "the same policy compiled again");
+    let quiet = Cage::new(&base()).unwrap();
+    assert!(!quiet.plan().run_marker);
+    assert_eq!(testing::run_slot(&sleeper(&quiet)), None);
+}

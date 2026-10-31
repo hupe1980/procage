@@ -275,6 +275,8 @@ syscalls! {
     Semop => "semop",
     Semtimedop => "semtimedop",
     Setns => "setns",
+    Setpgid => "setpgid",
+    Setsid => "setsid",
     Shmat => "shmat",
     Shmctl => "shmctl",
     Shmdt => "shmdt",

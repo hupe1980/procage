@@ -102,6 +102,10 @@ pub enum Filter {
     GlobalName(String),
     /// `(global-name-prefix "…")`.
     GlobalNamePrefix(String),
+    /// `(global-name (param "…"))`: the value is bound when compiling.
+    GlobalNameParam(&'static str),
+    /// `(global-name-prefix (param "…"))`: the value is bound when compiling.
+    GlobalNamePrefixParam(&'static str),
     /// `(xpc-service-name-prefix "…")`.
     XpcServiceNamePrefix(String),
     /// `(target self)`, `(target children)` or `(target others)`.
@@ -162,6 +166,9 @@ impl Rule {
             | Filter::RemoteIp(s)
             | Filter::LocalIp(s)
             | Filter::IpcPosixName(s) => Some(s.as_bytes()),
+            Filter::GlobalNameParam(name) | Filter::GlobalNamePrefixParam(name) => {
+                Some(name.as_bytes())
+            }
             Filter::Target(_)
             | Filter::OutsideSameSandbox
             | Filter::FcntlCommand(_)
@@ -248,6 +255,12 @@ fn render_filter(filter: &Filter, params: &mut Params) -> Result<String, EscapeE
             "(global-name-prefix {})",
             string_value(s.as_bytes(), params)?
         ),
+        Filter::GlobalNameParam(name) => {
+            format!("(global-name (param {}))", quote(name.as_bytes())?)
+        }
+        Filter::GlobalNamePrefixParam(name) => {
+            format!("(global-name-prefix (param {}))", quote(name.as_bytes())?)
+        }
         Filter::XpcServiceNamePrefix(s) => {
             format!(
                 "(xpc-service-name-prefix {})",

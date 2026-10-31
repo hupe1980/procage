@@ -14,7 +14,9 @@ use crate::linux::{
     TIOCLINUX, TIOCSTI, handled_fs, handled_net, may_overlap, rights, scopes,
 };
 use crate::path::AbsPath;
-use crate::policy::{Access, Base, Exec, FsTarget, HardDenyClass, Network, Policy, Signals};
+use crate::policy::{
+    Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Signals,
+};
 
 fn deny(syscall: Syscall) -> SeccompRule {
     SeccompRule {
@@ -304,6 +306,19 @@ pub(super) fn lower(
         seccomp.push(deny(Syscall::Vfork));
         seccomp.push(deny_if(Syscall::Clone, Condition::CloneWithoutThread));
         seccomp.push(enosys(Syscall::Clone3));
+    } else {
+        match policy.process.lifetime {
+            // Fork keeps the process group; only these calls leave it. The
+            // child's own session or group is started before the filter.
+            Lifetime::Run => {
+                ledger.outcome(Construct::LifetimeRun, Outcome::Exact, None, "");
+                seccomp.push(deny(Syscall::Setsid));
+                seccomp.push(deny(Syscall::Setpgid));
+            }
+            Lifetime::Tree => {
+                ledger.outcome(Construct::LifetimeTree, Outcome::Exact, None, "");
+            }
+        }
     }
     match policy.process.signals {
         // Landlock's signal scope (ABI 6); there is no PID namespace yet.

@@ -9,7 +9,9 @@ use super::{
     Construct, GapKind, GrantSlot, Hygiene, Ledger, LowerError, LowerOptions, Outcome,
     SeatbeltPlan, Target, fs_construct, subject_of,
 };
-use crate::policy::{Access, Base, Exec, FsTarget, HardDenyClass, Network, Policy, Ports, Signals};
+use crate::policy::{
+    Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Ports, Signals,
+};
 use crate::sbpl::{self, Filter, Rule};
 use crate::seatbelt::{self, Effect};
 
@@ -293,8 +295,27 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             ledger.outcome(Construct::ExecNever, Outcome::Exact, None, "");
         }
     }
+    // The run-marker block, last so no other rule overrides it: the run's
+    // processes allow looking up the marker and deny every other name with
+    // the prefix (see `RUN_MARKER_PARAM`).
+    let mut marker = Vec::new();
     if policy.process.fork {
         allow.push(Rule::new(Effect::Allow, &["process-fork"], vec![]));
+        let construct = match policy.process.lifetime {
+            Lifetime::Run => Construct::LifetimeRun,
+            Lifetime::Tree => Construct::LifetimeTree,
+        };
+        ledger.outcome(construct, Outcome::Exact, None, "");
+        marker.push(Rule::new(
+            Effect::Deny,
+            &["mach-lookup"],
+            vec![Filter::GlobalNamePrefixParam(super::RUN_PREFIX_PARAM)],
+        ));
+        marker.push(Rule::new(
+            Effect::Allow,
+            &["mach-lookup"],
+            vec![Filter::GlobalNameParam(super::RUN_MARKER_PARAM)],
+        ));
     } else {
         ledger.outcome(Construct::ForkDenied, Outcome::Exact, None, "");
     }
@@ -363,12 +384,14 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
 
     let degradations = ledger.finish()?;
 
-    let mut rules = Vec::with_capacity(allow.len() + within.len() + hard.len());
+    let run_marker = !marker.is_empty();
+    let mut rules = Vec::with_capacity(allow.len() + within.len() + hard.len() + marker.len());
     for mut block in [allow, within, hard] {
         block.sort();
         block.dedup();
         rules.extend(block);
     }
+    rules.extend(marker);
     let mut merged = false;
     if rules.len() > options.max_rules {
         rules = sbpl::merge_adjacent(rules, sbpl::MAX_MERGED_FILTERS);
@@ -401,5 +424,6 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
         degradations,
         waivers: policy.waive.iter().copied().collect(),
         hygiene: Hygiene::of(policy),
+        run_marker,
     })
 }

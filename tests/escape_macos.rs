@@ -30,8 +30,8 @@ use std::time::{Duration, Instant};
 use procage::macos::{Cage, Child, Grants, testing};
 use procage::policy::seatbelt::{self, Effect, Filter, Operation};
 use procage::policy::{
-    AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Network,
-    Policy, Port, Ports,
+    AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Lifetime,
+    Network, Policy, Port, Ports,
 };
 
 const EPERM: &str = "1";
@@ -161,7 +161,10 @@ fn in_child_with(
 /// Spawns `action` and returns the handle and the first result line,
 /// without waiting for the child to exit.
 fn start(action: &str, policy: &Policy, grants: &Grants) -> (Child, String) {
-    let cage = Cage::new(policy).unwrap();
+    start_in(&Cage::new(policy).unwrap(), action, grants)
+}
+
+fn start_in(cage: &Cage, action: &str, grants: &Grants) -> (Child, String) {
     let mut child = cage.spawn(&mut child_command(action), grants).unwrap();
     let stdout = child.stdout.take().unwrap();
     let line = std::io::BufReader::new(stdout).lines().find_map(|l| {
@@ -671,19 +674,91 @@ fn r23_descendants_die_with_the_run() {
     }
 }
 
-/// A descendant whose parent exited before the run ended, in a session of
-/// its own, is not found by the tree kill.
-#[test]
-#[ignore = "open: R-23 a double-forked descendant in its own session outlives the run on macOS"]
-fn r23_a_double_forked_descendant_dies_with_the_run() {
-    let (child, pid) = start("double-fork", &forking(), &Grants::new());
-    let pid: u32 = pid.parse().unwrap();
-    drop(child);
+/// Asserts that `pid` dies within two seconds, killing it otherwise.
+fn assert_dies(pid: u32, what: &str) {
     let gone = gone_within(pid, Duration::from_secs(2));
     if !gone {
         kill_now(pid);
     }
-    assert!(gone, "descendant {pid} survived");
+    assert!(gone, "{what} {pid} survived");
+}
+
+/// A descendant whose parent exited before the run ended, in a session of
+/// its own, is reparented to launchd, out of the child's tree and group; it
+/// is found by the run's marker.
+#[test]
+fn r23_a_double_forked_descendant_dies_with_the_run() {
+    let (child, pid) = start("double-fork", &forking(), &Grants::new());
+    let pid: u32 = pid.parse().unwrap();
+    assert!(testing::alive(pid));
+    drop(child);
+    assert_dies(pid, "descendant");
+}
+
+/// A descendant in a session of its own, left by a child that exited and was
+/// waited for before the run ended, dies when the handle is dropped.
+#[test]
+fn r23_descendants_of_an_exited_child_die_with_the_run() {
+    let (mut child, pid) = start("session-sleeper", &forking(), &Grants::new());
+    let pid: u32 = pid.parse().unwrap();
+    // Its exit status is not the point: the harness may write after the
+    // result to the pipe the test already closed.
+    child.wait().unwrap();
+    assert!(testing::alive(pid), "the descendant must outlive the child");
+    drop(child);
+    assert_dies(pid, "descendant");
+}
+
+/// Two runs of one cage at the same time have different markers: ending one
+/// leaves the other's escaped descendant alive.
+#[test]
+fn r23_concurrent_runs_are_separate() {
+    let cage = Cage::new(&forking()).unwrap();
+    let (a, pa) = start_in(&cage, "double-fork", &Grants::new());
+    let (b, pb) = start_in(&cage, "double-fork", &Grants::new());
+    let (pa, pb): (u32, u32) = (pa.parse().unwrap(), pb.parse().unwrap());
+    assert_ne!(testing::run_slot(&a), testing::run_slot(&b));
+    drop(a);
+    assert_dies(pa, "run A's descendant");
+    let alive = testing::alive(pb);
+    drop(b);
+    assert!(alive, "ending run A killed run B's descendant {pb}");
+    assert_dies(pb, "run B's descendant");
+}
+
+/// A detached run keeps its marker: a later run never gets it, so ending
+/// that run leaves the detached run's processes alone.
+#[test]
+fn r23_a_detached_run_keeps_its_marker() {
+    let cage = Cage::new(&forking()).unwrap();
+    let (a, pa) = start_in(&cage, "double-fork", &Grants::new());
+    let pa: u32 = pa.parse().unwrap();
+    let slot = testing::run_slot(&a);
+    let mut detached = a.detach();
+    let (b, pb) = start_in(&cage, "double-fork", &Grants::new());
+    let pb: u32 = pb.parse().unwrap();
+    assert_ne!(testing::run_slot(&b), slot);
+    drop(b);
+    assert_dies(pb, "run B's descendant");
+    let alive = testing::alive(pa);
+    kill_now(pa);
+    let _ = detached.kill();
+    let _ = detached.wait();
+    assert!(
+        alive,
+        "ending run B killed the detached run's descendant {pa}"
+    );
+}
+
+/// With `Lifetime::Tree`, macOS still finds escaped descendants by marker.
+#[test]
+fn r23_tree_lifetime_still_reaps() {
+    let mut p = forking();
+    p.process.lifetime = Lifetime::Tree;
+    let (child, pid) = start("double-fork", &p, &Grants::new());
+    let pid: u32 = pid.parse().unwrap();
+    drop(child);
+    assert_dies(pid, "descendant");
 }
 
 /// A launch agent cannot be planted even under a write rule for the launch

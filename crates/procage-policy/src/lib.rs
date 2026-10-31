@@ -60,12 +60,12 @@ pub use glob::{Glob, GlobError};
 pub use linux::LinuxPlan;
 pub use lower::{
     CapabilityGap, Construct, Degradation, GapKind, LowerError, LowerOptions, Outcome, Plan,
-    SeatbeltPlan, Target, TargetError, Tier, lower,
+    RUN_MARKER_PARAM, RUN_PREFIX_PARAM, SeatbeltPlan, Target, TargetError, Tier, lower,
 };
 pub use name::{GrantName, NameError, Port, Tag};
 pub use path::{AbsPath, PathError};
 pub use policy::{
-    Access, Base, EnvPolicy, Exec, FsRule, FsTarget, Grant, HardDenyClass, Ipc, Network, Policy,
-    PolicyError, Ports, PresetTag, Process, Rlimits, Signals, Tty,
+    Access, Base, EnvPolicy, Exec, FsRule, FsTarget, Grant, HardDenyClass, Ipc, Lifetime, Network,
+    Policy, PolicyError, Ports, PresetTag, Process, Rlimits, Signals, Tty,
 };
 pub use sbpl::EscapeError;

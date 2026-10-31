@@ -32,3 +32,5 @@
 (deny process-info* (require-not (target same-sandbox)))
 (deny signal (target others))
 (deny system-fcntl (fcntl-command 80 110))
+(deny mach-lookup (global-name-prefix (param "procage-run-prefix")))
+(allow mach-lookup (global-name (param "procage-run-marker")))

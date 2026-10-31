@@ -40,6 +40,12 @@
 //! | [`agent_workspace::v1`] | as `agent_readonly`, plus write and exec on the workspace |
 //! | [`build::v1`] | as `agent_workspace`, plus loopback network |
 //!
+//! Every preset keeps the default [`Lifetime::Run`](crate::Lifetime::Run):
+//! the processes a forking preset's child starts end with the run. This was
+//! added to the frozen V1 presets as a tightening: on Linux, `setsid` and
+//! `setpgid` fail inside them, and their macOS profiles end with the
+//! run-marker block.
+//!
 //! On Linux, `build` is a capability gap until loopback networking is
 //! relayed into the network namespace, and the write rules of
 //! `agent_workspace` and `build` reach trust-handoff names (see above).

@@ -41,6 +41,9 @@ type SetParam = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) 
 type FreeParams = unsafe extern "C" fn(*mut c_void);
 type MacSyscall = unsafe extern "C" fn(*const c_char, c_int, *mut c_void) -> c_int;
 type Check = unsafe extern "C" fn(libc::pid_t, *const c_char, c_int, ...) -> c_int;
+
+/// `sandbox_check`'s filter type for a mach service name.
+const SANDBOX_FILTER_GLOBAL_NAME: c_int = 2;
 type IssueFile = unsafe extern "C" fn(*const c_char, *const c_char, u32) -> *mut c_char;
 type Consume = unsafe extern "C" fn(*const c_char) -> i64;
 
@@ -234,6 +237,28 @@ impl Libsandbox {
     /// Whether the calling process is sandboxed.
     pub(crate) fn is_sandboxed(&self) -> bool {
         self.child.verify().is_ok()
+    }
+
+    /// Whether the sandbox of process `pid` allows looking up the service
+    /// `name`: `sandbox_check(pid, "mach-lookup", SANDBOX_FILTER_GLOBAL_NAME,
+    /// name)`, an undocumented form (measured on 26.6.2). An unsandboxed
+    /// process allows every name. `Err` carries errno when the call fails.
+    pub(crate) fn allows_lookup(&self, pid: libc::pid_t, name: &CStr) -> Result<bool, i32> {
+        // SAFETY: both strings are NUL-terminated and alive for the call; the
+        // global-name filter takes exactly one string argument.
+        let rc = unsafe {
+            (self.child.check)(
+                pid,
+                c"mach-lookup".as_ptr(),
+                SANDBOX_FILTER_GLOBAL_NAME,
+                name.as_ptr(),
+            )
+        };
+        match rc {
+            0 => Ok(true),
+            1 => Ok(false),
+            _ => Err(errno()),
+        }
     }
 
     /// The pointers the child uses.
@@ -530,6 +555,39 @@ pub(crate) fn descendants(pid: libc::pid_t) -> Vec<libc::pid_t> {
         }
     }
     found
+}
+
+/// Every process id the kernel lists. `Err` carries errno.
+pub(crate) fn all_pids() -> Result<Vec<libc::pid_t>, i32> {
+    let mut buf = vec![0 as libc::pid_t; 1024];
+    loop {
+        let bytes = c_int::try_from(std::mem::size_of_val(buf.as_slice())).unwrap_or(c_int::MAX);
+        // SAFETY: proc_listallpids writes at most `bytes` bytes into `buf`.
+        let n = unsafe { libc::proc_listallpids(buf.as_mut_ptr().cast(), bytes) };
+        let Ok(n) = usize::try_from(n) else {
+            return Err(errno());
+        };
+        // The call returns the number of pids; a full buffer may be cut short.
+        if n < buf.len() {
+            buf.truncate(n);
+            return Ok(buf);
+        }
+        buf.resize(buf.len() * 2, 0);
+    }
+}
+
+/// Whether `pid` is a process of the calling user that is not a zombie.
+/// `false` when it is gone or its information is not readable.
+pub(crate) fn live_of_user(pid: libc::pid_t) -> bool {
+    let size = c_int::try_from(std::mem::size_of::<libc::proc_bsdinfo>()).unwrap_or(c_int::MAX);
+    // SAFETY: proc_bsdinfo is plain data, valid when zeroed.
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let buf = (&raw mut info).cast();
+    // SAFETY: proc_pidinfo writes at most `size` bytes into `info`.
+    let n = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, buf, size) };
+    // SAFETY: getuid is a system call without arguments.
+    let uid = unsafe { libc::getuid() };
+    n == size && info.pbi_uid == uid && info.pbi_status != libc::SZOMB
 }
 
 /// Sends SIGKILL to `pid`.

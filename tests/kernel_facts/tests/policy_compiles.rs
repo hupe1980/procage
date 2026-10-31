@@ -12,7 +12,10 @@ mod common;
 
 use procage_kernel_facts::sys::macos::Sandbox;
 use procage_policy::seatbelt::Operation;
-use procage_policy::{Access, LowerOptions, Plan, Policy, Tag, Target, lower};
+use procage_policy::{
+    Access, LowerOptions, Plan, Policy, RUN_MARKER_PARAM, RUN_PREFIX_PARAM, SeatbeltPlan, Tag,
+    Target, lower,
+};
 
 fn compile(sandbox: &Sandbox, profile: &str, params: &[(String, String)]) -> Result<usize, String> {
     let params: Vec<(&str, &str)> = params
@@ -23,6 +26,17 @@ fn compile(sandbox: &Sandbox, profile: &str, params: &[(String, String)]) -> Res
         .compile(profile, &params)
         .map(|bytecode| bytecode.data.len())
         .map_err(|e| e.text.unwrap_or_else(|| "<no error text>".into()))
+}
+
+/// The plan's parameters, plus run-marker values like the ones the spawn
+/// backend binds.
+fn bound(plan: &SeatbeltPlan) -> Vec<(String, String)> {
+    let mut params = plan.params.clone();
+    if plan.run_marker {
+        params.push((RUN_PREFIX_PARAM.into(), "org.procage.run.check.".into()));
+        params.push((RUN_MARKER_PARAM.into(), "org.procage.run.check.0".into()));
+    }
+    params
 }
 
 #[test]
@@ -36,7 +50,7 @@ fn every_reference_profile_compiles() {
             panic!("{name}: no Seatbelt plan");
         };
         count += 1;
-        if let Err(e) = compile(&sandbox, &plan.profile, &plan.params) {
+        if let Err(e) = compile(&sandbox, &plan.profile, &bound(&plan)) {
             failures.push(format!("{name}: {e}\n{}", plan.profile));
         }
     }

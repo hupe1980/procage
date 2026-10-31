@@ -178,3 +178,10 @@ fn presets_round_trip_with_their_tag() {
         assert_eq!(serde_json::from_str::<Policy>(&text).unwrap(), policy);
     }
 }
+
+#[test]
+fn presets_keep_descendants_in_the_run() {
+    for (name, policy) in all() {
+        assert_eq!(policy.process.lifetime, Lifetime::Run, "{name}");
+    }
+}

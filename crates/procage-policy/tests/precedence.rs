@@ -1,5 +1,6 @@
-//! Fixed precedence: allows, then deny-within-allow, then the hard-deny tier
-//! last; independent of rule order; waivers by name and recorded.
+//! Fixed precedence: allows, then deny-within-allow, then the hard-deny tier,
+//! then (with fork) the run-marker block last; independent of rule order;
+//! waivers by name and recorded.
 
 mod common;
 
@@ -11,6 +12,28 @@ use procage_policy::*;
 /// Splits a profile into its rule lines (after `(deny default)`).
 fn rules(profile: &str) -> Vec<&str> {
     profile.lines().skip(2).collect()
+}
+
+/// The run-marker block.
+const MARKER: [&str; 2] = [
+    "(deny mach-lookup (global-name-prefix (param \"procage-run-prefix\")))",
+    "(allow mach-lookup (global-name (param \"procage-run-marker\")))",
+];
+
+/// The rule lines before the run-marker block, which must be exactly the
+/// last two lines when the plan has one, and absent otherwise.
+fn without_marker(plan: &SeatbeltPlan) -> Vec<&str> {
+    let mut lines = rules(&plan.profile);
+    if plan.run_marker {
+        let tail = lines.split_off(lines.len() - 2);
+        assert_eq!(tail, MARKER, "{}", plan.profile);
+    }
+    assert!(
+        !lines.iter().any(|l| l.contains("procage-run-")),
+        "{}",
+        plan.profile
+    );
+    lines
 }
 
 /// The hard-deny lines of `class` in an otherwise empty policy.
@@ -52,7 +75,7 @@ fn blocks_are_in_fixed_order_and_the_tier_is_last() {
         let Ok(Plan::Seatbelt(plan)) = lower(&policy, Target::MacOs, &allow_all()) else {
             panic!("{name}: no Seatbelt plan");
         };
-        let lines = rules(&plan.profile);
+        let lines = without_marker(&plan);
         let first_deny = lines
             .iter()
             .position(|l| l.starts_with("(deny"))
@@ -75,10 +98,34 @@ fn blocks_are_in_fixed_order_and_the_tier_is_last() {
             plan.profile
         );
         assert!(
-            plan.profile
-                .ends_with("(deny system-fcntl (fcntl-command 80 110))\n")
+            lines
+                .last()
+                .is_some_and(|l| *l == "(deny system-fcntl (fcntl-command 80 110))")
         );
     }
+}
+
+#[test]
+fn a_forking_policy_ends_with_the_run_marker() {
+    for lifetime in [Lifetime::Run, Lifetime::Tree] {
+        let mut p = hard_deny_base();
+        p.process.fork = true;
+        p.process.lifetime = lifetime;
+        let plan = seatbelt_plan(&p, &LowerOptions::default());
+        assert!(plan.run_marker, "{lifetime:?}");
+        assert!(without_marker(&plan).len() > 2);
+        // Bound at spawn, never by the lowering, and never through an
+        // extension the child could release.
+        assert!(
+            plan.params
+                .iter()
+                .all(|(n, _)| !n.starts_with("procage-run-"))
+        );
+        assert!(!MARKER.iter().any(|l| l.contains("extension")));
+    }
+    let plan = seatbelt_plan(&hard_deny_base(), &LowerOptions::default());
+    assert!(!plan.run_marker);
+    without_marker(&plan);
 }
 
 #[test]

@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 use procage::linux::{Cage, CageOptions, Child, Grants, SpawnError, probe, testing};
 use procage::policy::{
     AbsPath, Access, Base, Construct, EnvPolicy, FsRule, FsTarget, GapKind, Grant, GrantName,
-    HardDenyClass, LowerError, LowerOptions, Network, Policy, Port, Ports, Tier,
+    HardDenyClass, Lifetime, LowerError, LowerOptions, Network, Policy, Port, Ports, Tier,
 };
 
 const EPERM: i32 = 1;
@@ -296,6 +296,17 @@ fn child_entry() {
             return;
         }
         "session-sleeper" => format!("{}", testing::spawn_sleeper(true).unwrap()),
+        "sessions" => {
+            // The child leads its group and session already; each call is
+            // tried in a process that leads neither.
+            let try_in_child = |call: &str| {
+                let mut cmd = child_command(&format!("syscall:{call}"));
+                cmd.stderr(Stdio::null());
+                let out = cmd.output().unwrap();
+                first_result(&out.stdout[..]).unwrap_or_default()
+            };
+            format!("{} {}", try_in_child("setsid"), try_in_child("setpgid"))
+        }
         "double-fork" => {
             // An intermediate starts a sleeper in its own session and exits;
             // the sleeper is reparented away from this child. The sleeper
@@ -669,22 +680,74 @@ fn r23_descendants_die_with_the_run() {
     }
 }
 
-/// A descendant whose parent exited before the run ended, in a session of
-/// its own, is reparented outside the child's tree.
+/// Asserts that `pid` dies within two seconds, killing it otherwise.
+fn assert_dies(pid: u32, what: &str) {
+    let gone = gone_within(pid, Duration::from_secs(2));
+    if !gone {
+        kill_now(pid);
+    }
+    assert!(gone, "{what} {pid} survived");
+}
+
+/// A descendant whose parent exited before the run ended cannot leave the
+/// child's process group (its `setsid` fails), so it is reparented outside
+/// the child's tree but still dies with the group.
 #[test]
-#[ignore = "open: R-23 a double-forked descendant in its own session outlives the run on Linux"]
 fn r23_a_double_forked_descendant_dies_with_the_run() {
     for tier in tiers() {
         let mut p = policy();
         p.process.fork = true;
         let (child, pid) = start(&cage(&p, tier), "double-fork");
         let pid: u32 = pid.parse().unwrap();
+        assert!(testing::alive(pid), "{tier}");
         drop(child);
-        let gone = gone_within(pid, Duration::from_secs(2));
-        if !gone {
-            kill_now(pid);
-        }
-        assert!(gone, "{tier}: descendant {pid} survived");
+        assert_dies(pid, &format!("{tier}: descendant"));
+    }
+}
+
+/// A descendant left by a child that exited and was waited for before the
+/// run ended dies when the handle is dropped.
+#[test]
+fn r23_descendants_of_an_exited_child_die_with_the_run() {
+    for tier in tiers() {
+        let mut p = policy();
+        p.process.fork = true;
+        let (mut child, pid) = start(&cage(&p, tier), "session-sleeper");
+        let pid: u32 = pid.parse().unwrap();
+        // Its exit status is not the point: the harness may write after
+        // the result to the pipe the test already closed.
+        child.wait().unwrap();
+        assert!(
+            testing::alive(pid),
+            "{tier}: the descendant must outlive the child"
+        );
+        drop(child);
+        assert_dies(pid, &format!("{tier}: descendant"));
+    }
+}
+
+/// By default no process of the run can start a session or a process group.
+#[test]
+fn r23_sessions_are_locked() {
+    for tier in tiers() {
+        let mut p = policy();
+        p.process.fork = true;
+        let (child, got) = start(&cage(&p, tier), "sessions");
+        drop(child);
+        assert_eq!(got, format!("{EPERM} {EPERM}"), "{tier}");
+    }
+}
+
+/// With `Lifetime::Tree` processes may start sessions and process groups.
+#[test]
+fn r23_tree_lifetime_allows_sessions() {
+    for tier in tiers() {
+        let mut p = policy();
+        p.process.fork = true;
+        p.process.lifetime = Lifetime::Tree;
+        let (child, got) = start(&cage(&p, tier), "sessions");
+        drop(child);
+        assert_eq!(got, "ok ok", "{tier}");
     }
 }
 

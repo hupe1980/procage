@@ -23,14 +23,16 @@ it by name. Its integration tests run in containers for both tiers on one
 kernel (7.0, aarch64).
 
 On both systems it also closes every inherited descriptor the caller did not
-hand over, kills the child and the descendants it can find when the run
-ends, drops secret-looking variables from a passed-through environment, and
-can give each run a private temporary directory.
+hand over, kills every process the run started when the run ends (also
+descendants that double-forked into a session of their own, and those of a
+child that already exited), drops secret-looking variables from a
+passed-through environment, and can give each run a private temporary
+directory. To keep descendants in the run, `setsid` and `setpgid` fail inside
+a Linux cage unless the policy opts out with `Lifetime::Tree`; this also
+applies to the frozen presets.
 
 It does **not** yet:
 
-- stop a descendant that double-forks and starts its own session from
-  outliving the run, on either system (R-23);
 - keep a caged child on macOS from reading the arguments and environment of
   other processes of the same user (R-25): the sandbox does not mediate
   that query, so do not pass secrets to the calling program through its
@@ -124,6 +126,16 @@ release.
   ABI, seccomp, unprivileged user namespaces) and assign a tier. A policy the
   tier cannot enforce will be an error that names the missing capability. It
   will never be applied best-effort.
+- **Finding a run's processes (macOS).** A forking run's profile carries a
+  marker, and procage asks libsandbox, for every process of the user,
+  whether that process's sandbox allows it. This query form is undocumented;
+  procage checks it once before the first forking spawn and reports an
+  "unsupported" error if it fails. Between finding a process and killing it,
+  the process could exit and its process id be reused; macOS offers no
+  process handle that would close that window. On Linux, descendants stay in
+  the child's process group instead, unless the policy chooses
+  `Lifetime::Tree`, in which case a descendant that double-forks into a
+  session of its own outlives the run.
 - **Nesting.** Inside another Seatbelt sandbox (for example an AI agent's
   own), applying a second profile fails or has no effect. procage will
   report this as an error up front instead of running uncaged.
@@ -185,7 +197,7 @@ why the numbering has gaps.
 | R-12 | Firmlink spelling | A rule spelled with the data-volume path does not cover the path as programs see it. | macOS | mitigate | mitigated | tests/escape_macos.rs::r12_a_data_volume_spelling_protects_the_visible_path | KF-M21 |
 | R-21 | Inherited file descriptors | A descriptor opened before the sandbox was applied reads or writes past every path rule. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r21_an_inherited_descriptor_does_not_reach_the_child, tests/escape_linux.rs::r21_an_inherited_descriptor_does_not_reach_the_child | KF-M19 |
 | R-22 | Terminal input injection | A child that shares the caller's terminal pushes keystrokes into its input queue, which the shell then runs outside the sandbox. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r22_terminal_input_injection_is_refused, tests/escape_linux.rs::r22_terminal_input_injection_is_refused | KF-M26 |
-| R-23 | Outliving the run | Descendants keep running after the run ends, or register launch agents, cron jobs or login items that later run unsandboxed. | macOS, Linux | mitigate | partial | tests/escape_macos.rs::r23_descendants_die_with_the_run, tests/escape_macos.rs::r23_a_launch_agent_cannot_be_planted, tests/escape_linux.rs::r23_descendants_die_with_the_run, tests/escape_linux.rs::r23_a_user_unit_cannot_be_planted | — |
+| R-23 | Outliving the run | Descendants keep running after the run ends, or register launch agents, cron jobs or login items that later run unsandboxed. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r23_descendants_die_with_the_run, tests/escape_macos.rs::r23_a_double_forked_descendant_dies_with_the_run, tests/escape_macos.rs::r23_descendants_of_an_exited_child_die_with_the_run, tests/escape_macos.rs::r23_concurrent_runs_are_separate, tests/escape_macos.rs::r23_a_launch_agent_cannot_be_planted, tests/escape_linux.rs::r23_descendants_die_with_the_run, tests/escape_linux.rs::r23_a_double_forked_descendant_dies_with_the_run, tests/escape_linux.rs::r23_descendants_of_an_exited_child_die_with_the_run, tests/escape_linux.rs::r23_sessions_are_locked, tests/escape_linux.rs::r23_a_user_unit_cannot_be_planted | — |
 | R-24 | Secrets in the environment | Inherited environment variables carry tokens, keys or agent sockets into the child. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r24_secret_variables_do_not_reach_the_child, tests/escape_linux.rs::r24_secret_variables_do_not_reach_the_child | — |
 | R-25 | Process introspection | The child reads other processes' arguments and environment through same-user process information. | macOS, Linux | mitigate | partial | tests/escape_macos.rs::r25_other_processes_cannot_be_signalled, tests/escape_linux.rs::r25_other_processes_are_opaque | — |
 | R-26 | Helper replacement | A helper program that procage runs is overwritten from inside the sandbox and runs uncaged at the next start. | macOS, Linux | mitigate | planned | — | — |
@@ -210,10 +222,6 @@ why the numbering has gaps.
 
 - **R-08** Neither system reports or refuses a hard link made before the
   run; a protected or hidden file stays reachable through its second name.
-- **R-23** A descendant whose parent exits, in a session of its own, is
-  reparented outside the child's tree and outlives the run on both systems.
-  Launch agents (macOS) and systemd user units (Linux, tier T1) cannot be
-  planted.
 - **R-25** On macOS any process of the same user can read another's
   arguments and environment through the `KERN_PROCARGS2` query, which the
   sandbox does not mediate (observed on macOS 26.6.2). Signals to other

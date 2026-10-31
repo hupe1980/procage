@@ -1026,9 +1026,9 @@ fn missing_canary_is_caught() {
 #[test]
 fn mitigated_with_an_open_canary_is_caught() {
     assert_caught(
-        |f| f.doc = edit_row(&f.doc, "R-23", set(5, "mitigated")),
+        |f| f.doc = edit_row(&f.doc, "R-25", set(5, "mitigated")),
         Rule::OpenCanary,
-        "R-23 r23_a_double_forked_descendant_dies_with_the_run",
+        "R-25 r25_other_processes_arguments_are_unreadable",
     );
 }
 
@@ -1105,6 +1105,7 @@ fn statuses_are_parsed() {
     assert!(violations.is_empty(), "{violations:?}");
     let status = |id: &str| rows.iter().find(|r| r.id == id).map(|r| r.status);
     assert_eq!(status("R-10"), Some(Status::Mitigated));
-    assert_eq!(status("R-23"), Some(Status::Partial));
+    assert_eq!(status("R-23"), Some(Status::Mitigated));
+    assert_eq!(status("R-25"), Some(Status::Partial));
     assert_eq!(status("R-26"), Some(Status::Planned));
 }

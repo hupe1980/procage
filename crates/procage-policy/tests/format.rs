@@ -58,6 +58,8 @@ fn the_documented_example_parses() {
     let p = read(doc).unwrap();
     assert_eq!(p.fs.len(), 2);
     assert_eq!(p.grants[0].name.as_str(), "scratch");
+    // Written before `lifetime` existed: the default applies.
+    assert_eq!(p.process.lifetime, Lifetime::Run);
     assert_eq!(p.limits.nofile, Some(1024));
     // Missing sections take the deny-everything defaults.
     assert_eq!(read(json!({"version": 1})).unwrap(), Policy::default());
@@ -188,4 +190,17 @@ fn mutated_documents_never_panic_and_accepted_ones_round_trip() {
         accepted > 100,
         "only {accepted} mutated documents were accepted"
     );
+}
+
+#[test]
+fn lifetime_is_kebab_case() {
+    let mut p = Policy::default();
+    p.process.fork = true;
+    p.process.lifetime = Lifetime::Tree;
+    let value = serde_json::to_value(&p).unwrap();
+    assert_eq!(value["process"]["lifetime"], json!("tree"));
+    assert_eq!(round_trip(&p), p);
+    let mut doc = value;
+    doc["process"]["lifetime"] = json!("forever");
+    assert!(read(doc).is_err());
 }

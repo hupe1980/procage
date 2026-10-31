@@ -237,3 +237,22 @@ fn malformed_backend_layers_are_invalid_on_every_target() {
         );
     }
 }
+
+#[test]
+fn the_linux_lifetime_lock_follows_the_setting() {
+    let locked = |p: &Policy| -> (bool, bool) {
+        let Ok(Plan::Linux(plan)) = lower(p, T2, &LowerOptions::default()) else {
+            panic!("no Linux plan");
+        };
+        let has = |s: linux::Syscall| plan.seccomp.iter().any(|r| r.syscall == s);
+        (has(linux::Syscall::Setsid), has(linux::Syscall::Setpgid))
+    };
+    let mut p = Policy::default();
+    // Without fork there is nothing to keep in the run.
+    assert_eq!(locked(&p), (false, false));
+    p.process.fork = true;
+    assert_eq!(p.process.lifetime, Lifetime::Run);
+    assert_eq!(locked(&p), (true, true));
+    p.process.lifetime = Lifetime::Tree;
+    assert_eq!(locked(&p), (false, false));
+}

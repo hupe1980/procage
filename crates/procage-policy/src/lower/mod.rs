@@ -116,6 +116,8 @@ constructs! {
     ExecAny => "exec-any",
     ExecNever => "exec-never",
     ForkDenied => "fork-denied",
+    LifetimeRun => "lifetime-run",
+    LifetimeTree => "lifetime-tree",
     SignalsSelfAndChildren => "signals-self-and-children",
     SignalsNone => "signals-none",
     PosixShm => "posix-shm",
@@ -440,7 +442,20 @@ pub struct SeatbeltPlan {
     pub waivers: Vec<HardDenyClass>,
     /// Environment, limits and terminal, unchanged from the policy.
     pub hygiene: Hygiene,
+    /// Whether the profile ends with the run-marker block, whose parameters
+    /// [`RUN_PREFIX_PARAM`] and [`RUN_MARKER_PARAM`] the spawn backend binds
+    /// (they are not in `params`).
+    pub run_marker: bool,
 }
+
+/// The parameter for the run-marker prefix: the profile denies looking up
+/// any service name that starts with it.
+pub const RUN_PREFIX_PARAM: &str = "procage-run-prefix";
+
+/// The parameter for the run marker, a name starting with the prefix that the
+/// profile allows looking up. No service registers it; a process's sandbox
+/// allowing it marks the process as one of the run's.
+pub const RUN_MARKER_PARAM: &str = "procage-run-marker";
 
 /// The result of lowering.
 #[derive(Debug, Clone, PartialEq, Eq)]

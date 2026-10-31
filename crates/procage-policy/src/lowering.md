@@ -57,6 +57,8 @@ changes the profile.
 | `exec-any` | exact | exact | exact | |
 | `exec-never` | exact | exact | exact | |
 | `fork-denied` | exact | exact | exact | Linux: seccomp denies `fork`, `vfork` and process-creating `clone`; `clone3` returns ENOSYS. |
+| `lifetime-run` | exact | exact | exact | With fork only. Linux: seccomp denies `setsid` and `setpgid` (EPERM), installed after the child's own session or group, so every descendant stays in the child's process group. macOS: the run-marker block ends the profile; the spawn backend binds `procage-run-prefix` and `procage-run-marker` and finds the run's processes by it. |
+| `lifetime-tree` | exact | exact | exact | With fork only. Linux: no lock; the run kills the group and the descendants found from the child. macOS: the same marker block as `lifetime-run`. |
 | `signals-self-and-children` | exact | exact (ABI ≥ 6) / unsupported | exact (ABI ≥ 6) / unsupported | Linux: the Landlock signal scope. There is no PID namespace yet. |
 | `signals-none` | exact | exact | exact | |
 | `posix-shm` | exact | exact | approximated | T1: a private `/dev/shm`. T2 shares the host's `/dev/shm`. |
