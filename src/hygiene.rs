@@ -50,7 +50,9 @@ pub struct EnvDecision {
 /// Computes the child's environment.
 ///
 /// `explicit` holds the variables set (`Some`) or removed (`None`) on the
-/// command; they win over the policy.
+/// command; they win over the policy. Whether `Command::env_clear` was
+/// called is not visible through `std`, so it is not an input: an empty
+/// [`EnvPolicy::Allowlist`] gives exactly the explicit variables.
 pub fn environment(
     caller: impl IntoIterator<Item = (OsString, OsString)>,
     policy: &EnvPolicy,

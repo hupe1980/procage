@@ -555,6 +555,13 @@ impl Cage {
     /// The command's program must be executable under the policy. Fails
     /// without forking when a grant binding is wrong or a policy path is
     /// missing. The child receives only standard input, output and error.
+    ///
+    /// The child's environment comes from the policy's
+    /// [`EnvPolicy`](procage_policy::EnvPolicy) and the variables set or
+    /// removed on `command`, which win (see [`crate::hygiene::environment`]). `Command::env_clear` cannot be
+    /// observed and has no effect: with `EnvPolicy::Passthrough` the
+    /// caller's environment is passed even after it. To pass exactly the
+    /// variables set on `command`, use an empty `EnvPolicy::Allowlist`.
     pub fn spawn(&self, command: &mut Command, grants: &Grants) -> Result<Child, SpawnError> {
         self.spawn_with_fds(command, grants, &[])
     }

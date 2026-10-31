@@ -522,6 +522,13 @@ impl Cage {
     /// without forking when the caller is already sandboxed, when the
     /// apply method failed its probe, or when a grant binding is wrong. The
     /// child receives only standard input, output and error.
+    ///
+    /// The child's environment comes from the policy's
+    /// [`EnvPolicy`](procage_policy::EnvPolicy) and the variables set or
+    /// removed on `command`, which win (see [`crate::hygiene::environment`]). `Command::env_clear` cannot be
+    /// observed and has no effect: with `EnvPolicy::Passthrough` the
+    /// caller's environment is passed even after it. To pass exactly the
+    /// variables set on `command`, use an empty `EnvPolicy::Allowlist`.
     pub fn spawn(&self, command: &mut Command, grants: &Grants) -> Result<Child, SpawnError> {
         self.spawn_with_fds(command, grants, &[])
     }
