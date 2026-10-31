@@ -108,9 +108,9 @@ fn class_outcome(class: HardDenyClass) -> Outcome {
 /// raw Landlock rule with an access that matters for the class whose path
 /// overlaps one of its patterns, or, for names in any directory, a grant
 /// with that access (a grant's path is known only at spawn).
-fn covered(policy: &Policy, paths: &ClassPaths) -> bool {
+fn covered(policy: &Policy, paths: &ClassPaths, write_only: bool) -> bool {
     let matters = |access: Access| match access {
-        Access::Read | Access::Exec => paths.hide,
+        Access::Read | Access::Exec => paths.hide && !write_only,
         Access::Write => true,
         Access::Protect | Access::Hide => false,
     };
@@ -133,6 +133,32 @@ fn covered(policy: &Policy, paths: &ClassPaths) -> bool {
         && policy.grants.iter().any(|g| matters(g.access));
     fs || extra || grants
 }
+
+/// Whether a write rule of `policy` (a file rule or a raw Landlock rule)
+/// reaches `hidden`: its path is `hidden` or contains it. Landlock grants
+/// creating and removing entries beneath a directory, so a hidden path inside
+/// a writable tree cannot be kept out piecewise.
+fn written_around(policy: &Policy, hidden: &AbsPath) -> bool {
+    let fs = policy.fs.iter().any(|rule| {
+        rule.access == Access::Write
+            && match &rule.target {
+                FsTarget::Subpath(p) | FsTarget::Literal(p) => hidden.starts_with_path(p),
+                FsTarget::Glob(_) => true,
+            }
+    });
+    let extra = policy.linux.as_ref().is_some_and(|layer| {
+        layer
+            .landlock_extra
+            .iter()
+            .any(|(p, access)| *access == Access::Write && hidden.starts_with_path(p))
+    });
+    fs || extra
+}
+
+/// The note for hiding by piecewise grants on tier T2.
+const PIECEWISE: &str = "the trees around the hidden path are granted entry by entry as \
+    listed at spawn: entries added later on the way are denied, the directories on the way \
+    cannot be listed, and the hidden path's metadata stays visible";
 
 pub(super) fn lower(
     policy: &Policy,
@@ -184,14 +210,21 @@ pub(super) fn lower(
                     mounts.push(Mount::ReadOnlyBind(p.clone()));
                 }
             }
-            (Access::Hide, FsTarget::Subpath(p) | FsTarget::Literal(p)) => {
-                let outcome = if t1 {
-                    Outcome::Exact
-                } else {
-                    Outcome::Unsupported
-                };
-                if ledger.outcome(construct, outcome, subject, "") {
+            (Access::Hide, FsTarget::Subpath(p) | FsTarget::Literal(p)) if t1 => {
+                if ledger.outcome(construct, Outcome::Exact, subject, "") {
                     mounts.push(Mount::Mask(p.clone()));
+                }
+            }
+            (Access::Hide, FsTarget::Subpath(p) | FsTarget::Literal(p)) => {
+                if written_around(policy, p) {
+                    ledger.outcome(
+                        construct,
+                        Outcome::Unsupported,
+                        subject,
+                        "a write rule reaches the hidden path",
+                    );
+                } else if ledger.outcome(construct, Outcome::Approximated, subject, PIECEWISE) {
+                    hide_by_siblings.push(p.clone());
                 }
             }
             (access, FsTarget::Subpath(p)) => {
@@ -233,7 +266,14 @@ pub(super) fn lower(
     let network = match &policy.net {
         Network::None => {
             ledger.outcome(Construct::NetNone, Outcome::Exact, None, "");
-            seccomp.push(deny(Syscall::Socket));
+            seccomp.push(if policy.ipc.unix_sockets.is_empty() {
+                deny(Syscall::Socket)
+            } else {
+                deny_if(
+                    Syscall::Socket,
+                    Condition::SocketFamilyExcept(vec![AF_UNIX]),
+                )
+            });
             landlock.handled_net = net_handled;
             if t1 {
                 LinuxNetwork::Isolated
@@ -247,33 +287,6 @@ pub(super) fn lower(
             ledger.outcome(Construct::NetLoopback, Outcome::Unsupported, None, "");
             LinuxNetwork::LoopbackRelay {
                 ports: ports.clone(),
-            }
-        }
-        Network::UnixSockets(paths) => {
-            // Below ABI 9 Landlock cannot restrict connecting to pathname
-            // sockets; masking them at spawn is not implemented.
-            let outcome = if abi >= 9 {
-                Outcome::Exact
-            } else {
-                Outcome::Unsupported
-            };
-            if ledger.outcome(Construct::NetUnixSockets, outcome, None, "") {
-                seccomp.push(deny_if(
-                    Syscall::Socket,
-                    Condition::SocketFamilyExcept(vec![AF_UNIX]),
-                ));
-                landlock.handled_net = net_handled;
-                for path in paths {
-                    landlock.rules.push(LandlockRule {
-                        target: RuleTarget::Path(path.clone()),
-                        access: AccessFs::RESOLVE_UNIX,
-                    });
-                }
-            }
-            if t1 {
-                LinuxNetwork::Isolated
-            } else {
-                LinuxNetwork::NoNamespace
             }
         }
         Network::Proxy { http, socks } => {
@@ -290,6 +303,49 @@ pub(super) fn lower(
             LinuxNetwork::NoNamespace
         }
     };
+
+    let mut mask_unix_sockets = false;
+    let mut unix_socket_paths = Vec::new();
+    if !policy.ipc.unix_sockets.is_empty() {
+        let paths = &policy.ipc.unix_sockets;
+        let construct = Construct::IpcUnixSockets;
+        if policy.net == Network::All {
+            // Every socket is reachable anyway.
+            ledger.outcome(construct, Outcome::Exact, None, "");
+        } else if abi >= 9 {
+            if ledger.outcome(construct, Outcome::Exact, None, "") {
+                landlock.scopes = Scopes(landlock.scopes.0 | Scopes::ABSTRACT_UNIX_SOCKET.0);
+                for path in paths {
+                    landlock.rules.push(LandlockRule {
+                        target: RuleTarget::PathIfExists(path.clone()),
+                        access: AccessFs::RESOLVE_UNIX,
+                    });
+                }
+            }
+        } else if t1 {
+            // Pathname sockets cross network namespaces; abstract ones do not.
+            if ledger.outcome(
+                construct,
+                Outcome::Approximated,
+                None,
+                "listening sockets outside the paths that exist at spawn are masked; sockets \
+                 bound later, or in another network namespace, stay reachable",
+            ) {
+                if abi >= 6 {
+                    landlock.scopes = Scopes(landlock.scopes.0 | Scopes::ABSTRACT_UNIX_SOCKET.0);
+                }
+                mask_unix_sockets = true;
+                unix_socket_paths.clone_from(paths);
+            }
+        } else {
+            ledger.outcome(
+                construct,
+                Outcome::Unsupported,
+                None,
+                "below Landlock ABI 9 only a mount namespace can keep other sockets out",
+            );
+        }
+    }
 
     match policy.process.exec {
         Exec::Granted => {}
@@ -436,16 +492,24 @@ pub(super) fn lower(
             continue;
         }
         if let Some(paths) = crate::presets::linux_class_paths(class) {
-            let outcome = match (covered(policy, &paths), t1) {
-                (false, _) => Outcome::Exact,
-                (true, true) => Outcome::Approximated,
-                (true, false) => Outcome::Unsupported,
+            // On T2 a hidden class reached only by read rules is hidden
+            // piecewise, like `Access::Hide`.
+            let (outcome, note) = match (covered(policy, &paths, false), t1) {
+                (false, _) => (Outcome::Exact, ""),
+                (true, true) => (
+                    Outcome::Approximated,
+                    "paths that exist at spawn are masked; paths created later are not covered",
+                ),
+                (true, false) if paths.hide && !covered(policy, &paths, true) => {
+                    (Outcome::Approximated, PIECEWISE)
+                }
+                (true, false) => (Outcome::Unsupported, ""),
             };
             if ledger.outcome(
                 Construct::of_class(class),
                 outcome,
                 Some(class.to_string()),
-                "paths that exist at spawn are masked; paths created later are not covered",
+                note,
             ) {
                 classes.push(paths);
             }
@@ -473,6 +537,8 @@ pub(super) fn lower(
     seccomp.dedup();
     hide_by_siblings.sort();
     hide_by_siblings.dedup();
+    unix_socket_paths.sort();
+    unix_socket_paths.dedup();
 
     Ok(LinuxPlan {
         tier,
@@ -483,7 +549,8 @@ pub(super) fn lower(
         seccomp,
         network,
         no_new_privs: true,
-        mask_unix_sockets: false,
+        mask_unix_sockets,
+        unix_socket_paths,
         hide_by_siblings,
         degradations,
         waivers: policy.waive.iter().copied().collect(),

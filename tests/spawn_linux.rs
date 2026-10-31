@@ -185,6 +185,10 @@ fn op(spec: &str) -> String {
     let (verb, arg) = spec.split_once(':').unwrap_or((spec, ""));
     let r = match verb {
         "read" => std::fs::read(arg).map(drop),
+        "sleep" => {
+            std::thread::sleep(Duration::from_millis(arg.parse().unwrap()));
+            Ok(())
+        }
         "write" => std::fs::write(arg, "x"),
         "append" => std::fs::OpenOptions::new().append(true).open(arg).map(drop),
         "mkdir" => std::fs::create_dir(arg),
@@ -642,10 +646,21 @@ fn t2_cannot_enforce_classes_a_rule_reaches() {
     p.waive.insert(HardDenyClass::TrustHandoff);
     let cage = Cage::with_options(&p, &options(Tier::T2)).unwrap();
     assert!(cage.plan().waivers.contains(&HardDenyClass::TrustHandoff));
-    // A home outside /home is checked by the backend.
+    // A home outside /home is checked by the backend: read only, its
+    // secrets are hidden piecewise (an accepted approximation); written, it
+    // is refused.
     let home = fake_home("us3-t2-home");
     let mut q = base();
     q.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(abs(&home))));
+    let cage = Cage::with_options(&q, &options(Tier::T2).with_home(&home)).unwrap();
+    assert!(
+        cage.plan()
+            .degradations
+            .iter()
+            .any(|d| d.construct == Construct::HdSecrets && d.note.contains("entry by entry"))
+    );
+    q.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(abs(&home))));
+    q.waive.insert(HardDenyClass::TrustHandoff);
     let err = Cage::with_options(&q, &options(Tier::T2).with_home(&home)).unwrap_err();
     assert!(err.to_string().contains("hd-secrets"), "{err}");
 }
@@ -1011,6 +1026,140 @@ fn t1_hide_leaves_nothing_readable() {
             &Grants::new()
         ),
         format!("{EACCES} {EACCES} {EACCES}")
+    );
+}
+
+/// The snapshot options for tier T2.
+fn t2_snapshot() -> CageOptions {
+    CageOptions::default()
+        .with_tier(Tier::T2)
+        .with_lower(LowerOptions::default().accept_spawn_snapshot())
+}
+
+/// On T2 a hidden path inside a read-only tree is kept out piecewise: its
+/// contents stay unreadable, also through a symbolic link next to it, the
+/// rest of the tree reads, and an entry added on the way after the spawn is
+/// denied. Without the snapshot accepted, the policy is refused.
+#[test]
+fn t2_hide_is_piecewise() {
+    let r = scratch("t2-hide");
+    std::fs::create_dir_all(r.join("h")).unwrap();
+    std::fs::create_dir_all(r.join("sub")).unwrap();
+    std::fs::write(r.join("h/f"), "hidden").unwrap();
+    std::fs::write(r.join("file"), "ok").unwrap();
+    std::fs::write(r.join("sub/x"), "ok").unwrap();
+    std::os::unix::fs::symlink(r.join("h"), r.join("link")).unwrap();
+    let mut p = base();
+    p.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(abs(&r))));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Subpath(abs(r.join("h"))),
+    ));
+    let p = child_policy(p);
+    match Cage::with_options(&p, &options(Tier::T2)) {
+        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => {
+            let hide = gaps
+                .iter()
+                .find(|g| g.construct == Construct::FsHide)
+                .unwrap();
+            assert_eq!(hide.kind, GapKind::Approximation);
+            assert!(hide.to_string().contains("accept_spawn_snapshot"), "{hide}");
+        }
+        other => panic!("expected the approximation to be refused: {other:?}"),
+    }
+    let cage = Cage::with_options(&p, &t2_snapshot()).unwrap();
+    let d = r.display();
+    let action = format!(
+        "read:{d}/file;read:{d}/sub/x;read:{d}/h/f;read:{d}/link/f;list:{d}/h;sleep:300;read:{d}/later"
+    );
+    let child = cage
+        .spawn(&mut child_command(&action), &Grants::new())
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    std::fs::write(r.join("later"), "new").unwrap();
+    let first = result(&finish(child, Duration::from_secs(10)));
+    assert_eq!(
+        first,
+        format!("ok ok {EACCES} {EACCES} {EACCES} ok {EACCES}")
+    );
+}
+
+/// On T2 a write rule around a hidden path cannot keep it out: refused.
+#[test]
+fn t2_hide_inside_a_writable_tree_is_refused() {
+    let r = scratch("t2-hide-w");
+    std::fs::create_dir_all(r.join("h")).unwrap();
+    let mut p = base();
+    p.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(abs(&r))));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Subpath(abs(r.join("h"))),
+    ));
+    p.waive.insert(HardDenyClass::TrustHandoff);
+    match Cage::with_options(&child_policy(p), &t2_snapshot()) {
+        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => assert!(
+            gaps.iter()
+                .any(|g| g.construct == Construct::FsHide && g.kind == GapKind::Unsupported),
+            "{gaps:?}"
+        ),
+        other => panic!("expected a gap: {other:?}"),
+    }
+}
+
+/// On T2 a write grant bound around a hidden path fails the spawn, naming
+/// both.
+#[test]
+fn t2_a_write_grant_around_a_hidden_path_fails_the_spawn() {
+    let r = scratch("t2-hide-g");
+    std::fs::create_dir_all(r.join("h")).unwrap();
+    let mut p = base();
+    p.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(abs(&r))));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Subpath(abs(r.join("h"))),
+    ));
+    p.grants.push(Grant {
+        name: GrantName::new("out").unwrap(),
+        access: Access::Write,
+    });
+    p.waive.insert(HardDenyClass::TrustHandoff);
+    let cage = Cage::with_options(&child_policy(p), &t2_snapshot()).unwrap();
+    let err = cage
+        .spawn(&mut child_command("read:/"), &Grants::new().bind("out", &r))
+        .map(drop)
+        .unwrap_err();
+    match &err {
+        SpawnError::Grant(GrantError::Covers { name, hidden }) => {
+            assert_eq!(name, "out");
+            assert_eq!(hidden, &r.join("h"));
+        }
+        other => panic!("{other}"),
+    }
+    assert!(err.to_string().contains("tier T2"), "{err}");
+}
+
+/// On T2, reading everything with the secrets class in force keeps a home's
+/// `.ssh` unreadable while the rest reads.
+#[test]
+fn t2_reading_everything_except_secrets() {
+    let home = scratch("t2-home");
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".ssh/id_ed25519"), "key").unwrap();
+    std::fs::write(home.join("notes"), "ok").unwrap();
+    let mut p = base();
+    p.fs.push(FsRule::new(
+        Access::Read,
+        FsTarget::Subpath(AbsPath::root()),
+    ));
+    let cage = Cage::with_options(&child_policy(p), &t2_snapshot().with_home(&home)).unwrap();
+    let h = home.display();
+    assert_eq!(
+        run_in(
+            &cage,
+            &format!("read:{h}/.ssh/id_ed25519;read:{h}/notes;read:/etc/hostname"),
+            &Grants::new()
+        ),
+        format!("{EACCES} ok ok")
     );
 }
 

@@ -21,7 +21,8 @@ fn policy() -> Policy {
 }
 
 fn cage(p: &Policy) -> Cage {
-    let options = CageOptions::default().with_lower(LowerOptions::default().accept_spawn_masks());
+    let options =
+        CageOptions::default().with_lower(LowerOptions::default().accept_spawn_snapshot());
     Cage::with_options(p, &options).unwrap_or_else(|e| panic!("{e}"))
 }
 

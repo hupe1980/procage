@@ -187,7 +187,7 @@ pub fn reference_policy(construct: Construct) -> Policy {
         Construct::Grant => p.grants.push(grant("scratch", Access::Write)),
         Construct::NetNone => p.net = Network::None,
         Construct::NetLoopback => p.net = Network::Loopback(ports(&[8080])),
-        Construct::NetUnixSockets => p.net = Network::UnixSockets(vec![path("/tmp/agent.sock")]),
+        Construct::IpcUnixSockets => p.ipc.unix_sockets = vec![path("/tmp/agent")],
         Construct::NetProxy => {
             p.net = Network::Proxy {
                 http: Some(port(3128)),
@@ -340,9 +340,7 @@ pub fn shuffled(policy: &Policy, rng: &mut Rng) -> Policy {
     let mut p = policy.clone();
     rng.shuffle(&mut p.fs);
     rng.shuffle(&mut p.grants);
-    if let Network::UnixSockets(paths) = &mut p.net {
-        rng.shuffle(paths);
-    }
+    rng.shuffle(&mut p.ipc.unix_sockets);
     if let Some(layer) = &mut p.seatbelt {
         rng.shuffle(&mut layer.rules);
     }

@@ -35,7 +35,8 @@ fn main() {
         Access::Write,
         FsTarget::Subpath(workspace_path),
     ));
-    let options = CageOptions::default().with_lower(LowerOptions::default().accept_spawn_masks());
+    let options =
+        CageOptions::default().with_lower(LowerOptions::default().accept_spawn_snapshot());
     let cage = Cage::with_options(&policy, &options).unwrap_or_else(|e| fail(&e));
 
     let mut command = Command::new(program);

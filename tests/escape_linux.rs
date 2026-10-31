@@ -35,6 +35,7 @@ use procage::policy::{
 };
 
 const EPERM: i32 = 1;
+const ECONNREFUSED: i32 = 111;
 const EACCES: i32 = 13;
 const EROFS: i32 = 30;
 const EBUSY: i32 = 16;
@@ -249,6 +250,18 @@ fn op(spec: &str) -> String {
             arg.parse::<u16>().unwrap(),
         ))),
         "unix" => errno_of(std::os::unix::net::UnixStream::connect(arg)),
+        "unix-serve" => match std::os::unix::net::UnixListener::bind(arg) {
+            Ok(listener) => match std::os::unix::net::UnixStream::connect(arg) {
+                Ok(_) => errno_of(listener.accept()),
+                Err(e) => format!("connect-{}", e.raw_os_error().unwrap_or(-1)),
+            },
+            Err(e) => format!("bind-{}", e.raw_os_error().unwrap_or(-1)),
+        },
+        "abstract" => {
+            use std::os::linux::net::SocketAddrExt;
+            let addr = std::os::unix::net::SocketAddr::from_abstract_name(arg).unwrap();
+            errno_of(std::os::unix::net::UnixStream::connect_addr(&addr))
+        }
         "parent" => {
             let ppid = std::os::unix::process::parent_id();
             errno_of(std::fs::read(format!("/proc/{ppid}/{arg}")))
@@ -533,9 +546,8 @@ fn r08_a_hard_link_to_a_hidden_file_is_refused() {
 
 /// Without network access the child reaches neither a loopback port nor a
 /// unix-domain socket in a readable directory; with unrestricted network it
-/// reaches the socket. Policies Linux cannot enforce in this release
-/// (loopback ports, unix-socket allowlists below Landlock ABI 9) are
-/// refused.
+/// reaches the socket. Loopback ports, which Linux cannot enforce in this
+/// release, are refused.
 #[test]
 fn r09_daemons_are_unreachable_without_network_access() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -562,14 +574,54 @@ fn r09_daemons_are_unreachable_without_network_access() {
             gaps.iter().any(|g| g.0 == Construct::NetLoopback),
             "{tier} {gaps:?}"
         );
-        if probe().landlock_abi < 9 {
-            p.net = Network::UnixSockets(vec![abs(&sock)]);
-            let gaps = refused(&p, &options(tier));
-            assert!(
-                gaps.iter().any(|g| g.0 == Construct::NetUnixSockets),
-                "{tier} {gaps:?}"
-            );
+    }
+}
+
+/// `ipc.unix_sockets` lets the child bind and connect under its paths only.
+/// On T1 a daemon socket elsewhere (masked at spawn), a host abstract socket
+/// (another network namespace) and TCP stay out, and the setting needs the
+/// snapshot accepted; T2 refuses it below Landlock ABI 9.
+#[test]
+fn r09_unix_sockets_reach_only_their_paths() {
+    use std::os::linux::net::SocketAddrExt;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let d = scratch("r09-ipc");
+    let ws = d.join("ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    let sock = d.join("daemon.sock");
+    let _daemon = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+    let name = format!("procage-r09-{}", std::process::id());
+    let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
+    let _abstract = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+    let attempt = format!(
+        "unix-serve:{};unix:{};abstract:{name};connect:{port}",
+        ws.join("s.sock").display(),
+        sock.display()
+    );
+    for tier in tiers() {
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, &d));
+        p.fs.push(rule(Access::Write, &ws));
+        p.ipc.unix_sockets = vec![abs(&ws)];
+        let gaps = refused(&p, &options(tier));
+        assert!(
+            gaps.iter().any(|g| g.0 == Construct::IpcUnixSockets),
+            "{tier} {gaps:?}"
+        );
+        if tier == Tier::T2 && probe().landlock_abi < 9 {
+            continue;
         }
+        let snapshot = CageOptions::default()
+            .with_tier(tier)
+            .with_lower(LowerOptions::default().accept_spawn_snapshot());
+        let cage = Cage::with_options(&p, &snapshot).unwrap();
+        let got = run_in(&cage, &attempt, &Grants::new());
+        assert_eq!(
+            got,
+            format!("ok {ECONNREFUSED} {ECONNREFUSED} {EPERM}"),
+            "{tier}"
+        );
     }
 }
 

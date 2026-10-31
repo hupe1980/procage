@@ -79,6 +79,11 @@ fn extra_patterns(class: &ClassPaths, homes: &[PathBuf]) -> Vec<String> {
         .collect()
 }
 
+/// The note for hiding by piecewise grants on tier T2 (as the lowering's).
+const PIECEWISE: &str = "the trees around the hidden path are granted entry by entry as listed \
+    at spawn: entries added later on the way are denied, the directories on the way cannot be \
+    listed, and the hidden path's metadata stays visible";
+
 /// Whether access with write rights (`writes`) or any access reaches a path
 /// of `class` matching `patterns`.
 fn reaches(class: &ClassPaths, patterns: &[String], path: &Path, writes: bool) -> bool {
@@ -104,12 +109,25 @@ pub(crate) fn home_gaps(
             continue;
         }
         let construct = Construct::of_class(class.class);
-        if plan.tier == Tier::T1 && options.allow_degrade.contains(&construct) {
+        // T1 masks; T2 hides piecewise, which a write rule defeats.
+        let written = rules
+            .iter()
+            .any(|(p, w)| *w && reaches(class, &patterns, p, true));
+        let note = match plan.tier {
+            Tier::T1 => {
+                Some("paths that exist at spawn are masked; paths created later are not covered")
+            }
+            Tier::T2 if class.hide && !written => Some(PIECEWISE),
+            Tier::T2 => None,
+        };
+        if let Some(note) = note
+            && options.allow_degrade.contains(&construct)
+        {
             if !plan.degradations.iter().any(|d| d.construct == construct) {
                 plan.degradations.push(Degradation {
                     construct,
                     target,
-                    note: "paths that exist at spawn are masked; paths created later are not covered",
+                    note,
                 });
             }
             continue;
@@ -117,7 +135,7 @@ pub(crate) fn home_gaps(
         gaps.push(CapabilityGap {
             construct,
             target,
-            kind: if plan.tier == Tier::T1 {
+            kind: if note.is_some() {
                 GapKind::Approximation
             } else {
                 GapKind::Unsupported

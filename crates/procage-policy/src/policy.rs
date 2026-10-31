@@ -104,8 +104,6 @@ pub enum Network {
     None,
     /// Connect to and listen on the loopback interface.
     Loopback(Ports),
-    /// Connect to these unix-domain sockets (at least one).
-    UnixSockets(Vec<AbsPath>),
     /// Connect only to a proxy listening on loopback.
     Proxy {
         /// HTTP (CONNECT) proxy port.
@@ -209,6 +207,15 @@ pub struct Ipc {
     pub posix_shm: bool,
     /// System V IPC (shared memory, semaphores, message queues).
     pub sysv: bool,
+    /// Unix-domain sockets at or under these paths: the child may create
+    /// Unix sockets and bind, listen on and connect to pathname sockets
+    /// here, whatever [`Network`] says. Binding also needs write access to
+    /// the directory, as for any new file. Socket addresses are short (104
+    /// bytes on macOS, 108 on Linux), so keep these paths short. On Linux
+    /// below Landlock ABI 9 this
+    /// is approximated on tier T1 (listening sockets elsewhere are masked at
+    /// spawn) and refused on tier T2; see the lowering table.
+    pub unix_sockets: Vec<AbsPath>,
 }
 
 /// The child's environment. Carried into the plan for the spawn backend.
@@ -485,8 +492,6 @@ pub enum PolicyError {
     EmptyProxy,
     /// `Ports::List` with no port.
     EmptyPorts,
-    /// `Network::UnixSockets` with no socket.
-    EmptyUnixSockets,
     /// A grant whose access is protect or hide.
     GrantAccess {
         /// The grant.
@@ -519,7 +524,6 @@ impl fmt::Display for PolicyError {
                 f.write_str("proxy network names neither an http nor a socks port")
             }
             PolicyError::EmptyPorts => f.write_str("a port list is empty"),
-            PolicyError::EmptyUnixSockets => f.write_str("unix-socket network names no socket"),
             PolicyError::GrantAccess { name } => {
                 write!(f, "grant {name} must give read, write or exec")
             }
@@ -559,9 +563,6 @@ impl Policy {
                 socks: None,
             } => errors.push(PolicyError::EmptyProxy),
             Network::Loopback(ports) if !ports_ok(ports) => errors.push(PolicyError::EmptyPorts),
-            Network::UnixSockets(paths) if paths.is_empty() => {
-                errors.push(PolicyError::EmptyUnixSockets)
-            }
             _ => {}
         }
         let mut names = BTreeSet::new();
@@ -632,7 +633,8 @@ mod tests {
             p.ipc,
             Ipc {
                 posix_shm: false,
-                sysv: false
+                sysv: false,
+                unix_sockets: vec![],
             }
         );
         assert_eq!(p.env, EnvPolicy::Allowlist(vec![]));

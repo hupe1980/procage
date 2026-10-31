@@ -539,9 +539,11 @@ pub struct LinuxPlan {
     pub network: LinuxNetwork,
     /// Set `no_new_privs` before applying (always true).
     pub no_new_privs: bool,
-    /// Mask the unix sockets found under granted paths at spawn
-    /// (approximation for unix-socket allowlists below ABI 9).
+    /// Mask the listening unix sockets outside `unix_socket_paths` at spawn
+    /// (tier T1 below ABI 9).
     pub mask_unix_sockets: bool,
+    /// The paths of `ipc.unix_sockets`, for the masks.
+    pub unix_socket_paths: Vec<AbsPath>,
     /// Paths hidden by allowing their siblings as listed at spawn
     /// (approximation for hide on T2).
     pub hide_by_siblings: Vec<AbsPath>,

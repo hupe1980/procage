@@ -80,20 +80,33 @@
 //!
 //! **Reading everything except secrets.** A policy that reads `/` reaches
 //! the paths of the `secrets`, `trust-handoff` and `persistence` classes.
-//! On tier T1 the paths that exist at spawn are masked, an approximation the
-//! caller accepts with
-//! [`LowerOptions::accept_spawn_masks`](procage_policy::LowerOptions::accept_spawn_masks);
-//! on tier T2 the classes cannot be enforced inside a readable tree, and the
-//! policy is refused unless they are waived.
+//! On tier T1 the paths that exist at spawn are masked. On tier T2 a hidden
+//! path (an `Access::Hide` rule, or the secrets class) that no write rule
+//! reaches is kept out by granting the trees around it entry by entry, as
+//! listed at spawn: entries added later on the way are denied, the
+//! directories on the way cannot be listed, symbolic links on the way are
+//! not followed, and `stat` of the hidden path still works. A hidden or
+//! protected path inside a writable tree cannot be kept out on T2, and a
+//! write grant bound around one fails the spawn. Each of these is an
+//! approximation the caller accepts with
+//! [`LowerOptions::accept_spawn_snapshot`](procage_policy::LowerOptions::accept_spawn_snapshot).
+//!
+//! **Unix sockets.** `ipc.unix_sockets` allows only `AF_UNIX` sockets when
+//! the network is otherwise off. On tier T1 (below Landlock ABI 9),
+//! abstract sockets stay inside the cage's network namespace and every
+//! listening socket outside the allowed paths, as listed in `/proc/net/unix`
+//! at spawn, is masked; sockets bound later outside them stay reachable (an
+//! approximation accepted with the same option). Tier T2 cannot restrict
+//! pathname sockets and refuses the setting.
 //!
 //! **Not yet done** (later features):
 //!
 //! - no PID namespace or fresh `/proc`; signal scoping needs Landlock ABI 6;
 //! - with `Lifetime::Tree`, a descendant that double-forks and starts its
 //!   own session is reparented away from the child and outlives the run;
-//! - loopback and proxy networks need a relay (a gap on both tiers); a
-//!   unix-socket allowlist needs Landlock ABI 9; hide on T2 and glob rules
-//!   are gaps;
+//! - loopback and proxy networks need a relay (a gap on both tiers);
+//!   Unix-socket restrictions on T2 need Landlock ABI 9; protect, and hide
+//!   inside a writable tree, on T2 and glob rules are gaps;
 //! - Landlock rights beyond ABI 8 are not used: they have not been verified
 //!   on a kernel;
 //! - the tests have run on one kernel (7.0.14, aarch64, Docker Desktop);
@@ -306,6 +319,14 @@ pub enum GrantError {
     /// The policy declares the `tmpdir` grant, which [`Cage::exec`] cannot
     /// provide: no handle would remove the directory.
     TmpdirWithExec,
+    /// On tier T2, a grant with write access was bound around a hidden
+    /// path, which piecewise grants cannot keep out.
+    Covers {
+        /// The grant.
+        name: String,
+        /// The hidden path inside it.
+        hidden: PathBuf,
+    },
     /// On tier T2, the bound path reaches paths of a hard-deny class that
     /// Landlock cannot deny inside it.
     CoversClass {
@@ -329,6 +350,12 @@ impl fmt::Display for GrantError {
                     path.display()
                 )
             }
+            GrantError::Covers { name, hidden } => write!(
+                f,
+                "grant {name} gives write access around {}, which tier T2 cannot keep hidden \
+                 inside a writable tree: bind the grant elsewhere, or use tier T1",
+                hidden.display()
+            ),
             GrantError::TmpdirWithExec => write!(
                 f,
                 "the tmpdir grant needs a handle that removes the directory, and Cage::exec \
@@ -713,16 +740,24 @@ impl Cage {
             }
         }
         let bound = self.bind(&grants, &declared)?;
-        let ruleset = spawn::ruleset(&self.plan, &bound)?;
+        let ruleset = spawn::ruleset(
+            &self.plan,
+            &bound,
+            &self.hidden_piecewise(),
+            self.walk_limit,
+        )?;
         let isolate = match self.plan.namespaces {
             Some(ns) => {
                 let writable = spawn::writable(&self.plan, &bound)?;
-                let covers = classes::t1_covers(
+                let mut covers = classes::t1_covers(
                     &self.plan.classes,
                     &self.homes,
                     &writable,
                     self.walk_limit,
                 )?;
+                if self.plan.mask_unix_sockets {
+                    covers.extend(self.socket_masks(&covers)?);
+                }
                 let (uid, gid) = sys::ids();
                 let net = if ns.net { libc::CLONE_NEWNET } else { 0 };
                 Some(sys::Isolate {
@@ -759,6 +794,58 @@ impl Cage {
 
     /// Resolves each binding: declared, existing, and on T2 not reaching a
     /// hard-deny class.
+    /// The paths kept out piecewise on tier T2: hidden rules, and the
+    /// existing paths of the hidden classes in force.
+    fn hidden_piecewise(&self) -> Vec<PathBuf> {
+        use std::os::unix::ffi::OsStrExt;
+        if self.plan.namespaces.is_some() {
+            return Vec::new();
+        }
+        let to_path =
+            |p: &procage_policy::AbsPath| PathBuf::from(std::ffi::OsStr::from_bytes(p.as_bytes()));
+        let mut out: Vec<PathBuf> = self.plan.hide_by_siblings.iter().map(to_path).collect();
+        for class in self.plan.classes.iter().filter(|c| c.hide) {
+            for home in &self.homes {
+                out.extend(class.home.iter().map(|rel| home.join(rel)));
+            }
+            out.extend(class.system.iter().map(to_path));
+        }
+        out.retain(|p| std::fs::symlink_metadata(p).is_ok());
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// Masks for the listening sockets outside `ipc.unix_sockets` (tier T1
+    /// below Landlock ABI 9), except those under a path already hidden.
+    fn socket_masks(
+        &self,
+        covers: &[(PathBuf, classes::Cover)],
+    ) -> Result<Vec<(PathBuf, classes::Cover)>, SpawnError> {
+        use std::os::unix::ffi::OsStrExt;
+        let to_path =
+            |p: &procage_policy::AbsPath| PathBuf::from(std::ffi::OsStr::from_bytes(p.as_bytes()));
+        let allowed: Vec<PathBuf> = self
+            .plan
+            .unix_socket_paths
+            .iter()
+            .map(|p| std::fs::canonicalize(to_path(p)).unwrap_or_else(|_| to_path(p)))
+            .collect();
+        let mut masked: Vec<PathBuf> = covers
+            .iter()
+            .filter(|(_, c)| matches!(c, classes::Cover::Hide))
+            .map(|(p, _)| p.clone())
+            .collect();
+        masked.extend(self.plan.mounts.iter().filter_map(|m| match m {
+            procage_policy::linux::Mount::Mask(p) => Some(to_path(p)),
+            _ => None,
+        }));
+        Ok(spawn::foreign_sockets(&allowed, &masked)?
+            .into_iter()
+            .map(|p| (p, classes::Cover::Hide))
+            .collect())
+    }
+
     fn bind(
         &self,
         grants: &Grants,

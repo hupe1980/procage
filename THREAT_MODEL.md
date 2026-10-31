@@ -51,11 +51,16 @@ It does **not** yet:
 - provide pseudo-terminals (its macOS base profile, V1, is curated for
   macOS 26.6.2 and grants nothing in the user's home);
 - deny secrets, trust-handoff files and persistence locations on Linux
-  where a rule reaches them, except by masking the paths that exist at
-  spawn on tier T1 (an approximation the caller must accept by name); on
-  tier T2 such a policy is refused unless the class is waived;
-- give Linux children a PID namespace, loopback or proxy networking, or a
-  unix-socket allowlist below Landlock ABI 9.
+  where a rule reaches them, except by approximations the caller must
+  accept: on tier T1 the paths that exist at spawn are masked; on tier T2
+  secrets that only read rules reach are hidden by granting the trees
+  around them entry by entry, and any class a write rule reaches is
+  refused unless waived;
+- hide or protect a path inside a writable tree on Linux tier T2;
+- give Linux children a PID namespace or loopback or proxy networking, or
+  restrict which Unix sockets they reach on tier T2 below Landlock ABI 9
+  (on tier T1, listening sockets outside the allowed paths are masked at
+  spawn, which does not cover sockets bound later).
 
 Do not rely on any release before 0.1.0 to contain a process.
 
@@ -198,7 +203,7 @@ why the numbering has gaps.
 | R-06 | Work handed to unsandboxed services | Launch Services, Apple events, the pasteboard or XPC services act on the child's behalf outside the sandbox. | macOS | mitigate | mitigated | tests/escape_macos.rs::r06_service_handoff_lookups_are_refused | — |
 | R-07 | Trust handoff | The child writes files that an unsandboxed program later runs or trusts: version-control config and hooks, shell startup files, tool config, programs on the search path. | macOS, Linux | harness | documented | tests/escape_macos.rs::r07_trust_handoff_files_are_refused_in_a_writable_workspace, tests/escape_linux.rs::r07_trust_handoff_files_are_protected_in_a_writable_workspace | — |
 | R-08 | Pre-existing hard links | A hard link created before the run gives a protected file a second name that a literal-path deny does not cover. | macOS, Linux | detect | planned | — | — |
-| R-09 | Local daemons | Loopback ports or Unix-domain sockets reach privileged local daemons, such as a container engine's socket. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r09_other_ports_and_daemon_sockets_are_unreachable, tests/escape_linux.rs::r09_daemons_are_unreachable_without_network_access | — |
+| R-09 | Local daemons | Loopback ports or Unix-domain sockets reach privileged local daemons, such as a container engine's socket. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r09_other_ports_and_daemon_sockets_are_unreachable, tests/escape_macos.rs::r09_unix_sockets_reach_only_their_paths, tests/escape_linux.rs::r09_daemons_are_unreachable_without_network_access, tests/escape_linux.rs::r09_unix_sockets_reach_only_their_paths | — |
 | R-10 | Shared temporary directory | Runs that share the per-user temporary directory can read or change each other's files. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r10_runs_do_not_share_temporary_files, tests/escape_linux.rs::r10_runs_do_not_share_temporary_files | — |
 | R-11 | Unsandboxed exec modifier | A Seatbelt profile modifier that runs an exec'd program without any sandbox reaches the compiled profile. | macOS | mitigate | mitigated | tests/escape_macos.rs::r11_executed_programs_stay_caged | KF-M12 |
 | R-12 | Firmlink spelling | A rule spelled with the data-volume path does not cover the path as programs see it. | macOS | mitigate | mitigated | tests/escape_macos.rs::r12_a_data_volume_spelling_protects_the_visible_path | KF-M21 |

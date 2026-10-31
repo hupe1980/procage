@@ -110,7 +110,6 @@ constructs! {
     Grant => "grant",
     NetNone => "net-none",
     NetLoopback => "net-loopback",
-    NetUnixSockets => "net-unix-sockets",
     NetProxy => "net-proxy",
     NetAll => "net-all",
     ExecAny => "exec-any",
@@ -122,6 +121,7 @@ constructs! {
     SignalsNone => "signals-none",
     PosixShm => "posix-shm",
     SysvIpc => "sysv-ipc",
+    IpcUnixSockets => "ipc-unix-sockets",
     SeatbeltLayer => "seatbelt-layer",
     LinuxLayer => "linux-layer",
     Hygiene => "hygiene",
@@ -141,6 +141,17 @@ constructs! {
 }
 
 impl Construct {
+    /// The constructs whose approximation depends on the file system as
+    /// procage reads it at spawn, accepted together by
+    /// [`LowerOptions::accept_spawn_snapshot`].
+    pub const SPAWN_SNAPSHOT: &'static [Construct] = &[
+        Construct::HdSecrets,
+        Construct::HdTrustHandoff,
+        Construct::HdPersistence,
+        Construct::FsHide,
+        Construct::IpcUnixSockets,
+    ];
+
     /// The construct of a hard-deny class.
     pub fn of_class(class: HardDenyClass) -> Construct {
         match class {
@@ -246,6 +257,11 @@ impl fmt::Display for CapabilityGap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} on {}: ", self.construct, self.target)?;
         match &self.kind {
+            GapKind::Approximation if Construct::SPAWN_SNAPSHOT.contains(&self.construct) => f
+                .write_str(
+                    "only approximated from the file system as it is at spawn (accept it with \
+                     LowerOptions::accept_spawn_snapshot, or allow it by name)",
+                )?,
             GapKind::Approximation => {
                 f.write_str("only approximated (allow it by name to accept)")?
             }
@@ -377,17 +393,29 @@ impl LowerOptions {
         self
     }
 
-    /// These options, also accepting the spawn-time masks of the data-driven
-    /// hard-deny classes (`secrets`, `trust-handoff`, `persistence`): on
-    /// Linux tier T1, where a rule reaches their paths, the paths that exist
-    /// at spawn are masked and paths created later are not covered. This is
-    /// what reading the whole file system except secrets needs there. No
-    /// other approximation is accepted, and each accepted one is still
-    /// listed in the plan's degradations.
-    pub fn accept_spawn_masks(self) -> Self {
-        self.allow(Construct::HdSecrets)
-            .allow(Construct::HdTrustHandoff)
-            .allow(Construct::HdPersistence)
+    /// These options, also accepting every approximation that depends on
+    /// the file system as procage reads it at spawn
+    /// ([`Construct::SPAWN_SNAPSHOT`]):
+    ///
+    /// - the data-driven hard-deny classes (`secrets`, `trust-handoff`,
+    ///   `persistence`): on Linux tier T1, where a rule reaches their paths,
+    ///   the paths that exist at spawn are masked; on tier T2 the secrets
+    ///   class, reached only by read rules, is hidden like `fs-hide`;
+    /// - `fs-hide` on tier T2: the trees around a hidden path are granted
+    ///   piecewise, as listed at spawn;
+    /// - `ipc-unix-sockets` on tier T1 below Landlock ABI 9: listening
+    ///   sockets outside the paths are masked at spawn.
+    ///
+    /// Paths created after the spawn are not covered by a mask; entries
+    /// created on the way to a hidden path are denied. No other
+    /// approximation is accepted, and each accepted one is still listed in
+    /// the plan's degradations. This is what reading the whole file system
+    /// except secrets needs on Linux.
+    pub fn accept_spawn_snapshot(mut self) -> Self {
+        for &construct in Construct::SPAWN_SNAPSHOT {
+            self = self.allow(construct);
+        }
+        self
     }
 
     /// These options with the run tag `tag`.

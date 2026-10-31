@@ -246,24 +246,6 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             ));
             allow.push(socket());
         }
-        Network::UnixSockets(paths) => {
-            ledger.outcome(Construct::NetUnixSockets, Outcome::Exact, None, "");
-            for path in paths {
-                let r = Rule::new(
-                    Effect::Allow,
-                    &["network-outbound"],
-                    vec![Filter::RemoteUnixSocket(path.as_bytes().to_vec())],
-                );
-                push(
-                    &mut ledger,
-                    &mut allow,
-                    Construct::NetUnixSockets,
-                    Some(path.to_string()),
-                    r,
-                );
-            }
-            allow.push(socket());
-        }
         Network::Proxy { http, socks } => {
             ledger.outcome(Construct::NetProxy, Outcome::Exact, None, "");
             let filters = http
@@ -339,6 +321,36 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
     if policy.ipc.sysv {
         ledger.outcome(Construct::SysvIpc, Outcome::Exact, None, "");
         allow.push(Rule::new(Effect::Allow, &["ipc-sysv*"], vec![]));
+    }
+    // A path filter on the network operations matches Unix-socket
+    // addresses only, so IP stays as the network setting says.
+    const UNIX_OPS: [&str; 3] = ["network-bind", "network-inbound", "network-outbound"];
+    if !policy.ipc.unix_sockets.is_empty() {
+        ledger.outcome(Construct::IpcUnixSockets, Outcome::Exact, None, "");
+        allow.push(Rule::new(Effect::Allow, &["system-socket"], vec![]));
+        for path in &policy.ipc.unix_sockets {
+            let r = Rule::new(
+                Effect::Allow,
+                &UNIX_OPS,
+                vec![Filter::Subpath(path.as_bytes().to_vec())],
+            );
+            push(
+                &mut ledger,
+                &mut allow,
+                Construct::IpcUnixSockets,
+                Some(path.to_string()),
+                r,
+            );
+        }
+        // A hidden path stays unreachable through its sockets too.
+        for rule in policy.fs.iter().filter(|r| r.access == Access::Hide) {
+            let filter = match &rule.target {
+                FsTarget::Subpath(p) => Filter::Subpath(p.as_bytes().to_vec()),
+                FsTarget::Literal(p) => Filter::Literal(p.as_bytes().to_vec()),
+                FsTarget::Glob(_) => continue,
+            };
+            within.push(Rule::new(Effect::Deny, &UNIX_OPS, vec![filter]));
+        }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
     if policy.base == Base::V1 {

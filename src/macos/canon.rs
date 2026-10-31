@@ -19,7 +19,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use procage_policy::seatbelt::{Effect, Filter, Layer, Operation, Rule};
-use procage_policy::{AbsPath, FsTarget, Glob, Network, Policy};
+use procage_policy::{AbsPath, FsTarget, Glob, Policy};
 
 use super::{PathRewrite, SpawnError};
 
@@ -260,10 +260,8 @@ pub(crate) fn resolve_policy(policy: &Policy) -> Result<(Policy, Vec<PathRewrite
             FsTarget::Glob(g) => FsTarget::Glob(r.glob(g)?),
         };
     }
-    if let Network::UnixSockets(paths) = &mut out.net {
-        for p in paths.iter_mut() {
-            *p = r.path(p)?;
-        }
+    for p in &mut out.ipc.unix_sockets {
+        *p = r.path(p)?;
     }
     if let Some(layer) = &mut out.seatbelt {
         for rule in &mut layer.rules {

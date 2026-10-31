@@ -205,6 +205,13 @@ fn op(spec: &str) -> String {
             arg.parse::<u16>().unwrap(),
         ))),
         "unix" => errno_of(std::os::unix::net::UnixStream::connect(arg)),
+        "unix-serve" => match std::os::unix::net::UnixListener::bind(arg) {
+            Ok(listener) => match std::os::unix::net::UnixStream::connect(arg) {
+                Ok(_) => errno_of(listener.accept()),
+                Err(e) => format!("connect-{}", e.raw_os_error().unwrap_or(-1)),
+            },
+            Err(e) => format!("bind-{}", e.raw_os_error().unwrap_or(-1)),
+        },
         "fcntl" => match std::fs::File::open(arg) {
             Ok(f) => {
                 let fd = f.as_raw_fd();
@@ -533,9 +540,40 @@ fn r09_other_ports_and_daemon_sockets_are_unreachable() {
     assert_eq!(in_child(&attempt, &p), format!("ok {EPERM} {EPERM}"));
     p.net = Network::None;
     assert_eq!(in_child(&attempt, &p), format!("{EPERM} {EPERM} {EPERM}"));
-    p.net = Network::UnixSockets(vec![abs(&sock)]);
+    p.ipc.unix_sockets = vec![abs(&d)];
     let control = in_child(&format!("unix:{}", sock.display()), &p);
     assert_eq!(control, "ok");
+}
+
+/// `ipc.unix_sockets` lets the child bind and connect under its paths only:
+/// a daemon socket elsewhere, one under a hidden path and TCP stay out.
+#[test]
+fn r09_unix_sockets_reach_only_their_paths() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    // Unix socket addresses hold at most 104 bytes on macOS.
+    let d = PathBuf::from(format!("/private/tmp/pc-r09-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let ws = d.join("ws");
+    std::fs::create_dir_all(ws.join("private")).unwrap();
+    let sock = d.join("daemon.sock");
+    let _daemon = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+    let hidden = ws.join("private/agent.sock");
+    let _agent = std::os::unix::net::UnixListener::bind(&hidden).unwrap();
+    let mut p = policy();
+    p.fs.push(rule(Access::Read, &d));
+    p.fs.push(rule(Access::Write, &ws));
+    p.fs.push(rule(Access::Hide, ws.join("private")));
+    p.ipc.unix_sockets = vec![abs(&ws)];
+    let attempt = format!(
+        "unix-serve:{};unix:{};unix:{};connect:{port}",
+        ws.join("s.sock").display(),
+        sock.display(),
+        hidden.display()
+    );
+    let got = in_child(&attempt, &p);
+    let _ = std::fs::remove_dir_all(&d);
+    assert_eq!(got, format!("ok {EPERM} {EPERM} {EPERM}"));
 }
 
 // ---- R-10 Shared temporary directory ----

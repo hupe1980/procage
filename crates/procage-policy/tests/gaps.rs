@@ -31,8 +31,9 @@ fn every_gap_is_listed_and_no_plan_is_returned() {
             (Construct::FsGlob, GapKind::Unsupported),
             (Construct::FsProtect, GapKind::Unsupported),
             (Construct::NetLoopback, GapKind::Unsupported),
-            // A glob read rule is taken to reach anything.
-            (Construct::HdSecrets, GapKind::Unsupported),
+            // A glob read rule is taken to reach anything; no write rule
+            // reaches the secrets, so T2 hides them piecewise (approximated).
+            (Construct::HdSecrets, GapKind::Approximation),
             // A write rule reaches `.git/hooks` and the other names, which
             // T2 cannot deny inside it.
             (Construct::HdTrustHandoff, GapKind::Unsupported),
@@ -128,8 +129,6 @@ fn contradictions_are_reported_together() {
     let mut q = Policy::default();
     q.net = Network::Loopback(Ports::List(Default::default()));
     assert_eq!(q.validate(), Err(vec![PolicyError::EmptyPorts]));
-    q.net = Network::UnixSockets(vec![]);
-    assert_eq!(q.validate(), Err(vec![PolicyError::EmptyUnixSockets]));
 }
 
 #[test]
@@ -258,35 +257,173 @@ fn the_linux_lifetime_lock_follows_the_setting() {
 }
 
 #[test]
-fn reading_everything_on_t1_needs_exactly_the_spawn_masks() {
-    let t1 = Target::Linux {
-        tier: Tier::T1,
-        landlock_abi: 6,
-    };
+fn reading_everything_needs_exactly_the_spawn_snapshot() {
     let mut p = Policy::default();
     p.fs.push(subpath(Access::Read, "/"));
-    let Err(LowerError::Gaps(gaps)) = lower(&p, t1, &LowerOptions::default()) else {
-        panic!("reading / on T1 must need an acceptance");
-    };
-    let named: Vec<Construct> = gaps.iter().map(|g| g.construct).collect();
-    assert!(named.contains(&Construct::HdSecrets), "{named:?}");
-    let options = LowerOptions::default().accept_spawn_masks();
-    assert_eq!(
-        options.allow_degrade.iter().copied().collect::<Vec<_>>(),
-        [
-            Construct::HdSecrets,
-            Construct::HdTrustHandoff,
-            Construct::HdPersistence
-        ]
-    );
-    let plan = lower(&p, t1, &options).unwrap();
-    let accepted: Vec<Construct> = plan.degradations().iter().map(|d| d.construct).collect();
-    assert!(accepted.contains(&Construct::HdSecrets), "{accepted:?}");
-    assert!(accepted.iter().all(|c| options.allow_degrade.contains(c)));
+    let options = LowerOptions::default().accept_spawn_snapshot();
+    let mut accepted: Vec<Construct> = options.allow_degrade.iter().copied().collect();
+    accepted.sort();
+    let mut snapshot = Construct::SPAWN_SNAPSHOT.to_vec();
+    snapshot.sort();
+    assert_eq!(accepted, snapshot);
+    assert_eq!(snapshot.len(), 5);
+    for tier in [Tier::T1, Tier::T2] {
+        let target = Target::Linux {
+            tier,
+            landlock_abi: 6,
+        };
+        let Err(LowerError::Gaps(gaps)) = lower(&p, target, &LowerOptions::default()) else {
+            panic!("{tier}: reading / must need an acceptance");
+        };
+        let secrets = gaps
+            .iter()
+            .find(|g| g.construct == Construct::HdSecrets)
+            .unwrap_or_else(|| panic!("{tier}: {gaps:?}"));
+        assert!(
+            secrets.to_string().contains("accept_spawn_snapshot"),
+            "{secrets}"
+        );
+        let plan = lower(&p, target, &options).unwrap();
+        let degraded: Vec<Construct> = plan.degradations().iter().map(|d| d.construct).collect();
+        assert!(
+            degraded.contains(&Construct::HdSecrets),
+            "{tier}: {degraded:?}"
+        );
+        assert!(degraded.iter().all(|c| snapshot.contains(c)));
+    }
     // Any other approximation is still refused.
     p.fs.push(FsRule::new(
         Access::Read,
         FsTarget::Glob(glob("/src/**/*.rs")),
     ));
-    assert!(lower(&p, t1, &options).is_err());
+    assert!(lower(&p, T2, &options).is_err());
+}
+
+fn linux_plan(p: &Policy, target: Target) -> Result<LinuxPlan, LowerError> {
+    match lower(p, target, &LowerOptions::default().accept_spawn_snapshot())? {
+        Plan::Linux(plan) => Ok(plan),
+        Plan::Seatbelt(_) => unreachable!(),
+    }
+}
+
+fn refused_construct(result: Result<LinuxPlan, LowerError>) -> Vec<Construct> {
+    match result {
+        Err(LowerError::Gaps(gaps)) => gaps.iter().map(|g| g.construct).collect(),
+        other => panic!("expected gaps, got {other:?}"),
+    }
+}
+
+#[test]
+fn hiding_on_t2_is_piecewise_unless_written_around() {
+    let mut p = Policy::default();
+    p.fs.push(subpath(Access::Read, "/data"));
+    p.fs.push(subpath(Access::Hide, "/data/secret"));
+    let plan = linux_plan(&p, T2).unwrap();
+    assert_eq!(plan.hide_by_siblings, [path("/data/secret")]);
+    assert!(
+        plan.degradations
+            .iter()
+            .any(|d| d.construct == Construct::FsHide)
+    );
+    // A write rule around the hidden path, or on it, cannot be kept out.
+    for writable in ["/data", "/data/secret"] {
+        let mut q = p.clone();
+        q.fs.push(subpath(Access::Write, writable));
+        assert!(refused_construct(linux_plan(&q, T2)).contains(&Construct::FsHide));
+    }
+    // A write rule elsewhere, or below the hidden path, is fine (the
+    // trust-handoff class, which any write rule reaches on T2, is waived).
+    let mut q = p.clone();
+    q.waive.insert(HardDenyClass::TrustHandoff);
+    q.fs.push(subpath(Access::Write, "/data/secret/inner"));
+    q.fs.push(subpath(Access::Write, "/work"));
+    assert!(linux_plan(&q, T2).is_ok());
+    // T1 masks.
+    let t1 = Target::Linux {
+        tier: Tier::T1,
+        landlock_abi: 6,
+    };
+    assert!(linux_plan(&p, t1).unwrap().hide_by_siblings.is_empty());
+}
+
+#[test]
+fn secrets_on_t2_are_hidden_unless_a_write_rule_reaches_them() {
+    let mut p = Policy::default();
+    p.fs.push(subpath(Access::Read, "/"));
+    let plan = linux_plan(&p, T2).unwrap();
+    assert!(
+        plan.classes
+            .iter()
+            .any(|c| c.class == HardDenyClass::Secrets)
+    );
+    p.fs.push(subpath(Access::Write, "/home"));
+    assert!(refused_construct(linux_plan(&p, T2)).contains(&Construct::HdSecrets));
+}
+
+#[test]
+fn unix_sockets_by_tier_and_abi() {
+    let mut p = Policy::default();
+    p.ipc.unix_sockets = vec![path("/work/b"), path("/work/a")];
+    let target = |tier, landlock_abi| Target::Linux { tier, landlock_abi };
+    // T1 below ABI 9: AF_UNIX only, masks at spawn.
+    let plan = linux_plan(&p, target(Tier::T1, 8)).unwrap();
+    assert!(plan.mask_unix_sockets);
+    assert_eq!(plan.unix_socket_paths, [path("/work/a"), path("/work/b")]);
+    assert!(
+        plan.seccomp
+            .iter()
+            .any(|r| r.syscall == linux::Syscall::Socket
+                && r.condition == linux::Condition::SocketFamilyExcept(vec![1]))
+    );
+    assert!(!plan.seccomp.iter().any(|r| r.syscall == linux::Syscall::Socket
+        && r.condition == linux::Condition::Always));
+    assert!(plan.landlock.scopes.0 & linux::Scopes::ABSTRACT_UNIX_SOCKET.0 != 0);
+    // T2 below ABI 9: refused, with a message that says why.
+    let Err(LowerError::Gaps(gaps)) = lower(&p, target(Tier::T2, 8), &LowerOptions::default())
+    else {
+        panic!("T2 must refuse");
+    };
+    assert_eq!(gaps[0].construct, Construct::IpcUnixSockets);
+    assert_eq!(gaps[0].kind, GapKind::Unsupported);
+    // ABI 9: Landlock's right, on both tiers.
+    for tier in [Tier::T1, Tier::T2] {
+        let plan = linux_plan(&p, target(tier, 9)).unwrap();
+        assert!(!plan.mask_unix_sockets);
+        assert!(
+            plan.landlock
+                .rules
+                .iter()
+                .any(|r| r.access == linux::AccessFs::RESOLVE_UNIX)
+        );
+    }
+    // With every network, nothing to restrict.
+    p.net = Network::All;
+    let plan = linux_plan(&p, target(Tier::T2, 8)).unwrap();
+    assert!(!plan.mask_unix_sockets);
+    // Without the setting, no socket at all.
+    let plan = linux_plan(&Policy::default(), target(Tier::T1, 8)).unwrap();
+    assert!(plan.seccomp.iter().any(|r| r.syscall == linux::Syscall::Socket
+        && r.condition == linux::Condition::Always));
+}
+
+#[test]
+fn unix_sockets_on_macos_are_path_filtered_and_respect_hide() {
+    let mut p = Policy::default();
+    p.fs.push(subpath(Access::Write, "/work"));
+    p.fs.push(subpath(Access::Hide, "/work/private"));
+    p.ipc.unix_sockets = vec![path("/work")];
+    let plan = seatbelt_plan(&p, &LowerOptions::default());
+    let profile = plan.profile;
+    assert!(profile.contains("(allow system-socket)"), "{profile}");
+    assert!(
+        profile
+            .contains("(allow network-bind network-inbound network-outbound (subpath \"/work\"))"),
+        "{profile}"
+    );
+    assert!(
+        profile.contains(
+            "(deny network-bind network-inbound network-outbound (subpath \"/work/private\"))"
+        ),
+        "{profile}"
+    );
 }

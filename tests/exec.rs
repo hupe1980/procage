@@ -48,7 +48,7 @@ fn options(tier: &str) -> CageOptions {
     let tier = if tier == "T1" { Tier::T1 } else { Tier::T2 };
     CageOptions::default()
         .with_tier(tier)
-        .with_lower(LowerOptions::default().accept_spawn_masks())
+        .with_lower(LowerOptions::default().accept_spawn_snapshot())
 }
 
 #[cfg(target_os = "macos")]

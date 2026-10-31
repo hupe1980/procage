@@ -88,38 +88,161 @@ pub(super) fn rule_paths(plan: &LinuxPlan) -> Vec<(PathBuf, bool)> {
 
 /// The Landlock ruleset for one spawn: the plan's rules on descriptors
 /// opened now, with grants bound to their paths.
+/// The Landlock ruleset for `plan` with `grants` bound.
+///
+/// `hidden` (tier T2) are paths kept out piecewise: a rule at or under one
+/// is dropped, and a rule above one is replaced by rules for every entry on
+/// the way except the hidden path, as listed now (symbolic links are
+/// skipped: they could lead into the hidden path). At most `limit` entries
+/// are visited.
 pub(super) fn ruleset(
     plan: &LinuxPlan,
     grants: &BTreeMap<String, PathBuf>,
+    hidden: &[PathBuf],
+    limit: usize,
 ) -> Result<OwnedFd, SpawnError> {
     let ll = &plan.landlock;
     let ruleset = sys::landlock_ruleset(ll.handled_fs.0, ll.handled_net.0, ll.scopes.0)
         .map_err(|e| SpawnError::Io(io::Error::from_raw_os_error(e)))?;
+    let reading = AccessFs::READ_FILE
+        .union(AccessFs::READ_DIR)
+        .union(AccessFs::EXECUTE)
+        .union(AccessFs::RESOLVE_UNIX);
+    let mut budget = limit;
     for rule in &ll.rules {
         let Some((path, optional)) = rule_path(&rule.target, grants)? else {
             continue;
         };
-        let (fd, dir) = match sys::open_path(&c_path(&path)?) {
-            Ok(opened) => opened,
-            Err(libc::ENOENT) if optional => continue,
-            Err(e) => return Err(path_error(&path, e)),
-        };
-        // Rights that only apply to directories are refused on a file.
-        let access = if dir {
-            rule.access
-        } else {
-            rule.access.intersect(AccessFs::FILE_RIGHTS)
-        };
-        if access == AccessFs::NONE {
+        if hidden.iter().any(|h| path.starts_with(h)) {
             continue;
         }
-        sys::landlock_allow_path(&ruleset, &fd, access.0).map_err(|e| path_error(&path, e))?;
+        let around: Vec<&PathBuf> = hidden.iter().filter(|h| h.starts_with(&path)).collect();
+        if around.is_empty() {
+            allow_path(&ruleset, &path, rule.access, optional)?;
+            continue;
+        }
+        if rule.access.without(reading) != AccessFs::NONE {
+            // The lowering refuses write rules around a hidden path; a grant
+            // is bound only now.
+            return Err(match &rule.target {
+                RuleTarget::Grant(name) => SpawnError::Grant(super::GrantError::Covers {
+                    name: name.as_str().to_owned(),
+                    hidden: around[0].clone(),
+                }),
+                _ => path_error(&path, libc::EPERM),
+            });
+        }
+        let mut pieces = Vec::new();
+        piecewise(&path, &around, &mut pieces, &mut budget, limit)?;
+        for piece in pieces {
+            allow_path(&ruleset, &piece, rule.access, true)?;
+        }
     }
     for rule in &ll.net_rules {
         sys::landlock_allow_port(&ruleset, rule.port.get(), rule.access.0)
             .map_err(|e| SpawnError::Io(io::Error::from_raw_os_error(e)))?;
     }
     Ok(ruleset)
+}
+
+/// Adds a rule for `path` with `access` (file rights only on a file).
+fn allow_path(
+    ruleset: &OwnedFd,
+    path: &Path,
+    access: AccessFs,
+    optional: bool,
+) -> Result<(), SpawnError> {
+    let (fd, dir) = match sys::open_path(&c_path(path)?) {
+        Ok(opened) => opened,
+        Err(libc::ENOENT) if optional => return Ok(()),
+        Err(e) => return Err(path_error(path, e)),
+    };
+    // Rights that only apply to directories are refused on a file.
+    let access = if dir {
+        access
+    } else {
+        access.intersect(AccessFs::FILE_RIGHTS)
+    };
+    if access == AccessFs::NONE {
+        return Ok(());
+    }
+    sys::landlock_allow_path(ruleset, &fd, access.0).map_err(|e| path_error(path, e))
+}
+
+/// The pieces of `dir` that hold no hidden path: `dir` itself when none is
+/// below it, else the pieces of each entry, skipping the hidden paths and
+/// symbolic links.
+fn piecewise(
+    dir: &Path,
+    hidden: &[&PathBuf],
+    out: &mut Vec<PathBuf>,
+    budget: &mut usize,
+    limit: usize,
+) -> Result<(), SpawnError> {
+    if hidden.iter().any(|h| h.as_path() == dir) {
+        return Ok(());
+    }
+    if !hidden.iter().any(|h| h.starts_with(dir)) {
+        out.push(dir.to_path_buf());
+        return Ok(());
+    }
+    // A directory that cannot be listed gives nothing below it.
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        if *budget == 0 {
+            return Err(SpawnError::Walk {
+                root: dir.to_path_buf(),
+                limit,
+            });
+        }
+        *budget -= 1;
+        if entry.file_type().is_ok_and(|t| !t.is_symlink()) {
+            piecewise(&entry.path(), hidden, out, budget, limit)?;
+        }
+    }
+    Ok(())
+}
+
+/// The pathname sockets bound in this network namespace (from
+/// `/proc/net/unix`) that exist outside `allowed` and outside `masked`:
+/// masked at spawn on tier T1, so the child cannot reach them.
+pub(super) fn foreign_sockets(
+    allowed: &[PathBuf],
+    masked: &[PathBuf],
+) -> Result<Vec<PathBuf>, SpawnError> {
+    use std::os::unix::fs::FileTypeExt;
+    let listing = Path::new("/proc/net/unix");
+    let text = std::fs::read_to_string(listing)
+        .map_err(|e| path_error(listing, e.raw_os_error().unwrap_or(libc::EIO)))?;
+    let mut out: Vec<PathBuf> = text
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            // `Num RefCount Protocol Flags Type St Inode Path`; abstract
+            // names start with `@`, unbound sockets have no path.
+            let path = line
+                .split_whitespace()
+                .skip(7)
+                .collect::<Vec<_>>()
+                .join(" ");
+            path.starts_with('/').then(|| PathBuf::from(path))
+        })
+        .filter(|p| {
+            // The listing shows the path as bound, which may pass through a
+            // symbolic link; `allowed` is resolved.
+            let real = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+            std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_socket())
+                && !allowed.iter().any(|a| real.starts_with(a))
+                && !masked
+                    .iter()
+                    .any(|m| p.starts_with(m) || real.starts_with(m))
+        })
+        .collect();
+    out.sort();
+    out.dedup();
+    Ok(out)
 }
 
 fn depth(path: &Path) -> usize {
