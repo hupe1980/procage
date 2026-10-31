@@ -1,8 +1,10 @@
 //! The base profile: what ordinary programs need to start, and nothing the
 //! user cares about.
 //!
-//! A policy opts in with [`Base::V1`](crate::Base::V1). Version 1 is frozen;
-//! a loosening needs a new version.
+//! A policy opts in with [`Base::V1`](crate::Base::V1) or
+//! [`Base::V2`](crate::Base::V2). Each version is frozen; a loosening needs a
+//! new version. Use V2 for developer tools (compilers, `git`, interpreters,
+//! Homebrew); V1 stays as it was.
 //!
 //! **macOS** (measured on macOS 26.6.2, 25G83, on 2026-10-30):
 //!
@@ -29,11 +31,62 @@
 //! shims (`/usr/bin/git`, `/usr/bin/python3`) need developer-tool paths and
 //! are not covered.
 //!
+//! **macOS V2** (measured on macOS 26.6.2 with Xcode 27.2 and Homebrew, on
+//! 2026-10-31, by running developer tools in a cage and reading every
+//! sandbox denial): V1 plus
+//!
+//! | Entry | Why |
+//! |---|---|
+//! | read, exec, map `/Library/Developer/CommandLineTools` and `/Applications/Xcode*.app/Contents` | the developer tools behind Apple's shims (`git`, `clang`, `make`, `python3`, `swift`, `xcrun`) |
+//! | read `/private/var/db/xcode_select_link` | `xcode-select`'s choice of developer directory |
+//! | read `/Library/Preferences/com.apple.dt.Xcode.plist` | the Xcode license state (without it every shim reports an unaccepted license) |
+//! | read `/Library/Ruby`, `/Library/Perl` | the system Ruby's gems and Perl's module paths |
+//! | read, exec, map `bin`, `sbin`, `lib`, `libexec`, `opt`, `Cellar`, `Caskroom`, `share`, `include`, `Frameworks` under `/opt/homebrew` and `/usr/local` | Homebrew's programs and libraries (not its `etc` or `var`, which can hold configuration and data) |
+//! | read OpenSSL's `openssl.cnf`, `cert.pem` and `certs` and `ca-certificates/cert.pem` under `/opt/homebrew/etc` and `/usr/local/etc` | Homebrew's OpenSSL (used by `node`, `npm`) refuses to start without its configuration; these files are public |
+//! | read `/Library/Preferences/.GlobalPreferences.plist`, `/dev/autofs_nowait` | system-wide locale preferences; CoreFoundation's automount guard |
+//! | read `.CFUserTextEncoding` in each home | CoreFoundation's text encoding (a few bytes such as `0x1F5:0:0`) |
+//! | metadata of `/Users`, each home directory itself, `/Applications`, the Xcode bundles, `/Library/Developer`, `/opt`, `/opt/homebrew`, `/usr/local`, their `etc`, `/private/var/db`, the per-user directories under `/private/var/folders` | path lookup (`stat` of `$HOME` works; listing it does not) |
+//! | metadata of every directory on the way to the policy's own paths | resolving a granted path to its real path (`git` refuses a workspace whose parents it cannot examine) |
+//!
+//! Deliberately left out, although tools look them up:
+//!
+//! - `com.apple.bsd.dirhelper` and `com.apple.system.opendirectoryd.membership`:
+//!   with either, libSystem reports the user's shared per-user temporary
+//!   directory, and `mktemp` and `xcrun` write there (xcrun's tool cache
+//!   there is read later by unsandboxed tools). Without them it falls back
+//!   to `$TMPDIR`, the run's own directory;
+//! - logging (`com.apple.logd`, `com.apple.diagnosticd`), analytics, the
+//!   DTrace helper ioctl (a kernel parser), other processes' information,
+//!   LaunchServices and the Command Line Tools installer (they act outside
+//!   the sandbox), the user's preferences and caches under `~/Library`, and
+//!   the terminal unless `Tty::Inherit`.
+//!
+//! **Running developer tools** in a cage:
+//!
+//! - give the child a `TMPDIR` (the `tmpdir` grant, or a writable
+//!   directory of your own). Apple's shims cache tool lookups there: the
+//!   first call in a fresh `TMPDIR` takes about a second, later calls run at
+//!   native speed, so reuse one writable `TMPDIR` across a session's
+//!   commands when speed matters;
+//! - `git` stops when it cannot read `~/.gitconfig` (macOS reports
+//!   "operation not permitted", which git treats as fatal): set
+//!   `GIT_CONFIG_GLOBAL` to a file the policy lets it read (or
+//!   `/dev/null`), or point `HOME` somewhere readable;
+//! - `git init` and `git clone` write hooks and config, which the
+//!   trust-handoff class refuses: create repositories outside the cage, or
+//!   waive the class for that run;
+//! - accept the Xcode license once outside the cage (`xcodebuild -license`);
+//! - Unix socket addresses hold at most 104 bytes, so keep socket paths
+//!   short.
+//!
 //! **Linux**: read and exec for `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`,
 //! `/lib32`; read for `/etc`; read/write `/dev/null`, `/dev/zero`; read
 //! `/dev/random`, `/dev/urandom`; with `Tty::Inherit`, read/write `/dev/tty`
 //! and `/dev/pts`. Paths a host lacks are skipped. This content is
-//! expressed in the plan now and verified with Linux spawning.
+//! expressed in the plan now and verified with Linux spawning. Version 2 is
+//! the same on Linux: `git`, `python3`, `cc`, `make`, `perl`, `curl`,
+//! `cargo` and `rustc` run with it when `TMPDIR` (the `tmpdir` grant) and the
+//! toolchain's variables (`RUSTUP_HOME`, `CARGO_HOME`) are set.
 
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -156,6 +209,118 @@ pub fn macos_v1(tty: Tty) -> Vec<Rule> {
     rules
 }
 
+/// macOS V2: developer-tool and package-manager code (read, exec, map),
+/// added to V1.
+pub const MACOS_V2_CODE: &[&str] = &[
+    "/Library/Developer/CommandLineTools",
+    "/opt/homebrew/Caskroom",
+    "/opt/homebrew/Cellar",
+    "/opt/homebrew/Frameworks",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/include",
+    "/opt/homebrew/lib",
+    "/opt/homebrew/libexec",
+    "/opt/homebrew/opt",
+    "/opt/homebrew/sbin",
+    "/opt/homebrew/share",
+    "/usr/local/Cellar",
+    "/usr/local/Frameworks",
+    "/usr/local/bin",
+    "/usr/local/include",
+    "/usr/local/lib",
+    "/usr/local/libexec",
+    "/usr/local/opt",
+    "/usr/local/sbin",
+    "/usr/local/share",
+];
+/// macOS V2: Xcode bundles (any name starting with `Xcode`), code.
+pub const MACOS_V2_XCODE: &str = "^/Applications/Xcode[^/]*\\.app/Contents/";
+/// macOS V2: data directories read, added to V1.
+pub const MACOS_V2_DATA: &[&str] = &["/Library/Perl", "/Library/Ruby"];
+/// macOS V2: single files read, added to V1.
+pub const MACOS_V2_FILES: &[&str] = &[
+    "/Library/Preferences/.GlobalPreferences.plist",
+    "/Library/Preferences/com.apple.dt.Xcode.plist",
+    "/dev/autofs_nowait",
+    "/private/var/db/xcode_select_link",
+];
+/// macOS V2: OpenSSL's configuration and CA bundle from Homebrew (public
+/// data; not its `private` directory).
+pub const MACOS_V2_OPENSSL: &str = "^/(opt/homebrew|usr/local)/etc/(openssl@[0-9.]+/(openssl\\.cnf|cert\\.pem|certs(/.*)?)|ca-certificates/cert\\.pem)$";
+/// macOS V2: CoreFoundation's text-encoding setting in each home (a few
+/// bytes, such as `0x1F5:0:0`).
+pub const MACOS_V2_HOME_DATA: &str = "^/Users/[^/]+/\\.CFUserTextEncoding$";
+/// macOS V2: metadata for path lookup, added to V1.
+pub const MACOS_V2_METADATA: &[&str] = &[
+    "/Applications",
+    "/Library/Developer",
+    "/Users",
+    "/opt",
+    "/opt/homebrew",
+    "/opt/homebrew/etc",
+    "/private/var/db",
+    "/usr/local",
+    "/usr/local/etc",
+];
+/// macOS V2: each home directory itself (metadata only) and the Xcode
+/// bundles' top directories.
+pub const MACOS_V2_METADATA_REGEX: &[&str] = &[
+    "^/Users/[^/]+$",
+    "^/Applications/Xcode[^/]*\\.app(/Contents)?$",
+];
+
+/// macOS V2: the per-user directories on the way to private temporary
+/// directories (metadata only).
+pub const MACOS_V2_FOLDERS: &str = "^/private/var/folders(/[^/]+){0,3}$";
+
+/// The metadata rule of base V2 for the directories on the way to `paths`
+/// (the policy's own paths), so that resolving a granted path to its real
+/// path works (`git`, `realpath`); `None` when there are none beyond `/`.
+pub fn macos_v2_ancestors<'a>(paths: impl IntoIterator<Item = &'a AbsPath>) -> Option<Rule> {
+    let mut ancestors: Vec<Vec<u8>> = paths
+        .into_iter()
+        .flat_map(AbsPath::ancestors)
+        .filter(|a| !a.is_root())
+        .map(AbsPath::into_bytes)
+        .collect();
+    ancestors.sort();
+    ancestors.dedup();
+    if ancestors.is_empty() {
+        return None;
+    }
+    Some(Rule::new(
+        Effect::Allow,
+        &["file-read-metadata"],
+        ancestors.into_iter().map(Filter::Literal).collect(),
+    ))
+}
+
+/// The SBPL allow rules of base V2: V1 plus developer tools.
+pub fn macos_v2(tty: Tty) -> Vec<Rule> {
+    let allow = |ops: &[&str], filters: Vec<Filter>| Rule::new(Effect::Allow, ops, filters);
+    let mut rules = macos_v1(tty);
+    let mut code = bytes(MACOS_V2_CODE, Filter::Subpath);
+    code.push(Filter::Regex(MACOS_V2_XCODE.into()));
+    rules.push(allow(
+        &["file-read*", "process-exec*", "file-map-executable"],
+        code,
+    ));
+    let mut data = bytes(MACOS_V2_DATA, Filter::Subpath);
+    data.extend(bytes(MACOS_V2_FILES, Filter::Literal));
+    data.push(Filter::Regex(MACOS_V2_HOME_DATA.into()));
+    data.push(Filter::Regex(MACOS_V2_OPENSSL.into()));
+    rules.push(allow(&["file-read*"], data));
+    let mut metadata = bytes(MACOS_V2_METADATA, Filter::Literal);
+    metadata.push(Filter::Regex(MACOS_V2_FOLDERS.into()));
+    metadata.extend(
+        MACOS_V2_METADATA_REGEX
+            .iter()
+            .map(|r| Filter::Regex((*r).into())),
+    );
+    rules.push(allow(&["file-read-metadata"], metadata));
+    rules
+}
+
 fn path(p: &str) -> AbsPath {
     // The constants above are absolute and normal.
     AbsPath::new(p).unwrap_or_else(|_| AbsPath::root())
@@ -198,4 +363,9 @@ pub fn linux_v1(tty: Tty, handled: AccessFs) -> Vec<LandlockRule> {
         }));
     }
     rules
+}
+
+/// The Landlock rules of base V2 on Linux: the same as V1.
+pub fn linux_v2(tty: Tty, handled: AccessFs) -> Vec<LandlockRule> {
+    linux_v1(tty, handled)
 }

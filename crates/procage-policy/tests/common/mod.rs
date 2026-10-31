@@ -228,6 +228,7 @@ pub fn reference_policy(construct: Construct) -> Policy {
             p.tty = Tty::None;
         }
         Construct::BaseV1 => p.base = Base::V1,
+        Construct::BaseV2 => p.base = Base::V2,
         _ => p = hard_deny_base(),
     }
     p

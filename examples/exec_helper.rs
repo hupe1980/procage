@@ -28,7 +28,7 @@ fn main() {
         AbsPath::new(workspace.as_os_str().as_encoded_bytes()).unwrap_or_else(|e| fail(&e));
 
     let mut policy = Policy::default();
-    policy.base = Base::V1;
+    policy.base = Base::V2;
     policy.process.fork = true;
     policy.process.exec = Exec::Any;
     policy.fs.push(FsRule::new(

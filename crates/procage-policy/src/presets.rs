@@ -29,16 +29,19 @@
 //! approximation: paths created later are not covered) and tier T2 cannot
 //! enforce the class; the lowering table gives the details.
 //!
-//! **Presets** (version 1, frozen). Each returns an ordinary [`Policy`] with
-//! base profile V1, the full hard-deny tier, an environment allowlist of
-//! [`PRESET_ENV`], and a [`PresetTag`]:
+//! **Presets** (frozen; version 2 is the one to start with). Each returns an
+//! ordinary [`Policy`] with a base profile (V1 for version 1, V2 for version
+//! 2, which runs developer tools such as `git`, `clang` and Homebrew's), the
+//! full hard-deny tier, an environment allowlist of [`PRESET_ENV`], and a
+//! [`PresetTag`]:
 //!
 //! | Preset | Adds |
 //! |---|---|
-//! | [`minimal::v1`] | nothing |
-//! | [`agent_readonly::v1`] | read of the workspace, the `tmpdir` grant, fork, signals to self and children |
-//! | [`agent_workspace::v1`] | as `agent_readonly`, plus write and exec on the workspace |
+//! | [`minimal::v1`], [`minimal::v2`] | nothing |
+//! | [`agent_readonly::v1`], [`agent_readonly::v2`] | read of the workspace, the `tmpdir` grant, fork, signals to self and children |
+//! | [`agent_workspace::v1`], [`agent_workspace::v2`] | as `agent_readonly`, plus write and exec on the workspace |
 //! | [`build::v1`] | as `agent_workspace`, plus loopback network |
+//! | [`build::v2`] | as `build::v1`, plus Unix sockets in the workspace |
 //!
 //! Every preset keeps the default [`Lifetime::Run`](crate::Lifetime::Run):
 //! the processes a forking preset's child starts end with the run. This was
@@ -260,13 +263,14 @@ pub fn git_dir() -> Glob {
     glob("/**/.git")
 }
 
-fn base(name: &str) -> Policy {
+/// The common start of preset `name` at `version` (1: base V1, 2: base V2).
+fn base(name: &str, version: u32) -> Policy {
     Policy {
-        base: Base::V1,
+        base: if version == 1 { Base::V1 } else { Base::V2 },
         env: EnvPolicy::Allowlist(PRESET_ENV.iter().map(|v| v.to_string()).collect()),
         preset: Some(PresetTag {
             name: name.into(),
-            version: 1,
+            version,
         }),
         ..Policy::default()
     }
@@ -290,7 +294,12 @@ pub mod minimal {
 
     /// Version 1.
     pub fn v1() -> Policy {
-        base("minimal")
+        base("minimal", 1)
+    }
+
+    /// Version 2: base profile V2.
+    pub fn v2() -> Policy {
+        base("minimal", 2)
     }
 }
 
@@ -300,7 +309,14 @@ pub mod agent_readonly {
 
     /// Version 1.
     pub fn v1(root: &AbsPath) -> Policy {
-        let mut p = base("agent_readonly");
+        let mut p = base("agent_readonly", 1);
+        workspace(&mut p, root, &[Access::Read]);
+        p
+    }
+
+    /// Version 2: as version 1 on base profile V2.
+    pub fn v2(root: &AbsPath) -> Policy {
+        let mut p = base("agent_readonly", 2);
         workspace(&mut p, root, &[Access::Read]);
         p
     }
@@ -312,7 +328,14 @@ pub mod agent_workspace {
 
     /// Version 1.
     pub fn v1(root: &AbsPath) -> Policy {
-        let mut p = base("agent_workspace");
+        let mut p = base("agent_workspace", 1);
+        workspace(&mut p, root, &[Access::Write, Access::Exec]);
+        p
+    }
+
+    /// Version 2: as version 1 on base profile V2.
+    pub fn v2(root: &AbsPath) -> Policy {
+        let mut p = base("agent_workspace", 2);
         workspace(&mut p, root, &[Access::Write, Access::Exec]);
         p
     }
@@ -324,9 +347,19 @@ pub mod build {
 
     /// Version 1.
     pub fn v1(root: &AbsPath) -> Policy {
-        let mut p = base("build");
+        let mut p = base("build", 1);
         workspace(&mut p, root, &[Access::Write, Access::Exec]);
         p.net = Network::Loopback(Ports::Any);
+        p
+    }
+
+    /// Version 2: as version 1 on base profile V2, plus Unix sockets in the
+    /// workspace (test servers).
+    pub fn v2(root: &AbsPath) -> Policy {
+        let mut p = base("build", 2);
+        workspace(&mut p, root, &[Access::Write, Access::Exec]);
+        p.net = Network::Loopback(Ports::Any);
+        p.ipc.unix_sockets = alloc::vec![root.clone()];
         p
     }
 }

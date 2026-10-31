@@ -10,7 +10,8 @@ version on `main` (0.0.2, unreleased) spawns caged children on macOS and on
 Linux (tiers T1 and T2), with inherited descriptors closed, every process a
 run started killed when the run ends (double-forked daemons included; on
 Linux, `setsid` and `setpgid` fail in the cage unless the policy opts out), an
-opt-in base profile that lets ordinary programs start, and an entry point for
+opt-in base profile that lets ordinary programs start (version 2 also runs
+developer tools: Xcode's shims, compilers, Homebrew), and an entry point for
 helper programs that become the caged command (`Cage::exec`). Every policy
 denies reading secrets and writing git hooks, shell startup files and launch
 agents; on Linux these hold exactly where no rule reaches them, by masks at

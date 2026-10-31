@@ -1029,6 +1029,27 @@ fn t1_hide_leaves_nothing_readable() {
     );
 }
 
+/// Base V2 is V1 on Linux: the same programs run, on every tier.
+#[test]
+fn base_v2_runs_programs_on_linux() {
+    for tier in tiers() {
+        let mut p = Policy::default();
+        p.base = procage::policy::Base::V2;
+        p.process.fork = true;
+        let cage = Cage::with_options(&p, &options(tier)).unwrap();
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "cat /etc/hostname >/dev/null && echo ok"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let out = finish(
+            cage.spawn(&mut cmd, &Grants::new()).unwrap(),
+            Duration::from_secs(10),
+        );
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ok", "{tier}");
+    }
+}
+
 /// The snapshot options for tier T2.
 fn t2_snapshot() -> CageOptions {
     CageOptions::default()

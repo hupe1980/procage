@@ -458,11 +458,20 @@ pub(super) fn lower(
         }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
-    if policy.base == Base::V1 {
-        ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
-        landlock
-            .rules
-            .extend(crate::base::linux_v1(policy.tty, handled));
+    match policy.base {
+        Base::None => {}
+        Base::V1 => {
+            ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
+            landlock
+                .rules
+                .extend(crate::base::linux_v1(policy.tty, handled));
+        }
+        Base::V2 => {
+            ledger.outcome(Construct::BaseV2, Outcome::Exact, None, "");
+            landlock
+                .rules
+                .extend(crate::base::linux_v2(policy.tty, handled));
+        }
     }
 
     if policy.seatbelt.is_some() {

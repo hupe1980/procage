@@ -353,9 +353,25 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
         }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
-    if policy.base == Base::V1 {
-        ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
-        allow.extend(crate::base::macos_v1(policy.tty));
+    match policy.base {
+        Base::None => {}
+        Base::V1 => {
+            ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
+            allow.extend(crate::base::macos_v1(policy.tty));
+        }
+        Base::V2 => {
+            ledger.outcome(Construct::BaseV2, Outcome::Exact, None, "");
+            allow.extend(crate::base::macos_v2(policy.tty));
+            let paths = policy
+                .fs
+                .iter()
+                .filter_map(|r| match &r.target {
+                    FsTarget::Subpath(p) | FsTarget::Literal(p) => Some(p),
+                    FsTarget::Glob(_) => None,
+                })
+                .chain(&policy.ipc.unix_sockets);
+            allow.extend(crate::base::macos_v2_ancestors(paths));
+        }
     }
 
     if let Some(layer) = &policy.seatbelt {

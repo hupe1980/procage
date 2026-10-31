@@ -30,7 +30,7 @@
 //! use procage::policy::{AbsPath, Access, Base, FsRule, FsTarget, Policy};
 //!
 //! let mut policy = Policy::default();
-//! policy.base = Base::V1; // what ordinary programs need to start
+//! policy.base = Base::V2; // what ordinary programs and developer tools need
 //! policy.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(AbsPath::new("/tmp/project")?)));
 //!
 //! let cage = Cage::new(&policy)?;
@@ -58,7 +58,7 @@
 //! use procage::policy::{Base, Policy};
 //!
 //! let mut policy = Policy::default();
-//! policy.base = Base::V1;
+//! policy.base = Base::V2;
 //! let cage = Cage::new(&policy).unwrap_or_else(|e| panic!("{e}"));
 //! let mut command = Command::new("/usr/bin/env");
 //! command.current_dir("/tmp"); // a directory the policy lets it read

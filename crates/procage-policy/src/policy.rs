@@ -293,6 +293,10 @@ pub enum Base {
     None,
     /// Base profile version 1 (measured on macOS 26.6.2). Frozen.
     V1,
+    /// Base profile version 2: version 1 plus what developer tools need
+    /// (measured on macOS 26.6.2 with Apple's tool shims, Xcode, the Command
+    /// Line Tools and Homebrew). Frozen.
+    V2,
 }
 
 /// A member of the hard-deny tier, emitted last in every plan.

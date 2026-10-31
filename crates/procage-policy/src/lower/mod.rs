@@ -126,6 +126,7 @@ constructs! {
     LinuxLayer => "linux-layer",
     Hygiene => "hygiene",
     BaseV1 => "base-v1",
+    BaseV2 => "base-v2",
     HdFcntlModify => "hd-fcntl-modify",
     HdPrivilege => "hd-privilege",
     HdServiceHandoff => "hd-service-handoff",

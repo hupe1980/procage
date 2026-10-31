@@ -1113,6 +1113,203 @@ fn base_grants_nothing_personal() {
     assert!(!marker.exists());
 }
 
+// ---- 027: base profile V2 ----
+
+/// Base V2 with a writable workspace, fork, exec anywhere and the `tmpdir`
+/// grant: the shape of an agent's policy.
+fn developer_policy(base: Base, work: &Path) -> Policy {
+    let mut p = Policy::default();
+    p.base = base;
+    p.process.fork = true;
+    p.process.exec = procage::policy::Exec::Any;
+    p.fs.push(rule(Access::Write, work));
+    p.grants.push(Grant {
+        name: GrantName::new("tmpdir").unwrap(),
+        access: Access::Write,
+    });
+    p
+}
+
+fn shell(cage: &Cage, work: &Path, script: &str) -> Output {
+    let mut cmd = Command::new("/bin/sh");
+    cmd.args(["-c", script])
+        .current_dir(work)
+        .env("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
+        .env("HOME", std::env::var("HOME").unwrap())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    run(cage, cmd, &Grants::new())
+}
+
+/// Whether Xcode or the Command Line Tools are selected on this machine.
+fn developer_tools() -> bool {
+    Command::new("/usr/bin/xcode-select")
+        .arg("-p")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// The developer tools installed here run under base V2 with their usual
+/// output; the user's per-user temporary directory is the run's own; a
+/// shim's second call in a reused `TMPDIR` is fast. Under V1 the shims fail.
+#[test]
+fn base_v2_runs_developer_tools() {
+    let work = scratch("v2-tools");
+    std::fs::write(
+        work.join("hello.c"),
+        "#include <stdio.h>\nint main(){puts(\"hi\");}\n",
+    )
+    .unwrap();
+    let cage = Cage::new(&developer_policy(Base::V2, &work)).unwrap();
+    let dev = developer_tools();
+    let brew = |tool: &str| Path::new("/opt/homebrew/bin").join(tool).exists();
+    // `git init` writes hooks, which the trust-handoff class refuses: the
+    // repository is made outside, and the caged git commits to it.
+    if dev {
+        assert!(
+            Command::new("/usr/bin/git")
+                .args(["init", "-q"])
+                .arg(work.join("r"))
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let git = "cd r && GIT_CONFIG_GLOBAL=/dev/null git -c user.name=a -c user.email=a@b commit -q --allow-empty -m x && GIT_CONFIG_GLOBAL=/dev/null git rev-list --count HEAD";
+    let cases: &[(&str, bool, &str, &str)] = &[
+        ("clang", dev, "clang -o hello hello.c && ./hello", "hi"),
+        ("git", dev, git, "1"),
+        (
+            "make",
+            dev,
+            "make --version | head -1 | cut -c1-8",
+            "GNU Make",
+        ),
+        (
+            "python3",
+            dev,
+            "python3 -c 'import json, ssl, sqlite3; print(1)'",
+            "1",
+        ),
+        ("ruby", true, "ruby -e 'puts 1'", "1"),
+        ("perl", true, "perl -MJSON::PP -e 'print 1'", "1"),
+        ("node", brew("node"), "node -e 'console.log(1)'", "1"),
+        ("jq", brew("jq"), "echo '{\"a\":1}' | jq .a", "1"),
+        (
+            "per-user temp dir",
+            true,
+            r#"t=$(getconf DARWIN_USER_TEMP_DIR); m=$(mktemp); case "$t$m" in "$TMPDIR"*"$TMPDIR"*) echo private;; *) echo "shared: $t $m";; esac"#,
+            "private",
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (name, installed, script, expected) in cases {
+        if !installed {
+            println!("{name}: not installed here, skipped");
+            continue;
+        }
+        let out = shell(&cage, &work, script);
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !out.status.success() || stdout != *expected {
+            failures.push(format!(
+                "{name}: {:?} stdout={stdout:?} stderr={:?}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+    }
+    if dev {
+        let sdk = shell(&cage, &work, "xcrun --show-sdk-path");
+        assert_eq!(
+            String::from_utf8_lossy(&sdk.stdout).trim(),
+            outside("/usr/bin/xcrun", &["--show-sdk-path"])
+        );
+        // A warm cache in a reused TMPDIR makes later shim calls fast.
+        let warm = shell(
+            &cage,
+            &work,
+            "mkdir -p t; export TMPDIR=$PWD/t; git --version >/dev/null; s=$(perl -MTime::HiRes=time -e 'print time'); git --version >/dev/null; perl -MTime::HiRes=time -e \"printf '%d', (time - $s) * 1000\"",
+        );
+        let ms: u64 = String::from_utf8_lossy(&warm.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(u64::MAX);
+        assert!(ms < 200, "a warm shim call took {ms} ms");
+        // V1 stays frozen: the shims fail there.
+        let v1 = Cage::new(&developer_policy(Base::V1, &work)).unwrap();
+        assert!(!shell(&v1, &work, "xcrun --show-sdk-path").status.success());
+    } else {
+        println!("no developer tools selected: shim checks skipped");
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Base V2 adds no user data beyond the encoding setting and home-directory
+/// metadata, writes nothing outside the policy and keeps the network off.
+#[test]
+fn base_v2_grants_nothing_personal() {
+    let home = std::env::var("HOME").unwrap();
+    let work = scratch("v2-personal");
+    let cage = Cage::new(&developer_policy(Base::V2, &work)).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let other_etc = std::fs::read_dir("/opt/homebrew/etc").ok().and_then(|d| {
+        d.flatten().map(|e| e.path()).find(|p| {
+            p.is_file()
+                && !p.to_string_lossy().contains("openssl")
+                && !p.to_string_lossy().contains("ca-certificates")
+        })
+    });
+    let marker = format!("procage-v2-{}", std::process::id());
+    let mut refused = vec![
+        format!("ls {home}"),
+        format!("cat {home}/Library/Preferences/.GlobalPreferences.plist"),
+        format!("ls {home}/.ssh"),
+        format!("touch /opt/homebrew/{marker}"),
+        format!("touch /usr/local/{marker}"),
+        format!("nc -z -n -w 2 127.0.0.1 {port}"),
+    ];
+    if let Some(p) = other_etc {
+        refused.push(format!("cat '{}'", p.display()));
+    }
+    for script in &refused {
+        let out = shell(&cage, &work, &format!("{script} >/dev/null 2>&1"));
+        assert!(!out.status.success(), "allowed under V2: {script}");
+    }
+    assert!(!Path::new("/opt/homebrew").join(&marker).exists());
+    assert!(
+        shell(&cage, &work, &format!("stat {home} >/dev/null"))
+            .status
+            .success()
+    );
+}
+
+/// The version-2 preset for a writable workspace builds with the developer
+/// tools.
+#[test]
+fn agent_workspace_v2_builds_with_clang() {
+    if !developer_tools() {
+        println!("no developer tools selected: skipped");
+        return;
+    }
+    let work = scratch("v2-preset");
+    std::fs::write(
+        work.join("hello.c"),
+        "#include <stdio.h>\nint main(){puts(\"hi\");}\n",
+    )
+    .unwrap();
+    let real = std::fs::canonicalize(&work).unwrap();
+    let cage = Cage::new(&presets::agent_workspace::v2(&abs(&real))).unwrap();
+    let out = shell(&cage, &real, "clang -o hello hello.c && ./hello");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "hi",
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 // ---- 007: data-driven hard denies and presets ----
 
 fn succeeds(cage: &Cage, program: &str, args: &[&Path]) -> bool {

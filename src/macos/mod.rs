@@ -63,9 +63,10 @@
 //! **Not yet done** (later features):
 //!
 //! - there are no pseudo-terminals (`Tty::NewPty`);
-//! - the base profile ([`Base::V1`](procage_policy::Base::V1)) is curated
-//!   for macOS 26.6.2; tools that are Xcode shims (`/usr/bin/git`,
-//!   `/usr/bin/python3`) need developer-tool paths it does not include;
+//! - the base profiles are curated for macOS 26.6.2;
+//!   [`Base::V1`](procage_policy::Base::V1) does not run Xcode's tool shims
+//!   (`/usr/bin/git`, `/usr/bin/python3`): use
+//!   [`Base::V2`](procage_policy::Base::V2), see `procage_policy::base`;
 //! - there is no helper process (path B);
 //! - the `KERN_PROCARGS2` query gives a caged child the arguments and
 //!   environment of any process of the same user: the sandbox does not

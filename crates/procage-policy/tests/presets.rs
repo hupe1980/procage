@@ -185,3 +185,50 @@ fn presets_keep_descendants_in_the_run() {
         assert_eq!(policy.process.lifetime, Lifetime::Run, "{name}");
     }
 }
+
+fn all_v2() -> Vec<(&'static str, Policy)> {
+    let w = AbsPath::new("/work").unwrap();
+    vec![
+        ("minimal", minimal::v2()),
+        ("agent_readonly", agent_readonly::v2(&w)),
+        ("agent_workspace", agent_workspace::v2(&w)),
+        ("build", build::v2(&w)),
+    ]
+}
+
+#[test]
+fn every_v2_preset_is_pinned() {
+    let fixtures = [
+        include_str!("fixtures/presets/minimal-v2.sb"),
+        include_str!("fixtures/presets/agent_readonly-v2.sb"),
+        include_str!("fixtures/presets/agent_workspace-v2.sb"),
+        include_str!("fixtures/presets/build-v2.sb"),
+    ];
+    for ((name, policy), fixture) in all_v2().into_iter().zip(fixtures) {
+        assert_eq!(profile(&policy), fixture, "preset {name} v2 changed");
+    }
+}
+
+/// Version 2 is version 1 on base V2 (and `build` with workspace sockets).
+#[test]
+fn v2_presets_differ_from_v1_only_by_the_base_and_sockets() {
+    for ((name, v1), (_, v2)) in all().into_iter().zip(all_v2()) {
+        assert_eq!(
+            v2.preset,
+            Some(PresetTag {
+                name: name.into(),
+                version: 2
+            })
+        );
+        assert_eq!(v2.base, Base::V2);
+        assert_eq!(v2.process.lifetime, Lifetime::Run, "{name}");
+        let mut same = v2.clone();
+        same.base = Base::V1;
+        same.preset = v1.preset.clone();
+        if name == "build" {
+            assert_eq!(same.ipc.unix_sockets, [AbsPath::new("/work").unwrap()]);
+            same.ipc.unix_sockets.clear();
+        }
+        assert_eq!(same, v1, "{name}");
+    }
+}
