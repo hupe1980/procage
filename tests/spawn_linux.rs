@@ -268,6 +268,7 @@ fn child_entry() {
             format!("{dir} wrote={wrote}")
         }
         "outer-env" => outer_env(),
+        "cleared-env" => cleared_env(),
         ops => ops.split(';').map(op).collect::<Vec<_>>().join(" "),
     };
     println!("procage-result: {result}");
@@ -842,6 +843,48 @@ fn outer_env() -> String {
         has("LD_PRELOAD"),
         has("PATH")
     )
+}
+
+/// Runs uncaged with `PROCAGE_SECRET` in its environment and reports the
+/// names a child sees whose command called `env_clear` and set `A`, under
+/// passthrough and under an allowlist naming the secret and `PATH`.
+fn cleared_env() -> String {
+    let tier = host_tier();
+    let seen = |env: EnvPolicy| {
+        let mut p = base();
+        p.env = env;
+        let cage = Cage::with_options(&child_policy(p), &options(tier)).unwrap();
+        let mut cmd = child_command("env");
+        cmd.env_clear().env("PROCAGE_CHILD", "env").env("A", "1");
+        result(&finish(
+            cage.spawn(&mut cmd, &Grants::new()).unwrap(),
+            Duration::from_secs(10),
+        ))
+    };
+    format!(
+        "passthrough=[{}] allowlist=[{}]",
+        seen(EnvPolicy::Passthrough { deny: vec![] }),
+        seen(EnvPolicy::Allowlist(vec![
+            "PATH".into(),
+            "PROCAGE_SECRET".into()
+        ]))
+    )
+}
+
+/// `env_clear` on the command keeps every caller variable out, whatever the
+/// policy says about the caller's environment.
+#[test]
+fn env_clear_keeps_the_caller_environment_out() {
+    let out = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "child_entry", "--nocapture", "--test-threads=1"])
+        .env("PROCAGE_CHILD", "cleared-env")
+        .env("PROCAGE_SECRET", "s")
+        .output()
+        .unwrap();
+    assert_eq!(
+        result(&out),
+        "passthrough=[A,PROCAGE_CHILD] allowlist=[A,PROCAGE_CHILD]"
+    );
 }
 
 #[test]

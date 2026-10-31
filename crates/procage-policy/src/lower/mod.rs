@@ -377,6 +377,19 @@ impl LowerOptions {
         self
     }
 
+    /// These options, also accepting the spawn-time masks of the data-driven
+    /// hard-deny classes (`secrets`, `trust-handoff`, `persistence`): on
+    /// Linux tier T1, where a rule reaches their paths, the paths that exist
+    /// at spawn are masked and paths created later are not covered. This is
+    /// what reading the whole file system except secrets needs there. No
+    /// other approximation is accepted, and each accepted one is still
+    /// listed in the plan's degradations.
+    pub fn accept_spawn_masks(self) -> Self {
+        self.allow(Construct::HdSecrets)
+            .allow(Construct::HdTrustHandoff)
+            .allow(Construct::HdPersistence)
+    }
+
     /// These options with the run tag `tag`.
     pub fn with_tag(mut self, tag: Tag) -> Self {
         self.tag = Some(tag);

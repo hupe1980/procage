@@ -58,5 +58,26 @@ pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod threat_model;
+
+/// The backend of the system procage is built for: `procage::macos` on macOS,
+/// `procage::linux` on Linux.
+///
+/// Code that uses only the subset both backends share builds on both
+/// without `cfg`: [`Cage::new`](native::Cage::new),
+/// [`Cage::with_options`](native::Cage::with_options) with
+/// [`CageOptions::default`](native::CageOptions)`().with_lower(…)`,
+/// [`Cage::spawn`](native::Cage::spawn),
+/// [`Cage::spawn_with_fds`](native::Cage::spawn_with_fds),
+/// [`Grants::new`](native::Grants::new)`().bind(…)`, and the
+/// [`Child`](native::Child) methods `kill_all`, `detach`, `dropped_env` and
+/// `tmpdir`. Errors are each backend's own [`SpawnError`](native::SpawnError),
+/// with a `Display` message.
+#[cfg(target_os = "macos")]
+pub use macos as native;
+
+/// The backend of the system procage is built for: `procage::macos` on macOS,
+/// `procage::linux` on Linux.
+#[cfg(target_os = "linux")]
+pub use linux as native;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;

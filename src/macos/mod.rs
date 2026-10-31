@@ -172,6 +172,10 @@ pub enum Unsupported {
         /// What the probe observed.
         detail: String,
     },
+    /// `EnvPolicy::Passthrough` cannot be used: this standard library does
+    /// not show whether `Command::env_clear` was called, so procage cannot
+    /// tell whether the caller's environment may be passed.
+    EnvClear,
 }
 
 impl fmt::Display for Unsupported {
@@ -192,6 +196,11 @@ impl fmt::Display for Unsupported {
             Unsupported::Setting { setting } => {
                 write!(f, "{setting} is not supported in this release")
             }
+            Unsupported::EnvClear => write!(
+                f,
+                "EnvPolicy::Passthrough needs to see whether Command::env_clear was called, \
+                 which this Rust standard library does not show; use EnvPolicy::Allowlist"
+            ),
             Unsupported::RunMarker { os_build, detail } => {
                 write!(
                     f,
@@ -558,10 +567,12 @@ impl Cage {
     ///
     /// The child's environment comes from the policy's
     /// [`EnvPolicy`](procage_policy::EnvPolicy) and the variables set or
-    /// removed on `command`, which win (see [`crate::hygiene::environment`]). `Command::env_clear` cannot be
-    /// observed and has no effect: with `EnvPolicy::Passthrough` the
-    /// caller's environment is passed even after it. To pass exactly the
-    /// variables set on `command`, use an empty `EnvPolicy::Allowlist`.
+    /// removed on `command`, which win (see [`crate::hygiene`]). After
+    /// `Command::env_clear`, no variable of the caller is passed under any
+    /// policy: the child gets exactly the variables set on `command`. Fails
+    /// with [`Unsupported::EnvClear`] before forking when a passthrough
+    /// policy is used and the standard library does not show whether
+    /// `env_clear` was called.
     pub fn spawn(&self, command: &mut Command, grants: &Grants) -> Result<Child, SpawnError> {
         self.spawn_with_fds(command, grants, &[])
     }
@@ -599,8 +610,9 @@ impl Cage {
             }
         }
         let tokens = spawn::tokens(lib, self, &grants)?;
+        let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
+            .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
         let (run, bytecode) = self.run_and_bytecode(lib)?;
-        let dropped = crate::unix::environment(command, &self.plan.hygiene.env);
         sys::ChildPlan {
             ops: lib.child_ops(),
             bytecode,

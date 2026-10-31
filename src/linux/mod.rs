@@ -78,6 +78,14 @@
 //!   handle is dropped;
 //! - 100 children spawned from four threads are all caged.
 //!
+//! **Reading everything except secrets.** A policy that reads `/` reaches
+//! the paths of the `secrets`, `trust-handoff` and `persistence` classes.
+//! On tier T1 the paths that exist at spawn are masked, an approximation the
+//! caller accepts with
+//! [`LowerOptions::accept_spawn_masks`](procage_policy::LowerOptions::accept_spawn_masks);
+//! on tier T2 the classes cannot be enforced inside a readable tree, and the
+//! policy is refused unless they are waived.
+//!
 //! **Not yet done** (later features):
 //!
 //! - no PID namespace or fresh `/proc`; signal scoping needs Landlock ABI 6;
@@ -217,6 +225,10 @@ pub enum Unsupported {
         /// The setting.
         setting: &'static str,
     },
+    /// `EnvPolicy::Passthrough` cannot be used: this standard library does
+    /// not show whether `Command::env_clear` was called, so procage cannot
+    /// tell whether the caller's environment may be passed.
+    EnvClear,
 }
 
 impl fmt::Display for Unsupported {
@@ -245,6 +257,11 @@ impl fmt::Display for Unsupported {
             Unsupported::Syscall { name } => {
                 write!(f, "syscall `{name}` has no number on this architecture")
             }
+            Unsupported::EnvClear => write!(
+                f,
+                "EnvPolicy::Passthrough needs to see whether Command::env_clear was called, \
+                 which this Rust standard library does not show; use EnvPolicy::Allowlist"
+            ),
             Unsupported::Setting { setting } => {
                 write!(f, "{setting} is not supported in this release")
             }
@@ -562,10 +579,12 @@ impl Cage {
     ///
     /// The child's environment comes from the policy's
     /// [`EnvPolicy`](procage_policy::EnvPolicy) and the variables set or
-    /// removed on `command`, which win (see [`crate::hygiene::environment`]). `Command::env_clear` cannot be
-    /// observed and has no effect: with `EnvPolicy::Passthrough` the
-    /// caller's environment is passed even after it. To pass exactly the
-    /// variables set on `command`, use an empty `EnvPolicy::Allowlist`.
+    /// removed on `command`, which win (see [`crate::hygiene`]). After
+    /// `Command::env_clear`, no variable of the caller is passed under any
+    /// policy: the child gets exactly the variables set on `command`. Fails
+    /// with [`Unsupported::EnvClear`] before forking when a passthrough
+    /// policy is used and the standard library does not show whether
+    /// `env_clear` was called.
     pub fn spawn(&self, command: &mut Command, grants: &Grants) -> Result<Child, SpawnError> {
         self.spawn_with_fds(command, grants, &[])
     }
@@ -621,7 +640,8 @@ impl Cage {
             }
             None => None,
         };
-        let dropped = crate::unix::environment(command, &self.plan.hygiene.env);
+        let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
+            .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
         sys::ChildPlan {
             new_session: self.plan.hygiene.tty != Tty::Inherit,
             parent: sys::pid(),

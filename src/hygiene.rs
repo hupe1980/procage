@@ -14,6 +14,13 @@
 //! A variable set explicitly on the command is always kept. An
 //! [`EnvPolicy::Allowlist`] is taken as written, because the caller named
 //! every variable in it.
+//!
+//! When the command called `Command::env_clear`, no variable of the caller
+//! is passed under either policy, only those set on the command. std has
+//! no getter for that call; the spawn backends read it from the command's
+//! `Debug` output after checking once per process that the output still
+//! shows it. If it does not, a passthrough policy fails to spawn rather
+//! than pass the caller's environment.
 
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
@@ -50,9 +57,8 @@ pub struct EnvDecision {
 /// Computes the child's environment.
 ///
 /// `explicit` holds the variables set (`Some`) or removed (`None`) on the
-/// command; they win over the policy. Whether `Command::env_clear` was
-/// called is not visible through `std`, so it is not an input: an empty
-/// [`EnvPolicy::Allowlist`] gives exactly the explicit variables.
+/// command; they win over the policy. When the command called
+/// `Command::env_clear`, the spawn backends pass an empty `caller`.
 pub fn environment(
     caller: impl IntoIterator<Item = (OsString, OsString)>,
     policy: &EnvPolicy,

@@ -11,15 +11,88 @@ use procage_policy::{EnvPolicy, Rlimits};
 /// Sets the command's environment to what the policy yields (see
 /// [`crate::hygiene::environment`]); returns the names the passthrough
 /// denylist dropped.
-pub(crate) fn environment(command: &mut Command, policy: &EnvPolicy) -> Vec<String> {
+///
+/// When the command called `env_clear`, no variable of the caller is
+/// passed, whatever the policy. `Err` when that cannot be observed and the
+/// policy passes the caller's environment through.
+pub(crate) fn environment(
+    command: &mut Command,
+    policy: &EnvPolicy,
+) -> Result<Vec<String>, EnvClearUnobservable> {
+    let cleared = decide(observer_works(), cleared(command), policy)?;
     let explicit: Vec<(OsString, Option<OsString>)> = command
         .get_envs()
         .map(|(k, v)| (k.to_owned(), v.map(|v| v.to_owned())))
         .collect();
-    let decision = crate::hygiene::environment(std::env::vars_os(), policy, &explicit);
+    let caller: Vec<(OsString, OsString)> = if cleared {
+        Vec::new()
+    } else {
+        std::env::vars_os().collect()
+    };
+    let decision = crate::hygiene::environment(caller, policy, &explicit);
     command.env_clear();
     command.envs(decision.set);
-    decision.dropped
+    Ok(decision.dropped)
+}
+
+/// Passthrough was asked for, but whether the command called `env_clear`
+/// cannot be observed with this standard library.
+#[derive(Debug)]
+pub(crate) struct EnvClearUnobservable;
+
+/// Whether to drop the caller's environment, given whether the observer
+/// passed its check and what it saw.
+fn decide(
+    works: bool,
+    seen: Option<bool>,
+    policy: &EnvPolicy,
+) -> Result<bool, EnvClearUnobservable> {
+    match (works, seen) {
+        (true, Some(cleared)) => Ok(cleared),
+        // An allowlist passes only variables the policy names.
+        _ if matches!(policy, EnvPolicy::Allowlist(_)) => Ok(false),
+        _ => Err(EnvClearUnobservable),
+    }
+}
+
+/// Whether `command` had `env_clear` called, read from std's alternate
+/// `Debug` output (std has no getter): the line after `env: CommandEnv {`
+/// is `clear: true,` or `clear: false,`, and the `env` field is absent when
+/// the environment was not changed. Strings print quoted and escaped on one
+/// line, so arguments and values cannot fake those lines. `None` when the
+/// output does not have that shape.
+fn cleared(command: &Command) -> Option<bool> {
+    observe(&format!("{command:#?}"))
+}
+
+fn observe(text: &str) -> Option<bool> {
+    let mut lines = text.lines().map(str::trim);
+    while let Some(line) = lines.next() {
+        if line == "env: CommandEnv {" {
+            return match lines.next() {
+                Some("clear: true,") => Some(true),
+                Some("clear: false,") => Some(false),
+                _ => None,
+            };
+        }
+    }
+    Some(false)
+}
+
+/// Whether the observer reads std's formatting correctly, checked once per
+/// process on a cleared, a changed and an unchanged command.
+fn observer_works() -> bool {
+    static WORKS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *WORKS.get_or_init(|| {
+        let mut cleared_cmd = Command::new("procage-probe");
+        cleared_cmd.env_clear().env("A", "1");
+        let mut changed = Command::new("procage-probe");
+        changed.env("A", "1");
+        let unchanged = Command::new("procage-probe");
+        cleared(&cleared_cmd) == Some(true)
+            && cleared(&changed) == Some(false)
+            && cleared(&unchanged) == Some(false)
+    })
 }
 
 /// A fresh directory, accessible only to the user, under the caller's
@@ -78,5 +151,47 @@ impl Drop for TmpdirGuard {
         if let Some(dir) = self.0.take() {
             let _ = std::fs::remove_dir_all(dir);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_observer_works_with_this_std() {
+        assert!(observer_works());
+    }
+
+    #[test]
+    fn values_cannot_fake_a_clear() {
+        let mut c = Command::new("p");
+        c.arg("\n        clear: true,\n")
+            .arg("env: CommandEnv {")
+            .env("V", "env: CommandEnv {\nclear: true,");
+        assert_eq!(cleared(&c), Some(false));
+        c.env_clear();
+        assert_eq!(cleared(&c), Some(true));
+        let mut d = Command::new("env: CommandEnv {\n    clear: true,");
+        d.current_dir("/tmp/env: CommandEnv {\nclear: true,");
+        assert_eq!(cleared(&d), Some(false));
+    }
+
+    #[test]
+    fn an_unexpected_shape_is_unknown() {
+        assert_eq!(observe("env: CommandEnv {\n  cleared: yes,"), None);
+        assert_eq!(observe("Command {\n}"), Some(false));
+    }
+
+    #[test]
+    fn the_decision_fails_closed_only_for_passthrough() {
+        let pass = EnvPolicy::Passthrough { deny: vec![] };
+        let allow = EnvPolicy::Allowlist(vec!["PATH".into()]);
+        assert!(decide(true, Some(true), &pass).unwrap());
+        assert!(!decide(true, Some(false), &pass).unwrap());
+        assert!(decide(false, Some(false), &pass).is_err());
+        assert!(decide(true, None, &pass).is_err());
+        assert!(!decide(false, Some(true), &allow).unwrap());
+        assert!(decide(true, Some(true), &allow).unwrap());
     }
 }

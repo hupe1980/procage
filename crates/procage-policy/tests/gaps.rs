@@ -256,3 +256,37 @@ fn the_linux_lifetime_lock_follows_the_setting() {
     p.process.lifetime = Lifetime::Tree;
     assert_eq!(locked(&p), (false, false));
 }
+
+#[test]
+fn reading_everything_on_t1_needs_exactly_the_spawn_masks() {
+    let t1 = Target::Linux {
+        tier: Tier::T1,
+        landlock_abi: 6,
+    };
+    let mut p = Policy::default();
+    p.fs.push(subpath(Access::Read, "/"));
+    let Err(LowerError::Gaps(gaps)) = lower(&p, t1, &LowerOptions::default()) else {
+        panic!("reading / on T1 must need an acceptance");
+    };
+    let named: Vec<Construct> = gaps.iter().map(|g| g.construct).collect();
+    assert!(named.contains(&Construct::HdSecrets), "{named:?}");
+    let options = LowerOptions::default().accept_spawn_masks();
+    assert_eq!(
+        options.allow_degrade.iter().copied().collect::<Vec<_>>(),
+        [
+            Construct::HdSecrets,
+            Construct::HdTrustHandoff,
+            Construct::HdPersistence
+        ]
+    );
+    let plan = lower(&p, t1, &options).unwrap();
+    let accepted: Vec<Construct> = plan.degradations().iter().map(|d| d.construct).collect();
+    assert!(accepted.contains(&Construct::HdSecrets), "{accepted:?}");
+    assert!(accepted.iter().all(|c| options.allow_degrade.contains(c)));
+    // Any other approximation is still refused.
+    p.fs.push(FsRule::new(
+        Access::Read,
+        FsTarget::Glob(glob("/src/**/*.rs")),
+    ));
+    assert!(lower(&p, t1, &options).is_err());
+}

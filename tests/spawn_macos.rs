@@ -580,6 +580,7 @@ fn child_entry() {
             format!("{dir} wrote={wrote}")
         }
         "outer-env" => outer_env(),
+        "cleared-env" => cleared_env(),
         other => format!("unknown action {other}"),
     };
     println!("procage-result: {result}");
@@ -611,6 +612,53 @@ fn outer_env() -> String {
         has(&seen, "DYLD_PROCAGE_PROBE"),
         has(&explicit, "GITHUB_TOKEN")
     )
+}
+
+/// Runs uncaged with `PROCAGE_SECRET` in its environment and reports the
+/// names a child sees whose command called `env_clear` and set `A`, under
+/// passthrough and under an allowlist naming the secret and `PATH`.
+fn cleared_env() -> String {
+    let seen = |env: EnvPolicy| {
+        let mut p = base();
+        p.env = env;
+        let cage = Cage::new(&child_policy(p)).unwrap();
+        let mut cmd = child_command("env");
+        cmd.env_clear().env("PROCAGE_CHILD", "env").env("A", "1");
+        let out = finish(
+            cage.spawn(&mut cmd, &Grants::new()).unwrap(),
+            Duration::from_secs(10),
+        );
+        let out = String::from_utf8_lossy(&out.stdout).into_owned();
+        out.lines()
+            .find_map(|l| l.split_once("procage-result: ").map(|(_, r)| r.to_string()))
+            .unwrap_or_default()
+    };
+    format!(
+        "passthrough=[{}] allowlist=[{}]",
+        seen(EnvPolicy::Passthrough { deny: vec![] }),
+        seen(EnvPolicy::Allowlist(vec![
+            "PATH".into(),
+            "PROCAGE_SECRET".into()
+        ]))
+    )
+}
+
+/// `env_clear` on the command keeps every caller variable out, whatever the
+/// policy says about the caller's environment.
+#[test]
+fn env_clear_keeps_the_caller_environment_out() {
+    let mut cmd = child_command("cleared-env");
+    cmd.env("PROCAGE_SECRET", "s");
+    let out = cmd.output().unwrap();
+    let out = String::from_utf8_lossy(&out.stdout).into_owned();
+    let got = out
+        .lines()
+        .find_map(|l| l.split_once("procage-result: ").map(|(_, r)| r.to_string()))
+        .unwrap();
+    assert_eq!(
+        got,
+        "passthrough=[A,PROCAGE_CHILD] allowlist=[A,PROCAGE_CHILD]"
+    );
 }
 
 // ---- 005: hygiene ----
