@@ -63,6 +63,8 @@ jobs:
         run: sw_vers; uname -m; csrutil status || true
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
+      - name: Secret directories the hard-deny tests check
+        run: mkdir -p ~/.ssh ~/.aws ~/.gnupg
       - name: Caged children (spawn tests)
         run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec
       - name: Escape suite

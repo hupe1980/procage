@@ -1137,6 +1137,12 @@ fn developer_policy(base: Base, work: &Path) -> Policy {
         name: GrantName::new("tmpdir").unwrap(),
         access: Access::Write,
     });
+    // Homebrew's git reads its system config; the base leaves Homebrew's
+    // `etc` out, so a policy that runs it grants the file.
+    let gitconfig = Path::new("/opt/homebrew/etc/gitconfig");
+    if gitconfig.exists() {
+        p.fs.push(rule(Access::Read, gitconfig));
+    }
     p
 }
 

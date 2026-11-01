@@ -46,8 +46,9 @@ test-outside:
     just facts
 
 # Runs one fuzz target of the policy crate (nightly toolchain, cargo-fuzz).
+# The host target is explicit: a prebuilt cargo-fuzz defaults to its own (musl).
 fuzz target="quote" secs="60":
-    cd crates/procage-policy && cargo +nightly fuzz run {{target}} -- -max_total_time={{secs}}
+    cd crates/procage-policy && cargo +nightly fuzz run --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" {{target}} -- -max_total_time={{secs}}
 
 # Runs every fuzz target of the policy crate.
 fuzz-all secs="60":
