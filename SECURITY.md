@@ -13,7 +13,7 @@ and the smallest policy and program that show the problem.
 ## Scope
 
 What procage is meant to defend against, and what it does not, is described
-in the [threat model](THREAT_MODEL.md). It also lists the known escape
+in the [threat model](crates/procage/THREAT_MODEL.md). It also lists the known escape
 classes and their status. Reports about out-of-scope classes (for example
 kernel or OS service bugs) are still welcome, but may be answered with a
 pointer to the upstream vendor.

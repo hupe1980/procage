@@ -14,7 +14,7 @@ libc = "0.2"
 
 [dev-dependencies]
 # For the well-formedness check of lowered profiles (policy_compiles).
-procage-policy = { path = "../../crates/procage-policy" }
+procage-policy = { path = "../procage-policy" }
 
 [[bin]]
 name = "kf-probe"

@@ -1,0 +1,40 @@
+[package]
+name = "procage"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Process sandboxing for Rust on macOS (Seatbelt, without sandbox-exec) and Linux (Landlock, seccomp, namespaces). Under development: 0.0.x contains no API"
+repository.workspace = true
+readme = "../../README.md"
+authors.workspace = true
+keywords = ["sandbox", "seatbelt", "macos", "security", "isolation"]
+categories = ["os::macos-apis", "os::linux-apis", "api-bindings"]
+include = ["/src", "/THREAT_MODEL.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
+
+[package.metadata.docs.rs]
+# The spawn API is macOS-only; render it, and the Linux view as well.
+default-target = "aarch64-apple-darwin"
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+
+# Helpers run single-threaded, so the exec tests have their own `main`.
+[[test]]
+name = "exec"
+path = "tests/exec.rs"
+harness = false
+
+[dependencies]
+procage-policy = { path = "../procage-policy", version = "0.0.1" }
+
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+libc = "0.2"
+
+# The workspace set, except that unsafe code is denied rather than forbidden so
+# that `macos::sys` and `linux::sys` alone can allow it.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+undocumented_unsafe_blocks = "deny"

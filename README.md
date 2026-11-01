@@ -33,7 +33,7 @@ script. It is meant to keep that code away from your secrets, files outside
 the granted paths, your terminal and session, and persistence locations. An
 OS sandbox reduces this risk but does not remove it: bugs in the kernel and OS
 services are out of scope, so use a microVM where such an escape is
-unacceptable. The full [threat model](THREAT_MODEL.md) lists every known escape
+unacceptable. The full [threat model](crates/procage/THREAT_MODEL.md) lists every known escape
 class and its status in the current release. To report a suspected escape, see
 the [security policy](SECURITY.md).
 
@@ -44,12 +44,12 @@ dependency policy, the minimum Rust version (1.99), the `no_std` build of the
 policy crate, semver checks, a check for internal planning paths, and a docs
 build from the packaged crate. The tests include a gate that checks the
 threat model's escape-class catalog: its format, stable ids, that every class
-has a canary in the escape suite (`tests/escape_macos.rs`,
-`tests/escape_linux.rs`) for each platform it applies to, and that no class is
+has a canary in the escape suite (`crates/procage/tests/escape_macos.rs`,
+`crates/procage/tests/escape_linux.rs`) for each platform it applies to, and that no class is
 marked handled without passing canaries as evidence. `just escape` runs the
 macOS suite; `just linux` and `just linux-t1` run the Linux suite.
 
-The workspace includes a kernel-facts suite (`tests/kernel_facts`). It
+The workspace includes a kernel-facts suite (`crates/procage-kernel-facts`). It
 re-verifies, on the running kernel, the macOS Seatbelt and Linux Landlock,
 seccomp and namespace behaviour procage relies on. Each fact runs a real child
 process. Facts that apply a sandbox **fail rather than skip** when the suite

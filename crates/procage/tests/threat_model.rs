@@ -662,7 +662,7 @@ fn check_notes(doc: &str, rows: &[EscapeClass], out: &mut Vec<Violation>) {
 }
 
 fn check_links(readme: &str, lib_rs: &str, out: &mut Vec<Violation>) {
-    if !readme.contains("](THREAT_MODEL.md)") {
+    if !readme.contains("](crates/procage/THREAT_MODEL.md)") {
         out.push(violation(
             Rule::Link,
             "README.md",
@@ -720,9 +720,9 @@ fn load() -> Files {
     };
     Files {
         doc: read("THREAT_MODEL.md"),
-        readme: read("README.md"),
+        readme: read("../../README.md"),
         lib_rs: read("src/lib.rs"),
-        kernel_facts: kernel_fact_ids(&read("tests/kernel_facts/tests/kernel_facts.rs")),
+        kernel_facts: kernel_fact_ids(&read("../procage-kernel-facts/tests/kernel_facts.rs")),
         suites: SUITES.map(|(_, path)| read(path)),
     }
 }
@@ -1083,7 +1083,11 @@ fn missing_harness_note_is_caught() {
 #[test]
 fn missing_readme_link_is_caught() {
     assert_caught(
-        |f| f.readme = f.readme.replace("](THREAT_MODEL.md)", "](docs.md)"),
+        |f| {
+            f.readme = f
+                .readme
+                .replace("](crates/procage/THREAT_MODEL.md)", "](docs.md)")
+        },
         Rule::Link,
         "README.md",
     );

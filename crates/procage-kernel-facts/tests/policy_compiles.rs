@@ -7,7 +7,7 @@
 
 #![cfg(target_os = "macos")]
 
-#[path = "../../../crates/procage-policy/tests/common/mod.rs"]
+#[path = "../../procage-policy/tests/common/mod.rs"]
 mod common;
 
 use procage_kernel_facts::sys::macos::Sandbox;

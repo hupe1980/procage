@@ -109,7 +109,7 @@ planning-paths:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> gate: planning-paths"
-    paths=(src crates tests README.md THREAT_MODEL.md SECURITY.md Cargo.toml justfile deny.toml)
+    paths=(crates README.md SECURITY.md Cargo.toml justfile deny.toml)
     [[ -d .github ]] && paths+=(.github)
     if grep -rnE '(concepts|specs|\.specify)/' "${paths[@]}"; then
         echo "planning paths found in the published tree" >&2
