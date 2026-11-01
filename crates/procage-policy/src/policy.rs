@@ -327,8 +327,9 @@ pub enum HardDenyClass {
     FcntlModify,
     /// setuid/setgid writes and setuid/setgid execution.
     Privilege,
-    /// Handing work to unsandboxed services (Launch Services, Apple events,
-    /// pasteboard, XPC services).
+    /// Handing work to unsandboxed services: on macOS Launch Services, Apple
+    /// events, the pasteboard and XPC services; on Linux the D-Bus buses and
+    /// the systemd service managers' sockets (connect denied).
     ServiceHandoff,
     /// Task ports, process introspection outside the sandbox, ptrace.
     ProcessAccess,
@@ -352,6 +353,11 @@ pub enum HardDenyClass {
     TrustHandoff,
     /// Launch agents, launch daemons and login items (write denied).
     Persistence,
+    /// Container engines' control sockets (Docker, Podman, containerd,
+    /// BuildKit, Incus and LXD; on macOS also Colima, OrbStack, Lima, Rancher
+    /// Desktop and Podman machines): connect denied. A build that needs an
+    /// engine waives exactly this class.
+    ContainerEngines,
 }
 
 impl HardDenyClass {
@@ -369,6 +375,7 @@ impl HardDenyClass {
         HardDenyClass::Secrets,
         HardDenyClass::TrustHandoff,
         HardDenyClass::Persistence,
+        HardDenyClass::ContainerEngines,
     ];
 
     /// The kebab-case name.
@@ -386,6 +393,7 @@ impl HardDenyClass {
             HardDenyClass::Secrets => "secrets",
             HardDenyClass::TrustHandoff => "trust-handoff",
             HardDenyClass::Persistence => "persistence",
+            HardDenyClass::ContainerEngines => "container-engines",
         }
     }
 }

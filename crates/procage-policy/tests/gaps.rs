@@ -266,7 +266,7 @@ fn reading_everything_needs_exactly_the_spawn_snapshot() {
     let mut snapshot = Construct::SPAWN_SNAPSHOT.to_vec();
     snapshot.sort();
     assert_eq!(accepted, snapshot);
-    assert_eq!(snapshot.len(), 5);
+    assert_eq!(snapshot.len(), 7);
     for tier in [Tier::T1, Tier::T2] {
         let target = Target::Linux {
             tier,

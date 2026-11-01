@@ -24,7 +24,7 @@ procage is a Rust library that runs a child process in an OS sandbox. You descri
 ## Core concepts
 
 - **Intent layer and lowering.** The [policy](@/docs/policies.md) states intent; a lowering table states, for every construct and target, whether it is exact, approximated (only with your consent) or unsupported.
-- **Hard-deny tier.** Twelve [classes](@/docs/hard-deny.md), such as secrets, trust handoff and persistence, are denied last in every policy and can only be waived by name.
+- **Hard-deny tier.** Thirteen [classes](@/docs/hard-deny.md), such as secrets, trust handoff, persistence and container engines, are denied last in every policy and can only be waived by name.
 - **Tiers.** On [Linux](@/docs/linux.md), tier T1 adds user namespaces and mounts to Landlock and seccomp; tier T2 has only the latter two. The [macOS backend](@/docs/macos.md) has one mechanism, Seatbelt.
 - **Fitting.** When a host cannot enforce a policy, [`Cage::fit`](@/docs/fitting.md) relaxes only what you name and reports what would lift each relaxation.
 - **Evidence.** Every known escape class has a stable id and a status in the [threat model](@/docs/threat-model.md); statuses rest on caged [canaries and kernel facts](@/docs/testing.md).

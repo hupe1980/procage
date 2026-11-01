@@ -6,6 +6,36 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- With the network on, a caged child could reach the user's D-Bus bus or
+  the systemd service manager on Linux (`systemd-run --user` runs outside
+  the sandbox) and container engines' sockets on both systems (a container
+  can mount your home directory) — escape class R-34. Every policy, frozen
+  presets included, now denies them: the `service-handoff` class covers the
+  Linux buses and service managers, and the new `container-engines` class
+  the engines. The preset profiles gain exactly one deny rule each.
+  **Migration**: builds that need a container engine waive
+  `HardDenyClass::ContainerEngines`. On Linux tier T1, a host with such a
+  socket needs the spawn-snapshot approximation accepted
+  (`LowerOptions::accept_spawn_snapshot()` or by name); on tier T2 the cage
+  is refused while one exists unless the class is waived (`Cage::fit` can do
+  it by name). Evidence: the escape-suite canaries `r34_*` on macOS and on
+  Linux tiers T1 and T2.
+
+### Added
+
+- `HardDenyClass::ContainerEngines` and `Construct::HdContainerEngines`;
+  the socket lists in `procage_policy::presets` and
+  `procage_policy::linux::SocketPaths`.
+- `linux::CageOptions::with_runtime_dir`.
+
+### Changed
+
+- `LinuxPlan` gains `service_sockets`; `linux::CageOptions` gains
+  `runtime_dirs`. `Construct::SPAWN_SNAPSHOT` includes the two socket
+  classes.
+
 ## [0.1.0] - 2026-11-01
 
 ### Added

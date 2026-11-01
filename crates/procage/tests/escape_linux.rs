@@ -97,6 +97,21 @@ fn rule(access: Access, p: impl AsRef<Path>) -> FsRule {
     FsRule::new(access, FsTarget::Subpath(abs(p)))
 }
 
+/// `p` with the network on, for canaries of other classes: the socket
+/// classes are waived, since a host with a user bus or an engine (CI
+/// runners) would otherwise make the cage a gap on tier T2 (R-34 has its own
+/// canaries).
+fn net_on(mut p: Policy) -> Policy {
+    p.net = Network::All;
+    p.waive.extend(SOCKET_CLASSES);
+    p
+}
+
+const SOCKET_CLASSES: [HardDenyClass; 2] = [
+    HardDenyClass::ServiceHandoff,
+    HardDenyClass::ContainerEngines,
+];
+
 fn waived(mut p: Policy, classes: &[HardDenyClass]) -> Policy {
     p.waive.extend(classes.iter().copied());
     p
@@ -258,6 +273,15 @@ fn op(spec: &str) -> String {
             arg.parse::<u16>().unwrap(),
         ))),
         "unix" => errno_of(std::os::unix::net::UnixStream::connect(arg)),
+        "link" => {
+            let (from, to) = arg.split_once('|').unwrap();
+            errno_of(std::fs::hard_link(from, to))
+        }
+        // Connects after the parent had time to bind the socket.
+        "delayed-unix" => {
+            std::thread::sleep(Duration::from_millis(1500));
+            errno_of(std::os::unix::net::UnixStream::connect(arg))
+        }
         "unix-serve" => match std::os::unix::net::UnixListener::bind(arg) {
             Ok(listener) => match std::os::unix::net::UnixStream::connect(arg) {
                 Ok(_) => errno_of(listener.accept()),
@@ -448,8 +472,7 @@ fn syscalls(names: &[&str], expected: &[i32], classes: &[HardDenyClass], tier: T
     let ops = ops.join(";");
     // `Network::None` refuses every socket; both cages allow them, so only
     // the class's own rules can refuse.
-    let mut open = policy();
-    open.net = Network::All;
+    let open = net_on(policy());
     let caged = in_child(&ops, &open, tier);
     let control = in_child(&ops, &waived(open, classes), tier);
     let mut informative = 0;
@@ -616,7 +639,7 @@ fn r09_daemons_are_unreachable_without_network_access() {
             format!("{EPERM} {EPERM}"),
             "{tier}"
         );
-        p.net = Network::All;
+        let mut p = net_on(p);
         let control = in_child(&format!("unix:{}", sock.display()), &p, tier);
         assert_eq!(control, "ok", "{tier}");
         p.net = Network::Loopback(Ports::List([Port::new(port).unwrap()].into()));
@@ -1116,5 +1139,332 @@ fn r32_the_seccomp_listener_stays_out_of_reach() {
             child.violations().coverage(),
             &procage::Coverage::SystemCalls
         );
+    }
+}
+
+// ---- R-34 Service handoff over Unix sockets ----
+
+/// A scratch runtime directory with the given sockets bound, and the
+/// listeners that keep them alive.
+fn runtime_with(name: &str, sockets: &[&str]) -> (Scratch, Vec<std::os::unix::net::UnixListener>) {
+    let d = scratch(name);
+    let listeners = sockets
+        .iter()
+        .map(|rel| {
+            let path = d.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::os::unix::net::UnixListener::bind(&path).unwrap()
+        })
+        .collect();
+    (d, listeners)
+}
+
+/// Options for `tier` that search `runtime` and accept the spawn snapshot.
+fn socket_options(tier: Tier, runtime: &Path, snapshot: bool) -> CageOptions {
+    let lower = if snapshot {
+        LowerOptions::default().accept_spawn_snapshot()
+    } else {
+        LowerOptions::default()
+    };
+    let options = options(tier).with_runtime_dir(runtime);
+    let lower = options
+        .lower
+        .allow_degrade
+        .iter()
+        .fold(lower, |l, c| l.allow(*c));
+    options.with_lower(lower)
+}
+
+fn refused_one(r: &str) -> bool {
+    [EPERM, EACCES, ECONNREFUSED]
+        .iter()
+        .any(|e| r == e.to_string())
+}
+
+/// With the network on, the child reaches neither the user bus nor the
+/// service manager nor a container engine: T1 covers them (an approximation
+/// the caller accepts), T2 refuses the cage and names each socket. Waiving
+/// the class lets the same connect through; a project's own socket in the
+/// workspace stays reachable throughout.
+#[test]
+fn r34_service_and_engine_sockets_are_unreachable() {
+    let cases: [(&[&str], HardDenyClass); 2] = [
+        (&["bus", "systemd/private"], HardDenyClass::ServiceHandoff),
+        (
+            &["docker.sock", "podman/podman.sock"],
+            HardDenyClass::ContainerEngines,
+        ),
+    ];
+    for (sockets, class) in cases {
+        let (d, _listeners) = runtime_with(&format!("r34-{class}"), sockets);
+        let ws = d.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let _app = std::os::unix::net::UnixListener::bind(ws.join("app.sock")).unwrap();
+        std::os::unix::fs::symlink(d.join(sockets[0]), ws.join("link.sock")).unwrap();
+        // Each listed socket, the first one through a link in the workspace,
+        // a hard link to it (never possible: the cover hides the name on T1,
+        // and Landlock never grants linking across directories), and the
+        // project's own socket last.
+        let attempt: Vec<String> = sockets
+            .iter()
+            .map(|rel| format!("unix:{}", d.join(rel).display()))
+            .chain([
+                format!("unix:{}", ws.join("link.sock").display()),
+                format!(
+                    "link:{}|{}",
+                    d.join(sockets[0]).display(),
+                    ws.join("hard.sock").display()
+                ),
+                format!("unix:{}", ws.join("app.sock").display()),
+            ])
+            .collect();
+        let attempt = attempt.join(";");
+        let construct = Construct::of_class(class);
+        for tier in tiers() {
+            let mut p = policy();
+            p.net = Network::All;
+            p.fs.push(rule(Access::Read, &d));
+            p.fs.push(rule(Access::Write, &ws));
+            let p = for_tier(p, tier);
+            let other = SOCKET_CLASSES
+                .into_iter()
+                .filter(|c| *c != class)
+                .collect::<Vec<_>>();
+            let p = waived(p, &other);
+            // Without accepting the snapshot (T1) or at all (T2): refused,
+            // naming each socket.
+            let plain = socket_options(tier, &d, false);
+            let gaps = match Cage::with_options(&p, &plain) {
+                Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
+                other => panic!("{tier} {class}: {:?}", other.map(|_| ())),
+            };
+            let kind = if tier == Tier::T1 {
+                GapKind::Approximation
+            } else {
+                GapKind::Unsupported
+            };
+            for rel in sockets {
+                let path = d.join(rel).display().to_string();
+                assert!(
+                    gaps.iter().any(|g| g.construct == construct
+                        && g.kind == kind
+                        && g.subject.as_deref() == Some(path.as_str())),
+                    "{tier} {class}: {path} not named in {gaps:?}"
+                );
+            }
+            if tier == Tier::T1 {
+                let cage = Cage::with_options(&p, &socket_options(tier, &d, true)).unwrap();
+                assert!(
+                    cage.plan()
+                        .degradations
+                        .iter()
+                        .any(|g| g.construct == construct),
+                    "{class}: the approximation is recorded"
+                );
+                let got = run_in(&cage, &attempt, &Grants::new());
+                let parts: Vec<&str> = got.split(' ').collect();
+                assert_eq!(parts.len(), sockets.len() + 3, "{got}");
+                for (what, r) in sockets.iter().chain(&["the link"]).zip(&parts) {
+                    assert!(refused_one(r), "T1 {class}: {what} gave {r} ({got})");
+                }
+                assert_ne!(
+                    parts[sockets.len() + 1],
+                    "ok",
+                    "T1: a hard link was made ({got})"
+                );
+                assert_eq!(
+                    parts[sockets.len() + 2],
+                    "ok",
+                    "T1: the project socket ({got})"
+                );
+            }
+            // The positive control: the class waived. Everything connects;
+            // the hard link stays refused by Landlock.
+            let open = waived(p.clone(), &[class]);
+            let cage = Cage::with_options(&open, &socket_options(tier, &d, true)).unwrap();
+            let got = run_in(&cage, &attempt, &Grants::new());
+            for (i, r) in got.split(' ').enumerate() {
+                if i == sockets.len() + 1 {
+                    assert_ne!(r, "ok", "{tier}: a hard link across directories ({got})");
+                } else {
+                    assert_eq!(r, "ok", "{tier} {class} waived: {got}");
+                }
+            }
+        }
+    }
+}
+
+/// `fit` relaxes a socket class by name on tier T2.
+#[test]
+fn r34_fit_waives_by_name() {
+    let (d, _listeners) = runtime_with("r34-fit", &["bus"]);
+    let mut p = policy();
+    p.net = Network::All;
+    p.waive.insert(HardDenyClass::ContainerEngines);
+    let opts = socket_options(Tier::T2, &d, false);
+    let relax = procage::policy::Relax::new().waive(HardDenyClass::ServiceHandoff);
+    let (cage, relaxed) = Cage::fit(&p, &opts, &relax).unwrap();
+    let bus = relaxed
+        .iter()
+        .find(|r| r.gap.construct == Construct::HdServiceHandoff)
+        .unwrap_or_else(|| panic!("{relaxed:?}"));
+    assert!(bus.lift.tier1, "tier T1 lifts it: {bus}");
+    assert_eq!(bus.lift.landlock_abi, None, "no ABI lifts it: {bus}");
+    let got = run_in(
+        &cage,
+        &format!("unix:{}", d.join("bus").display()),
+        &Grants::new(),
+    );
+    assert_eq!(got, "ok", "the relaxed cage reaches the bus");
+}
+
+/// An abstract bus is out of reach: from Landlock ABI 6 every plan scopes
+/// abstract sockets; below it a bus found at spawn refuses the cage, and
+/// only waiving the class lets the child reach it.
+/// Abstract names are shared by every process of the network namespace:
+/// the abstract-bus canaries take turns, so one's bus never refuses the
+/// other's cage.
+static ABSTRACT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[test]
+fn r34_an_abstract_bus_is_scoped() {
+    use std::os::linux::net::SocketAddrExt;
+    let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
+    // Below ABI 6, with no bus, the class adds no scope of its own: an
+    // unrelated abstract socket stays reachable.
+    let other = format!("procage-r34-unrelated-{}", std::process::id());
+    let other_addr = std::os::unix::net::SocketAddr::from_abstract_name(&other).unwrap();
+    let unrelated = std::os::unix::net::UnixListener::bind_addr(&other_addr).unwrap();
+    let empty = scratch("r34-abstract-empty");
+    for tier in tiers() {
+        let mut p = for_tier(policy(), tier);
+        p.net = Network::All;
+        p.waive.insert(HardDenyClass::ContainerEngines);
+        let opts = socket_options(tier, &empty, true).with_landlock_abi(5);
+        let cage = Cage::with_options(&p, &opts).unwrap_or_else(|e| panic!("{tier}: {e}"));
+        let got = run_in(&cage, &format!("abstract:{other}"), &Grants::new());
+        assert_eq!(
+            got, "ok",
+            "{tier}: an unrelated abstract socket below ABI 6"
+        );
+    }
+    drop(unrelated);
+    let name = format!("/tmp/dbus-procage-r34-{}", std::process::id());
+    let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
+    let _bus = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+    let d = scratch("r34-abstract");
+    let attempt = format!("abstract:{name}");
+    for tier in tiers() {
+        let mut p = for_tier(policy(), tier);
+        p.net = Network::All;
+        p.waive.insert(HardDenyClass::ContainerEngines);
+        let opts = socket_options(tier, &d, true);
+        if probe().landlock_abi >= 6 {
+            let cage = Cage::with_options(&p, &opts).unwrap_or_else(|e| panic!("{tier}: {e}"));
+            assert_eq!(
+                run_in(&cage, &attempt, &Grants::new()),
+                EPERM.to_string(),
+                "{tier}"
+            );
+        }
+        // Below ABI 6 nothing can scope it: the cage is refused, naming it.
+        let old = opts.clone().with_landlock_abi(5);
+        let gaps = match Cage::with_options(&p, &old) {
+            Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
+            other => panic!("{tier} ABI 5: {:?}", other.map(|_| ())),
+        };
+        let subject = format!("@{name}");
+        assert!(
+            gaps.iter()
+                .any(|g| g.construct == Construct::HdServiceHandoff
+                    && g.subject.as_deref() == Some(subject.as_str())),
+            "{tier} {gaps:?}"
+        );
+        // The positive control: waived, the child reaches the bus.
+        let open = waived(p, &[HardDenyClass::ServiceHandoff]);
+        let cage = Cage::with_options(&open, &old).unwrap();
+        assert_eq!(run_in(&cage, &attempt, &Grants::new()), "ok", "{tier}");
+    }
+}
+
+/// Each spawn looks again: on T2 a bus bound after the cage was made
+/// refuses the spawn; on T1 a socket bound in a class directory after the
+/// spawn is out of reach, because the directory is covered as a whole.
+#[test]
+fn r34_a_socket_bound_later_is_refused() {
+    let d = scratch("r34-later");
+    std::fs::create_dir_all(d.join("systemd")).unwrap();
+    let mut p = policy();
+    p.net = Network::All;
+    p.waive.insert(HardDenyClass::ContainerEngines);
+    p.fs.push(rule(Access::Read, &d));
+    // T2: the cage is made while no socket exists, then one appears.
+    let cage = Cage::with_options(&p, &socket_options(Tier::T2, &d, false)).unwrap();
+    let bus = std::os::unix::net::UnixListener::bind(d.join("bus")).unwrap();
+    match cage.spawn(&mut child_command("unix:/"), &Grants::new()) {
+        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => assert!(
+            gaps.iter()
+                .any(|g| g.construct == Construct::HdServiceHandoff),
+            "{gaps:?}"
+        ),
+        other => panic!("T2 spawn: {:?}", other.map(|_| ())),
+    }
+    drop(bus);
+    let _ = std::fs::remove_file(d.join("bus"));
+    if !t1("r34_a_socket_bound_later_is_refused") {
+        return;
+    }
+    let cage = Cage::with_options(&p, &socket_options(Tier::T1, &d, true)).unwrap();
+    let late = d.join("systemd/private");
+    let child = cage
+        .spawn(
+            &mut child_command(&format!("delayed-unix:{}", late.display())),
+            &Grants::new(),
+        )
+        .unwrap();
+    let _private = std::os::unix::net::UnixListener::bind(&late).unwrap();
+    let got = result(&finish(child, Duration::from_secs(20)));
+    assert!(
+        refused_one(&got),
+        "T1: a socket bound later in systemd/ gave {got}"
+    );
+    // T1: an engine socket bound after the cage was made is covered at the
+    // next spawn.
+    let mut engines = policy();
+    engines.net = Network::All;
+    engines.waive.insert(HardDenyClass::ServiceHandoff);
+    engines.fs.push(rule(Access::Read, &d));
+    let cage = Cage::with_options(&engines, &socket_options(Tier::T1, &d, true)).unwrap();
+    let _engine = std::os::unix::net::UnixListener::bind(d.join("docker.sock")).unwrap();
+    let attempt = format!("unix:{}", d.join("docker.sock").display());
+    let got = run_in(&cage, &attempt, &Grants::new());
+    assert!(
+        refused_one(&got),
+        "T1: an engine bound after the cage gave {got}"
+    );
+}
+
+/// Below Landlock ABI 6 an abstract bus that appears after the cage was
+/// made refuses the spawn.
+#[test]
+fn r34_an_abstract_bus_bound_later_refuses_the_spawn() {
+    use std::os::linux::net::SocketAddrExt;
+    let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
+    let d = scratch("r34-abstract-later");
+    let mut p = policy();
+    p.net = Network::All;
+    p.waive.insert(HardDenyClass::ContainerEngines);
+    let opts = socket_options(Tier::T2, &d, true).with_landlock_abi(5);
+    let cage = Cage::with_options(&p, &opts).unwrap();
+    let name = format!("/tmp/dbus-procage-r34-later-{}", std::process::id());
+    let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
+    let _bus = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+    match cage.spawn(&mut child_command("unix:/"), &Grants::new()) {
+        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => assert!(
+            gaps.iter()
+                .any(|g| g.construct == Construct::HdServiceHandoff),
+            "{gaps:?}"
+        ),
+        other => panic!("spawn: {:?}", other.map(|_| ())),
     }
 }

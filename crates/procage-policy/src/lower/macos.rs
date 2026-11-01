@@ -164,6 +164,9 @@ fn hard_deny(class: HardDenyClass, policy: &Policy) -> Vec<Rule> {
             ),
         ],
         HardDenyClass::Persistence => vec![deny(&["file-write*"], folded(class))],
+        // A path filter on a network operation matches Unix-socket addresses
+        // only, by the socket a path resolves to.
+        HardDenyClass::ContainerEngines => vec![deny(&["network-outbound"], folded(class))],
         HardDenyClass::KernelSurface
         | HardDenyClass::Namespaces
         | HardDenyClass::SocketFamilies => vec![],

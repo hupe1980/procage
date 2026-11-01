@@ -221,6 +221,10 @@ fn op(spec: &str) -> String {
             arg.parse::<u16>().unwrap(),
         ))),
         "unix" => errno_of(std::os::unix::net::UnixStream::connect(arg)),
+        "link" => {
+            let (from, to) = arg.split_once('|').unwrap();
+            errno_of(std::fs::hard_link(from, to))
+        }
         "unix-serve" => match std::os::unix::net::UnixListener::bind(arg) {
             Ok(listener) => match std::os::unix::net::UnixStream::connect(arg) {
                 Ok(_) => errno_of(listener.accept()),
@@ -897,4 +901,95 @@ fn r25_other_processes_arguments_are_unreadable() {
 #[ignore = "open: R-26 procage installs no helper"]
 fn r26_the_helper_cannot_be_replaced() {
     panic!("open: R-26: procage installs no helper");
+}
+
+// ---- R-34 Service handoff over Unix sockets ----
+
+/// A fake container engine at a listed home location, removed on drop.
+struct FakeEngine {
+    dir: PathBuf,
+    socket: PathBuf,
+    _listener: std::os::unix::net::UnixListener,
+}
+
+impl FakeEngine {
+    /// `~/.lima/procage-r34-<pid>/sock/docker.sock` (Lima's layout).
+    fn new() -> FakeEngine {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME"));
+        let dir = real(&home).join(format!(".lima/procage-r34-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sock")).unwrap();
+        let socket = dir.join("sock/docker.sock");
+        let _ = std::fs::remove_file(&socket);
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        FakeEngine {
+            dir,
+            socket,
+            _listener: listener,
+        }
+    }
+}
+
+impl Drop for FakeEngine {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+        // Leaves `~/.lima` only if this canary created it.
+        let _ = std::fs::remove_dir(self.dir.parent().unwrap());
+    }
+}
+
+/// With the network on, a container engine's socket is unreachable: by its
+/// path, through a symbolic link in the workspace, and a hard link to it
+/// cannot be made. Waiving `container-engines` lets both connects through and
+/// leaves service handoff denied.
+#[test]
+fn r34_container_engines_are_unreachable() {
+    let engine = FakeEngine::new();
+    let d = scratch("r34");
+    std::fs::create_dir_all(d.join("ws")).unwrap();
+    let ws = real(&d.join("ws"));
+    std::os::unix::fs::symlink(&engine.socket, ws.join("link.sock")).unwrap();
+    // The project's own socket in the workspace stays reachable.
+    let _app = std::os::unix::net::UnixListener::bind(ws.join("app.sock")).unwrap();
+    let mut p = policy();
+    p.net = Network::All;
+    p.fs.push(rule(Access::Write, &ws));
+    let attempt = format!(
+        "unix:{};unix:{};link:{}|{};unix:{}",
+        engine.socket.display(),
+        ws.join("link.sock").display(),
+        engine.socket.display(),
+        ws.join("hard.sock").display(),
+        ws.join("app.sock").display()
+    );
+    assert_eq!(
+        in_child(&attempt, &p),
+        format!("{EPERM} {EPERM} {EPERM} ok"),
+        "caged"
+    );
+    // Waived, the connects go through. The hard link stays refused: the
+    // profile grants no write access to the socket, and Seatbelt refuses a
+    // link to a file the child cannot write (measured on 26.6.2), so no
+    // second name can be made from inside the cage at all.
+    let open = waived(p, HardDenyClass::ContainerEngines);
+    assert_eq!(
+        in_child(&attempt, &open),
+        format!("ok ok {EPERM} ok"),
+        "container-engines waived"
+    );
+    // Service handoff is a class of its own: allowed by the policy itself and
+    // with container engines waived, the lookups stay refused.
+    let mut lookups = open;
+    raw_allow(
+        &mut lookups,
+        Operation::MachLookup,
+        SERVICES
+            .iter()
+            .map(|s| Filter::GlobalName(procage::policy::name::Name::new(s).unwrap()))
+            .collect(),
+    );
+    let got = in_child(&SERVICES.map(|s| format!("mach:{s}")).join(";"), &lookups);
+    assert!(
+        got.split(' ').all(|r| r != "ok"),
+        "service handoff stays denied: {got}"
+    );
 }

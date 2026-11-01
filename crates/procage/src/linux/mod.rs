@@ -73,6 +73,21 @@
 //! approximation accepted with the same option). Tier T2 cannot restrict
 //! pathname sockets and refuses the setting.
 //!
+//! **Service and engine sockets.** When the network is on (or
+//! `ipc.unix_sockets` is set), the `service-handoff` and `container-engines`
+//! classes keep the child from the D-Bus buses, the systemd managers and
+//! container engines (see `procage_policy::presets` for the lists). The
+//! cage looks for these sockets in the system locations and every runtime
+//! directory (`/run/user/*`, `$XDG_RUNTIME_DIR`,
+//! [`CageOptions::with_runtime_dir`]) when it is made and at each spawn.
+//! Tier T1 covers what it finds and the classes' directories as a whole; a
+//! socket bound later elsewhere is not covered, so this is an approximation
+//! accepted with the spawn snapshot or by name. Tier T2 cannot cover a socket:
+//! while one exists the cage is refused, naming it, and a spawn is refused if
+//! one appeared after the cage was made. A connect refused by a cover is not
+//! reported as a violation. Waive `container-engines` for builds that need an
+//! engine.
+//!
 //! **Limits:**
 //!
 //! - no PID namespace or private `/proc`, so signal scoping needs Landlock
@@ -88,6 +103,7 @@ mod child;
 mod classes;
 mod probe;
 mod seccomp;
+mod services;
 mod spawn;
 mod sys;
 mod violations;
@@ -102,8 +118,8 @@ use std::sync::Arc;
 
 use procage_policy::linux::RuleTarget;
 use procage_policy::{
-    HardDenyClass, LinuxPlan, LowerError, LowerOptions, Plan, Policy, Relax, Relaxed, Target, Tier,
-    Tty, lift, lower,
+    Construct, HardDenyClass, LinuxPlan, LowerError, LowerOptions, Plan, Policy, Relax, Relaxed,
+    Target, Tier, Tty, lift, lower,
 };
 
 pub use crate::unix::TMPDIR_GRANT;
@@ -459,6 +475,10 @@ pub struct CageOptions {
     /// Whether spawns report denied operations (see
     /// [`CageOptions::with_violations`]).
     pub violations: bool,
+    /// Runtime directories besides those under `/run/user` and
+    /// `$XDG_RUNTIME_DIR`, whose bus, service-manager and engine sockets
+    /// the cage keeps out of reach.
+    pub runtime_dirs: Vec<PathBuf>,
 }
 
 impl Default for CageOptions {
@@ -470,6 +490,7 @@ impl Default for CageOptions {
             homes: Vec::new(),
             landlock_abi: None,
             violations: false,
+            runtime_dirs: Vec::new(),
         }
     }
 }
@@ -496,6 +517,14 @@ impl CageOptions {
     /// These options with `home` as one more home directory.
     pub fn with_home(mut self, home: impl AsRef<Path>) -> Self {
         self.homes.push(home.as_ref().to_path_buf());
+        self
+    }
+
+    /// These options with `dir` as one more runtime directory (like
+    /// `XDG_RUNTIME_DIR`): its bus, service-manager and engine sockets are
+    /// kept out of reach like those of the directories procage finds.
+    pub fn with_runtime_dir(mut self, dir: impl AsRef<Path>) -> Self {
+        self.runtime_dirs.push(dir.as_ref().to_path_buf());
         self
     }
 
@@ -571,6 +600,10 @@ pub struct Cage {
     walk_limit: usize,
     /// With violation reporting: the filter whose `EPERM` denies notify.
     notifying: Option<Arc<[seccomp::Insn]>>,
+    /// The runtime directories searched for service sockets.
+    runtime: Vec<PathBuf>,
+    /// The approximations the caller accepts, for sockets found at spawn.
+    allowed: BTreeSet<Construct>,
 }
 
 impl Cage {
@@ -601,10 +634,13 @@ impl Cage {
             let done = relax
                 .apply(&mut fitted, &gaps)
                 .map_err(|rest| SpawnError::Lower(LowerError::Gaps(rest)))?;
-            relaxed.extend(done.into_iter().map(|(gap, relaxation)| Relaxed {
-                lift: lift(policy, &gap, &options.lower, BACKEND_MAX_ABI),
-                gap,
-                relaxation,
+            relaxed.extend(done.into_iter().map(|(gap, relaxation)| {
+                Relaxed {
+                    lift: socket_lift(&gap)
+                        .unwrap_or_else(|| lift(policy, &gap, &options.lower, BACKEND_MAX_ABI)),
+                    gap,
+                    relaxation,
+                }
             }));
         }
         Cage::with_options(&fitted, options).map(|cage| (cage, relaxed))
@@ -660,12 +696,34 @@ impl Cage {
         let homes = classes::homes(&options.homes);
         let rules = spawn::rule_paths(&plan);
         classes::home_gaps(&mut plan, &rules, &homes, &options.lower, target)?;
+        let runtime = services::runtime_dirs(&options.runtime_dirs);
+        if !plan.service_sockets.is_empty() {
+            let found = services::find(&plan.service_sockets, &runtime, abstract_visible(&plan));
+            let outcome = services::decide(&plan, &found, &options.lower.allow_degrade);
+            if !outcome.gaps.is_empty() {
+                return Err(SpawnError::Lower(LowerError::Gaps(outcome.gaps)));
+            }
+            if outcome.scope {
+                let scopes = &mut plan.landlock.scopes;
+                *scopes = procage_policy::linux::Scopes(
+                    scopes.0 | procage_policy::linux::Scopes::ABSTRACT_UNIX_SOCKET.0,
+                );
+            }
+            for d in outcome.degradations {
+                if !plan.degradations.iter().any(|k| k.construct == d.construct) {
+                    plan.degradations.push(d);
+                }
+            }
+            plan.degradations.sort();
+        }
         Ok(Cage {
             plan,
             filter,
             homes,
             walk_limit: options.walk_limit,
             notifying,
+            runtime,
+            allowed: options.lower.allow_degrade.clone(),
         })
     }
 
@@ -861,6 +919,7 @@ impl Cage {
             }
         }
         let bound = self.bind(&grants, &declared)?;
+        let service_covers = self.service_covers()?;
         let ruleset = spawn::ruleset(
             &self.plan,
             &bound,
@@ -879,6 +938,9 @@ impl Cage {
                 if self.plan.mask_unix_sockets {
                     covers.extend(self.socket_masks(&covers)?);
                 }
+                covers.extend(service_covers);
+                covers.sort();
+                covers.dedup();
                 let (uid, gid) = sys::ids();
                 let net = if ns.net { libc::CLONE_NEWNET } else { 0 };
                 Some(sys::Isolate {
@@ -936,6 +998,38 @@ impl Cage {
         out.sort();
         out.dedup();
         out
+    }
+
+    /// Looks for the socket classes' sockets again for this spawn: covers on
+    /// tier T1; on tier T2, or for a socket the caller did not accept as
+    /// approximated, the spawn is refused, as is an abstract bus that
+    /// appeared without the abstract-socket scope.
+    fn service_covers(&self) -> Result<Vec<(PathBuf, classes::Cover)>, SpawnError> {
+        if self.plan.service_sockets.is_empty() {
+            return Ok(Vec::new());
+        }
+        let found = services::find(
+            &self.plan.service_sockets,
+            &self.runtime,
+            abstract_visible(&self.plan),
+        );
+        let mut outcome = services::decide(&self.plan, &found, &self.allowed);
+        if outcome.scope && !services::scoped(&self.plan) {
+            outcome.gaps.push(procage_policy::CapabilityGap {
+                construct: Construct::HdServiceHandoff,
+                target: Target::Linux {
+                    tier: self.plan.tier,
+                    landlock_abi: self.plan.landlock_abi,
+                },
+                kind: procage_policy::GapKind::Unsupported,
+                subject: Some("an abstract bus that appeared after the cage was made".into()),
+            });
+        }
+        if !outcome.gaps.is_empty() {
+            outcome.gaps.sort();
+            return Err(SpawnError::Lower(LowerError::Gaps(outcome.gaps)));
+        }
+        Ok(outcome.covers)
     }
 
     /// Masks for the listening sockets outside `ipc.unix_sockets` (tier T1
@@ -1236,4 +1330,28 @@ pub mod testing {
             .map_err(std::io::Error::other)?;
         sys::install_outer_listener(filter).map_err(std::io::Error::from_raw_os_error)
     }
+}
+
+/// Whether the child shares the caller's network namespace, so the caller's
+/// abstract sockets are reachable.
+fn abstract_visible(plan: &LinuxPlan) -> bool {
+    plan.namespaces.is_none_or(|ns| !ns.net)
+}
+
+/// What lifts a socket class's gap: tier T2 cannot keep out one socket, tier
+/// T1 covers it (the lowering does not see these gaps, which come from the
+/// host at spawn). No Landlock ABI lifts it: Unix-socket rules allow, they
+/// cannot deny one socket inside an allowed tree.
+fn socket_lift(gap: &procage_policy::CapabilityGap) -> Option<procage_policy::Lift> {
+    let socket = matches!(
+        gap.construct,
+        Construct::HdServiceHandoff | Construct::HdContainerEngines
+    );
+    let t2 = matches!(gap.target, Target::Linux { tier: Tier::T2, .. });
+    (socket && t2 && !gap.subject.as_deref().unwrap_or("").starts_with('@')).then_some(
+        procage_policy::Lift {
+            tier1: true,
+            landlock_abi: None,
+        },
+    )
 }

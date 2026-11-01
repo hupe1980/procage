@@ -462,6 +462,29 @@ impl ClassPaths {
     }
 }
 
+/// The Linux sockets of a socket hard-deny class (`service-handoff`,
+/// `container-engines`), found and covered at spawn. Landlock cannot refuse
+/// one Unix socket inside an allowed tree, so the backend looks for these at
+/// cage creation and at each spawn: tier T1 covers what it finds, tier T2
+/// reports a gap.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SocketPaths {
+    /// The class.
+    pub class: HardDenyClass,
+    /// Socket paths.
+    pub system: Vec<AbsPath>,
+    /// Directories the class owns as a whole (covered entirely on T1, so
+    /// sockets bound in them later stay out of reach).
+    pub system_dirs: Vec<AbsPath>,
+    /// Socket paths relative to each runtime directory (`/run/user/<uid>`,
+    /// `XDG_RUNTIME_DIR`).
+    pub runtime: Vec<String>,
+    /// Directories relative to each runtime directory that the class owns.
+    pub runtime_dirs: Vec<String>,
+    /// Prefixes of abstract socket names (without the leading NUL).
+    pub abstract_prefixes: Vec<String>,
+}
+
 /// Whether some path matching `pattern` (absolute; `*` is one component,
 /// `**` any number) equals, contains or lies inside `path`. Components with
 /// other wildcard characters match any one component, which can only
@@ -604,6 +627,10 @@ pub struct LinuxPlan {
     /// The data-driven hard-deny classes in force (not waived), whose paths
     /// the backend handles at spawn.
     pub classes: Vec<ClassPaths>,
+    /// The socket hard-deny classes in force that the policy can reach (the
+    /// network is on, or `ipc.unix_sockets` is set), found and handled by
+    /// the backend at cage creation and at each spawn.
+    pub service_sockets: Vec<SocketPaths>,
     /// Environment, limits and terminal, unchanged from the policy.
     pub hygiene: Hygiene,
 }

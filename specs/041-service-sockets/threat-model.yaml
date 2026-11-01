@@ -25,10 +25,13 @@ threatspec:
     reason: 'checked flow.connect: procage carries no data over these sockets, it only denies the connect'
     technique: data-tampering-in-transit
   - disposition: not-applicable
-    reason: no store; the socket list is compiled-in data, its gaps are threat.list-gap
+    reason: no store; the socket list is compiled-in data (its gaps are threat.list-gap) and the host state discovery
+      reads is modelled as threat.discovery-shaped
     technique: data-tampering-at-rest
   - disposition: no-threat-detected
-    reason: the class only adds denies; the disclosure paths are the handoff threats
+    reason: 'checked flow.discover-read and flow.gap: discovery reads only the listed paths, the /run/user/* directories
+      the caller can already read and /proc/net/unix, and the gap subjects name paths the trusted consumer can already
+      see; the disclosure paths are the handoff threats'
     technique: sensitive-data-exposure
   - disposition: not-applicable
     reason: single user
@@ -124,16 +127,20 @@ threatspec:
     reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
       the child, modelled under STRIDE
     technique: rogue-agent
-  exclusions: []
+  exclusions:
+  - entity: Service socket pattern
+    reason: 'folded into the frozen socket-list asset: the patterns are the lists'' entries'
   extends: null
-  generated: '2026-11-01T21:13:45Z'
+  generated: '2026-11-01T22:22:22Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
+  - path: plan.md
+    sha256: c5a229d0634e3a596b56c34571f3ad666a60f38cdfe20f4dfd44dfced6cb402f
   - path: spec.md
-    sha256: 12e0495f4cd032aa0a6aed781be3b40094764621b6f8454e222cc546c4c05676
+    sha256: be6409a3b886cc5f64e90b8427c0fba7dababdf10d798dc005d16f57c8a41bcf
   surfaces:
   - external-input
   - authorization
@@ -148,6 +155,10 @@ trustZones:
   name: The harness that builds cages
   risk:
     trustRating: 90
+- id: tz.host-state
+  name: Host file system and /proc state that discovery reads (runtime directories, /run, /proc/net/unix)
+  risk:
+    trustRating: 40
 - id: tz.os
   name: The kernel (Landlock, mounts, Seatbelt)
   risk:
@@ -157,6 +168,16 @@ trustZones:
   risk:
     trustRating: 60
 assets:
+- id: asset.discovery
+  name: The sockets, class directories and abstract names found at cage creation and at each spawn
+  risk:
+    availability: 40
+    confidentiality: 10
+    integrity: 90
+  attributes:
+    type: configuration
+    source: plan.md#Summary
+    classification: internal
 - id: asset.harness
   name: Runs that legitimately use a project socket or a container engine
   risk:
@@ -198,20 +219,36 @@ assets:
     source: spec.md#FR-006
     classification: internal
 components:
+- id: component.cage-options
+  name: 'CageOptions::with_runtime_dir: adds a runtime directory to the discovery (Linux)'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: contracts/api.md
 - id: component.canaries
-  name: Escape canaries with a private bus and fake engine sockets
+  name: Escape canaries R-34 with a scratch runtime directory, a private bus and fake engine sockets (crates/procage/tests/escape_macos.rs,
+    escape_linux.rs)
   type: test
   parent:
     trustZone: tz.harness
   attributes:
     source: spec.md#US1
+- id: component.discovery
+  name: 'Spawn-time discovery in the parent: runtime_dirs and find over the lists, /run/user/*, XDG_RUNTIME_DIR,
+    with_runtime_dir additions and /proc/net/unix (crates/procage/src/linux/services.rs)'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: plan.md#Summary
 - id: component.docs
-  name: Changelog, THREAT_MODEL escape class and preset fixtures
+  name: CHANGELOG Security entry, THREAT_MODEL row R-34, crate docs, site pages, README platform notes
   type: document
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-007
+    source: plan.md#Summary
 - id: component.fit
   name: 'fit: relaxes a class by name on hosts that cannot enforce it'
   type: library
@@ -219,29 +256,54 @@ components:
     trustZone: tz.harness
   attributes:
     source: spec.md#FR-008
+- id: component.fixtures
+  name: Preset fixtures regenerated with the new denies (crates/procage-policy/tests/fixtures/presets/*.sb)
+  type: test
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: plan.md#Summary
+- id: component.host-state
+  name: Runtime directories, /run, /var/lib engine paths and /proc/net/unix as the host presents them at discovery
+    time
+  type: datastore
+  parent:
+    trustZone: tz.host-state
+  attributes:
+    source: research.md#R3
+- id: component.linux-lowering
+  name: 'Linux lowering: both classes Exact; LinuxPlan::service_sockets filled only when the policy can reach Unix
+    sockets (crates/procage-policy/src/lower/linux.rs)'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: plan.md#Summary
 - id: component.linux-t1
-  name: 'Linux T1 backend: socket covers and abstract-socket scope'
+  name: 'Linux T1: Cover::Hide for each found socket and class directory, abstract-socket scope (crates/procage/src/linux/spawn.rs)'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
     source: spec.md#FR-003
 - id: component.linux-t2
-  name: 'Linux T2 backend: spawn-time check and capability gap'
+  name: 'Linux T2: service_gaps in Cage::with_options and the per-spawn re-check that refuses a spawn (crates/procage/src/linux/mod.rs)'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
     source: spec.md#FR-003
 - id: component.macos
-  name: 'macOS backend: Seatbelt denies for engine sockets'
+  name: 'macOS lowering: container-engines as a network-outbound deny of the folded patterns in the hard-deny block
+    (crates/procage-policy/src/lower/macos.rs)'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
     source: spec.md#FR-002
 - id: component.policy
-  name: Hard-deny classes service-handoff (extended) and container-engines (new), waivers by name
+  name: Hard-deny classes service-handoff (extended) and container-engines (new, last in HardDenyClass::ALL), Construct::SPAWN_SNAPSHOT,
+    waivers by name (crates/procage-policy/src/policy.rs)
   type: library
   parent:
     trustZone: tz.harness
@@ -255,12 +317,13 @@ components:
   attributes:
     source: spec.md#Context
 - id: component.socket-list
-  name: Frozen service socket list per system, home and runtime directories expanded at spawn
+  name: Frozen socket lists per class and system in crates/procage-policy/src/presets.rs (SERVICE_*_LINUX, ENGINE_*_LINUX,
+    ENGINE_HOME, ENGINE_SYSTEM)
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#Key-Entities
+    source: plan.md#Summary
 - id: component.violations
   name: Violation records with the class as reason
   type: library
@@ -269,6 +332,17 @@ components:
   attributes:
     source: spec.md#FR-006
 dataflows:
+- id: flow.child-shapes-host
+  name: A caged child (or another process of the user) binds, links or replaces names in host directories it can
+    write, and binds abstract names
+  source: tz.cage
+  destination: component.host-state
+  assets:
+  - asset.discovery
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.host-state
 - id: flow.claims
   name: The docs tell the consumer what changed and how to waive it
   source: component.docs
@@ -278,7 +352,7 @@ dataflows:
   attributes:
     crosses: []
 - id: flow.confine
-  name: The backends confine the child
+  name: The backends confine the child (covers, scope, Seatbelt denies)
   source: component.linux-t1
   destination: tz.cage
   assets:
@@ -297,10 +371,68 @@ dataflows:
     crosses:
     - tz.cage
     - tz.services
+- id: flow.discover-read
+  name: Discovery reads the listed paths, /run/user/* and /proc/net/unix at cage creation and at each spawn
+  source: component.host-state
+  destination: component.discovery
+  assets:
+  - asset.discovery
+  attributes:
+    crosses:
+    - tz.host-state
+    - tz.harness
+- id: flow.discovery-covers
+  name: Discovery hands found sockets and directories to the T1 covers and abstract names to the scope
+  source: component.discovery
+  destination: component.linux-t1
+  assets:
+  - asset.discovery
+  attributes:
+    crosses: []
+- id: flow.discovery-gaps
+  name: Discovery hands found sockets to the T2 gaps and the per-spawn re-check
+  source: component.discovery
+  destination: component.linux-t2
+  assets:
+  - asset.discovery
+  attributes:
+    crosses: []
+- id: flow.fixture-regen
+  name: The lowering regenerates the preset fixtures
+  source: component.policy
+  destination: component.fixtures
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
 - id: flow.gap
   name: T2 reports a capability gap to the consumer
   source: component.linux-t2
   destination: actor.consumer
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
+- id: flow.lower-plan
+  name: The policy lowers the classes into LinuxPlan::service_sockets
+  source: component.policy
+  destination: component.linux-lowering
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
+- id: flow.options-to-discovery
+  name: Added runtime directories reach discovery
+  source: component.cage-options
+  destination: component.discovery
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
+- id: flow.plan-to-discovery
+  name: The plan's socket lists reach discovery
+  source: component.linux-lowering
+  destination: component.discovery
   assets:
   - asset.policy
   attributes:
@@ -311,6 +443,14 @@ dataflows:
   destination: tz.harness
   assets:
   - asset.record
+  attributes:
+    crosses: []
+- id: flow.runtime-dir
+  name: The consumer adds a runtime directory with with_runtime_dir
+  source: actor.consumer
+  destination: component.cage-options
+  assets:
+  - asset.policy
   attributes:
     crosses: []
 - id: flow.waiver
@@ -336,13 +476,14 @@ threats:
     source: spec.md#FR-004
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: I. Fail closed, never silently weaker
     disposition: threat
     elements:
     - component.linux-t1
     - component.linux-t2
+    - component.discovery
     - flow.connect
     profile: stride
     severity: high
@@ -358,10 +499,10 @@ threats:
     likelihood: 30
     likelihoodComment: the aliases are standard on Linux; macOS rules match connect paths
   attributes:
-    source: spec.md#Edge-Cases
+    source: spec.md#Clarifications
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     disposition: threat
     elements:
@@ -371,6 +512,67 @@ threats:
     profile: stride
     severity: medium
     technique: broken-access-control
+- id: threat.discovery-race
+  name: Between discovery and the child's run a socket of an unwaived class appears or is replaced (bound after
+    Cage::new on T2, vanished at find and re-bound before the optional T1 cover, or bound after the child starts
+    at a path no class directory covers), so it stays reachable without a gap
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-367
+  risk:
+    impact: 85
+    impactComment: the handoff opens for that spawn while the cage reports no gap
+    likelihood: 35
+    likelihoodComment: engines and buses restart; long-lived cages spawn many times
+  attributes:
+    source: plan.md#Summary
+    assets:
+    - asset.host
+    - asset.discovery
+    status: mitigated
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.discovery
+    - component.linux-t1
+    - component.linux-t2
+    - flow.discovery-gaps
+    - flow.discovery-covers
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.discovery-shaped
+  name: 'Host state that a caged child or another process can shape misleads discovery: a listed name replaced by
+    a symbolic link or a non-socket decoy is skipped, a crafted abstract name breaks the /proc/net/unix parse, or
+    an unreadable /proc/net/unix is read as no abstract bus'
+  categories:
+  - Tampering
+  cwes:
+  - CWE-59
+  risk:
+    impact: 85
+    impactComment: the real socket is never covered or gapped
+    likelihood: 30
+    likelihoodComment: needs a writable grant over a runtime directory, or a missing /proc in a container
+  attributes:
+    source: plan.md#Summary
+    assets:
+    - asset.discovery
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.discovery
+    - component.host-state
+    - flow.discover-read
+    - flow.child-shapes-host
+    profile: stride
+    severity: medium
+    technique: injection
 - id: threat.engine-handoff
   name: Caged code connects to a container engine socket (Docker, Podman, containerd, Colima, OrbStack) and starts
     a container that mounts the home directory, on Linux or macOS
@@ -387,7 +589,7 @@ threats:
     source: spec.md#US2
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: II. Every policy emits the hard-deny tier last
     disposition: threat
@@ -401,7 +603,8 @@ threats:
     technique: broken-access-control
 - id: threat.list-gap
   name: The frozen socket list misses a variant in use (rootless containerd, a Podman machine, Colima or Lima profiles,
-    a new engine), so that engine stays reachable
+    a new engine), or an engine runs at a path named only by DOCKER_HOST or CONTAINER_HOST, so that engine stays
+    reachable
   categories:
   - Elevation of Privilege
   risk:
@@ -410,7 +613,7 @@ threats:
     likelihood: 45
     likelihoodComment: engine socket locations vary by tool and version
   attributes:
-    source: spec.md#Assumptions
+    source: spec.md#Clarifications
     assets:
     - asset.host
     status: open
@@ -423,7 +626,8 @@ threats:
     technique: broken-access-control
 - id: threat.over-deny
   name: A pattern also matches a project's own socket under a granted writable tree, or the abstract-socket scope
-    cuts unrelated local services, so legitimate runs fail and consumers waive whole classes to get work done
+    (accepted, only when an abstract service bus exists at spawn) cuts unrelated abstract sockets such as X11's,
+    so legitimate runs fail and consumers waive whole classes
   categories:
   - Denial of Service
   risk:
@@ -432,11 +636,11 @@ threats:
     likelihood: 45
     likelihoodComment: directory patterns and the abstract scope are broader than single paths
   attributes:
-    source: spec.md#Edge-Cases
+    source: spec.md#Clarifications
     assets:
     - asset.harness
     - asset.policy
-    status: open
+    status: mitigated
     actor: actor.consumer
     disposition: threat
     elements:
@@ -446,8 +650,8 @@ threats:
     severity: medium
     technique: resource-exhaustion
 - id: threat.post-spawn-socket
-  name: A bus or engine socket created after spawn (an engine started later, a restarted bus) is not covered on
-    T1 because the covers are made from the file system at spawn
+  name: A bus or engine socket created after spawn (an engine started later, a restarted bus) at a listed path outside
+    a covered class directory is not covered on T1, because the covers are made from the file system at spawn
   categories:
   - Elevation of Privilege
   risk:
@@ -456,10 +660,10 @@ threats:
     likelihood: 35
     likelihoodComment: engines and buses restart during long agent runs
   attributes:
-    source: spec.md#Edge-Cases
+    source: spec.md#Clarifications
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     disposition: threat
     elements:
@@ -480,12 +684,13 @@ threats:
     source: spec.md#Clarifications
     assets:
     - asset.harness
-    status: open
+    status: retired
     actor: actor.consumer
     disposition: needs-clarification
     elements:
     - component.linux-t1
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
 - id: threat.q-engine-from-env
   name: '[NEEDS CLARIFICATION: are engine sockets named by DOCKER_HOST, CONTAINER_HOST or a tool profile at a path
@@ -499,12 +704,13 @@ threats:
     source: spec.md#Key-Entities
     assets:
     - asset.host
-    status: open
+    status: retired
     actor: actor.consumer
     disposition: needs-clarification
     elements:
     - component.socket-list
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
 - id: threat.q-linux-report
   name: '[NEEDS CLARIFICATION: Linux records only system calls the seccomp filter refuses; how does a connect stopped
@@ -518,16 +724,45 @@ threats:
     source: spec.md#FR-006
     assets:
     - asset.record
-    status: open
+    status: retired
     actor: actor.consumer
     disposition: needs-clarification
     elements:
     - component.violations
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
+- id: threat.reach-predicate
+  name: The Linux lowering leaves LinuxPlan::service_sockets empty for a policy that still lets the child connect
+    to a Unix socket (a network mode or ipc setting the reachability check does not name), so no discovery, cover
+    or gap happens
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: both classes silently absent on Linux for that policy
+    likelihood: 25
+    likelihoodComment: the check names two conditions; new network modes may be added
+  attributes:
+    source: plan.md#Summary
+    assets:
+    - asset.policy
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.linux-lowering
+    - flow.lower-plan
+    - flow.plan-to-discovery
+    profile: stride
+    severity: medium
+    technique: broken-access-control
 - id: threat.runtime-dir-expansion
-  name: The runtime or home directory is expanded from a variable that is unset or points elsewhere in the harness
-    (sudo, a container, a service), so the real bus or engine socket is not covered
+  name: The runtime or home directory is taken from a variable that is unset or points elsewhere (sudo, a container,
+    a service), or with_runtime_dir replaces instead of adds, so the real bus or engine socket is not found and
+    not covered
   categories:
   - Elevation of Privilege
   risk:
@@ -536,15 +771,18 @@ threats:
     likelihood: 40
     likelihoodComment: harnesses often run without a login session environment
   attributes:
-    source: spec.md#Key-Entities
+    source: spec.md#Clarifications
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.contributor
     disposition: threat
     elements:
     - component.socket-list
+    - component.discovery
+    - component.cage-options
     - flow.confine
+    - flow.options-to-discovery
     profile: stride
     severity: high
     technique: injection
@@ -562,12 +800,14 @@ threats:
     source: spec.md#FR-007
     assets:
     - asset.policy
-    status: open
+    status: mitigated
     actor: actor.contributor
     disposition: threat
     elements:
     - component.docs
+    - component.fixtures
     - flow.claims
+    - flow.fixture-regen
     profile: stride
     severity: low
     technique: missing-audit-trail
@@ -585,7 +825,7 @@ threats:
     source: spec.md#Context
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     disposition: threat
     elements:
@@ -610,13 +850,15 @@ threats:
     assets:
     - asset.host
     - asset.policy
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: I. Fail closed, never silently weaker
     disposition: threat
     elements:
     - component.linux-t2
+    - component.discovery
     - flow.gap
+    - flow.discovery-gaps
     profile: stride
     severity: high
     technique: broken-access-control
@@ -637,7 +879,7 @@ threats:
     source: spec.md#US1
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: II. Every policy emits the hard-deny tier last
     disposition: threat
@@ -662,7 +904,7 @@ threats:
     source: spec.md#Assumptions
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     disposition: threat
@@ -686,7 +928,7 @@ threats:
     assets:
     - asset.policy
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: II. Every policy emits the hard-deny tier last. It can be waived only by class name, and every
       waiver is recorded
@@ -708,10 +950,10 @@ threats:
     likelihood: 35
     likelihoodComment: two classes share the socket path; the network rules sit next to them
   attributes:
-    source: spec.md#FR-006
+    source: spec.md#Clarifications
     assets:
     - asset.record
-    status: open
+    status: mitigated
     actor: actor.consumer
     disposition: threat
     elements:
@@ -728,79 +970,102 @@ mitigations:
   attributes:
     threats:
     - threat.abstract-bus
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-004
     touchpoints:
-    - component.linux-t1
-    - component.linux-t2
+    - crates/procage/src/linux/services.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/linux/spawn.rs
 - id: mitigation.class-reason
-  name: A refused connect to a listed socket is recorded with the class as its reason
+  name: On macOS a refused connect to a listed socket is recorded with the class as its reason; on Linux the refusal
+    (a mount cover or the scope) is not reported and the docs say so
   riskReduction: 75
   attributes:
     threats:
     - threat.wrong-reason
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-011
     touchpoints:
-    - component.violations
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage/tests/escape_macos.rs
+    - site/content/docs
 - id: mitigation.class-scoped-waiver
   name: Each class is a typed name; a waiver removes exactly that class's denies and is recorded in the receipt
   riskReduction: 90
   attributes:
     threats:
     - threat.waiver-broadens
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-009
     touchpoints:
-    - component.policy
-    - component.fit
+    - crates/procage-policy/src/policy.rs
+    - crates/procage-policy/src/lower/mod.rs
 - id: mitigation.cover-directories
-  name: On T1 the runtime-directory entries of the classes are covered as names, so a socket made after spawn at
-    a listed path is unreachable; what cannot be covered is documented as the spawn-snapshot approximation
+  name: On T1 the class directories ($XDG_RUNTIME_DIR/systemd, $XDG_RUNTIME_DIR/podman, /run/podman, /run/containerd,
+    /run/dbus) are covered whole, so later sockets there are unreachable; other found sockets make the class a spawn-snapshot
+    approximation accepted only by the option or by name and recorded
   riskReduction: 70
   attributes:
     threats:
     - threat.post-spawn-socket
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-008
     touchpoints:
-    - component.linux-t1
-    - component.docs
+    - crates/procage/src/linux/spawn.rs
+    - crates/procage/src/linux/services.rs
+    - crates/procage-policy/src/policy.rs
+    - crates/procage-policy/src/presets.rs
+    - crates/procage/THREAT_MODEL.md
+- id: mitigation.discovery-fail-closed
+  name: Discovery treats any existing listed name as found whatever its type (covering the name and its resolved
+    object), parses /proc/net/unix defensively, and turns a read failure into a gap
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.discovery-shaped
+    status: required
+    kind: preventive
+    requirements:
+    - SR-015
+    touchpoints:
+    - crates/procage/src/linux/services.rs
+    - crates/procage/src/linux/spawn.rs
 - id: mitigation.engine-deny
   name: container-engines denies every listed engine socket on Linux and macOS under every network setting
   riskReduction: 90
   attributes:
     threats:
     - threat.engine-handoff
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-002
     touchpoints:
-    - component.linux-t1
-    - component.macos
-    - component.policy
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/src/presets.rs
+    - crates/procage/src/linux/spawn.rs
 - id: mitigation.exact-patterns
   name: Patterns match only listed names under the expanded directories; a granted project socket stays reachable
   riskReduction: 70
   attributes:
     threats:
     - threat.over-deny
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-010
     touchpoints:
-    - component.socket-list
-    - component.linux-t1
+    - crates/procage-policy/src/presets.rs
+    - crates/procage/src/linux/services.rs
 - id: mitigation.linux-bus-deny
   name: Linux service-handoff covers the user bus, the system bus and the service-manager sockets on T1 under every
     network setting
@@ -809,13 +1074,15 @@ mitigations:
     threats:
     - threat.user-bus-handoff
     - threat.system-bus-handoff
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-001
     touchpoints:
-    - component.linux-t1
-    - component.policy
+    - crates/procage-policy/src/presets.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/src/linux/services.rs
+    - crates/procage/src/linux/spawn.rs
 - id: mitigation.paired-canaries
   name: Escape canaries with a private bus and fake engine sockets at the expanded paths, network on, T1, T2 and
     macOS, each paired with a waived positive control; they fail, never skip
@@ -825,12 +1092,45 @@ mitigations:
     - threat.vacuous-canary
     - threat.user-bus-handoff
     - threat.engine-handoff
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-012
     touchpoints:
-    - component.canaries
+    - crates/procage/tests/escape_macos.rs
+    - crates/procage/tests/escape_linux.rs
+- id: mitigation.per-spawn-recheck
+  name: 'Discovery runs again in prepare for each spawn, in the parent, before the child exists: T2 refuses the
+    spawn with the gaps, T1 covers what it finds, an optional cover is skipped only when its name is absent; the
+    residual after the child starts is documented'
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.discovery-race
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-014
+    touchpoints:
+    - crates/procage/src/linux/spawn.rs
+    - crates/procage/src/linux/services.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/THREAT_MODEL.md
+- id: mitigation.reach-table
+  name: The reachability check is one function over the plan, with a lowering table test across every Network variant
+    and ipc.unix_sockets setting
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.reach-predicate
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-016
+    touchpoints:
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/src/linux.rs
+    - crates/procage-policy/tests/lowering_table.rs
 - id: mitigation.resolved-object
   name: 'Denies apply to the socket object: T1 covers the resolved socket, macOS rules name the resolved path and
     refuse hard links to listed sockets'
@@ -838,27 +1138,31 @@ mitigations:
   attributes:
     threats:
     - threat.alias-path
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-005
     touchpoints:
-    - component.linux-t1
-    - component.macos
+    - crates/procage/src/linux/services.rs
+    - crates/procage/src/linux/spawn.rs
+    - crates/procage-policy/src/lower/macos.rs
 - id: mitigation.reviewed-fixtures
-  name: Security entry in the changelog, the escape class in the threat model, and regenerated preset fixtures whose
-    diff is only the new denies
+  name: Security entry in the changelog, the escape class in the threat model, container-engines emitted last so
+    existing lines keep their order, and regenerated preset fixtures whose diff is only the new denies
   riskReduction: 80
   attributes:
     threats:
     - threat.silent-tightening
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-013
     touchpoints:
-    - component.docs
-    - component.policy
+    - crates/procage-policy/tests/fixtures/presets
+    - crates/procage-policy/src/policy.rs
+    - CHANGELOG.md
+    - crates/procage/THREAT_MODEL.md
+    - crates/procage/tests/threat_model.rs
 - id: mitigation.t2-gap
   name: T2 checks the expanded list at spawn and fails with a capability gap naming the class and each socket found,
     unless the class is waived; fit relaxes by name
@@ -866,29 +1170,32 @@ mitigations:
   attributes:
     threats:
     - threat.t2-silent-reach
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-003
     touchpoints:
-    - component.linux-t2
-    - component.fit
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/linux/services.rs
+    - crates/procage/src/lib.rs
 - id: mitigation.uid-expansion
-  name: The runtime directory is expanded from the variable and from /run/user/<uid>; the home from the variable
-    and the account; both spellings are denied
+  name: Runtime directories are every readable /run/user/*, XDG_RUNTIME_DIR and with_runtime_dir additions (adds
+    only), canonicalised; homes are the account's and the known homes on Linux, every user home on macOS
   riskReduction: 80
   attributes:
     threats:
     - threat.runtime-dir-expansion
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-006
     touchpoints:
-    - component.socket-list
+    - crates/procage/src/linux/services.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage-policy/src/lower/macos.rs
 - id: mitigation.versioned-list
-  name: The socket list is versioned data with its sources, covered by a table test, and the docs name what it does
-    not cover
+  name: The socket list is versioned data with its sources, covered by a table test; the docs list it and say that
+    engines at other paths (DOCKER_HOST, CONTAINER_HOST) are out of scope and hidden by the caller's policy
   riskReduction: 60
   attributes:
     threats:
@@ -898,8 +1205,10 @@ mitigations:
     requirements:
     - SR-007
     touchpoints:
-    - component.socket-list
-    - component.docs
+    - crates/procage-policy/src/presets.rs
+    - crates/procage-policy/tests/presets.rs
+    - crates/procage/THREAT_MODEL.md
+    - site/content/docs
 requirements:
 - id: SR-001
   statement: On Linux T1, the service-handoff class MUST make a connect from the caged child to the user bus, the
@@ -970,27 +1279,37 @@ requirements:
   - given: a writable workspace with a symbolic link to a listed fake socket
     then: the connect fails on T1 and macOS
     when: the child connects through it
-  - given: a listed fake socket
-    then: the link or the connect fails
+  - given: macOS and a listed fake socket under procage's deny-default profile
+    then: link() is refused
+    when: the child calls link() to it from the workspace
+  - given: Linux T1 and a listed fake socket
+    then: the link fails (no refer right) or the connect fails (the cover hides the original name)
     when: the child makes a hard link to it in the workspace and connects
   tasks: []
 - id: SR-006
-  statement: The runtime and home directories MUST be expanded both from the environment and from the account (/run/user/<uid>,
-    the account's home), and the listed sockets denied under each spelling.
+  statement: Discovery MUST take the runtime directories from every /run/user/* the caller can read, the caller's
+    XDG_RUNTIME_DIR and each with_runtime_dir addition (which adds, never replaces), canonicalised; the homes MUST
+    be the account's home and the homes procage already knows on Linux and every user home on macOS; the listed
+    sockets MUST be denied under each.
   priority: P1
   mitigations:
   - mitigation.uid-expansion
   acceptance:
   - given: a harness with XDG_RUNTIME_DIR unset and a fake bus at /run/user/<uid>/bus
-    then: the connect fails
+    then: the connect fails (T1) or the cage reports the gap (T2)
     when: the child connects
   - given: HOME pointing to another directory
     then: the connect is denied
     when: the child connects to the engine socket under the account's home
+  - given: a scratch runtime directory added with with_runtime_dir and a fake bus in it
+    then: the bus is found, and the sockets under /run/user/* are still found
+    when: the cage is made
   tasks: []
 - id: SR-007
-  statement: The service socket list MUST be versioned data with a source per entry, and the docs MUST list each
-    path and directory pattern it covers and say that sockets outside it are not covered.
+  statement: The service socket list MUST be versioned data whose sources (the D-Bus, systemd and engines' documented
+    default locations) are stated for the list, and the docs MUST list each path and directory pattern it covers,
+    say that sockets outside it are not covered, and say that an engine at a path named only by DOCKER_HOST or CONTAINER_HOST
+    is out of scope and is hidden by the caller's policy.
   priority: P1
   mitigations:
   - mitigation.versioned-list
@@ -998,17 +1317,28 @@ requirements:
   - given: the list and the docs
     then: every entry appears in both with its version
     when: a table test compares them
+  - given: the docs
+    then: they state the DOCKER_HOST and CONTAINER_HOST scope limit next to the list
+    when: they are read
   tasks: []
 - id: SR-008
-  statement: On T1 a socket created after spawn at a listed runtime-directory path MUST be unreachable; any listed
-    path that cannot be covered that way MUST be documented as the spawn-snapshot approximation.
+  statement: On T1 the class directories ($XDG_RUNTIME_DIR/systemd, $XDG_RUNTIME_DIR/podman, /run/podman, /run/containerd,
+    /run/dbus) MUST be covered whole when found, so a socket bound there after spawn is unreachable; a found socket
+    outside them MUST make its class a spawn-snapshot approximation, accepted only by the spawn-snapshot option
+    or by name and recorded as a degradation, and documented.
   priority: P1
   mitigations:
   - mitigation.cover-directories
   acceptance:
-  - given: T1, no bus socket at spawn
-    then: the connect fails, or the path is listed as a snapshot approximation in the docs
-    when: a fake bus is bound at $XDG_RUNTIME_DIR/bus after spawn and the child connects
+  - given: T1, an empty $XDG_RUNTIME_DIR/systemd at spawn
+    then: the connect fails
+    when: a fake socket is bound at $XDG_RUNTIME_DIR/systemd/private after spawn and the child connects
+  - given: T1, a fake bus at $XDG_RUNTIME_DIR/bus and neither the spawn-snapshot option nor the class named
+    then: it fails with an approximation gap naming service-handoff and the path
+    when: the cage is made
+  - given: the same host with the spawn-snapshot option
+    then: it succeeds and the receipt records the degradation
+    when: the cage is made
   tasks: []
 - id: SR-009
   statement: Each class MUST be waivable only by its typed name; a waiver MUST remove exactly that class's denies
@@ -1034,10 +1364,16 @@ requirements:
   - given: a project's own server socket in the writable workspace
     then: it succeeds on T1, T2 and macOS
     when: the child connects
+  - given: T1 below Landlock ABI 6 (where no plan scopes abstract sockets), no abstract service bus at spawn and
+      an unrelated abstract socket
+    then: 'it succeeds: the class adds no abstract scope of its own (from ABI 6 every plan already scopes abstract
+      sockets, independent of this class)'
+    when: the child connects to it
   tasks: []
 - id: SR-011
-  statement: With reporting on, a refused connect to a listed socket MUST be recorded with the class name as its
-    reason.
+  statement: On macOS, with reporting on, a refused connect to a listed socket MUST be recorded with the class name
+    as its reason; on Linux, where the refusal comes from a mount cover or the scope and is not reported, the docs
+    MUST say so.
   priority: P2
   mitigations:
   - mitigation.class-reason
@@ -1045,6 +1381,9 @@ requirements:
   - given: macOS, reporting on and a fake engine socket
     then: the record holds a violation with reason container-engines
     when: the child connects
+  - given: the Linux docs page
+    then: it states that service-socket refusals are not reported on Linux
+    when: it is read
   tasks: []
 - id: SR-012
   statement: The escape suite MUST hold a canary per class with the network on, on T1, T2 and macOS, each paired
@@ -1068,11 +1407,446 @@ requirements:
   - mitigation.reviewed-fixtures
   acceptance:
   - given: the fixture diff
-    then: every changed line is a service-handoff or container-engines deny
+    then: every changed line is a service-handoff or container-engines deny and no existing line moves
     when: it is reviewed
   - given: the changelog and the threat model
     then: both name container-engines, the extended service-handoff and the canaries
     when: they are read
   tasks: []
-verification: []
+- id: SR-014
+  statement: 'Discovery MUST run again for each spawn, in the parent before the child is created: on T2 a socket
+    or abstract bus of an unwaived class found then MUST refuse the spawn with the same gaps; on T1 every found
+    socket MUST be covered in that spawn, and a cover MAY be skipped only when its name no longer exists; a socket
+    bound after the child starts outside a class directory MUST be documented as the spawn-snapshot limit on T1
+    and T2.'
+  priority: P1
+  mitigations:
+  - mitigation.per-spawn-recheck
+  acceptance:
+  - given: T2, a cage made with no listed socket, then a fake bus bound at the runtime path
+    then: it fails with a gap naming service-handoff and the path
+    when: spawn is called
+  - given: T1, a cage made with no listed socket, then a fake engine socket bound at a listed runtime path
+    then: the connect fails
+    when: spawn is called and the child connects
+  - given: T2, a cage made before an abstract bus exists, then a fake abstract bus and no scope
+    then: it fails with a gap naming the address
+    when: spawn is called
+  tasks: []
+- id: SR-015
+  statement: Discovery MUST treat an existing listed name as found whatever it is (socket, directory, symbolic link
+    or other file), covering the name and its resolved object; it MUST parse /proc/net/unix without trusting the
+    name field's layout; and a failure to read /proc/net/unix while the child shares the network namespace, or to
+    inspect an existing listed path, MUST be a gap, not an empty result.
+  priority: P1
+  mitigations:
+  - mitigation.discovery-fail-closed
+  acceptance:
+  - given: a writable runtime directory where the listed bus name is a symbolic link to a fake bus elsewhere
+    then: both connects fail
+    when: the cage is made on T1 and the child connects by either name
+  - given: a fake abstract socket whose name holds a newline and a listed prefix
+    then: it neither panics nor drops a real fake bus listed after it
+    when: discovery runs
+  - given: T2 with Network::All and /proc/net/unix unreadable
+    then: it fails with a gap naming service-handoff
+    when: the cage is made
+  tasks: []
+- id: SR-016
+  statement: The Linux lowering MUST carry both classes in LinuxPlan::service_sockets for every policy that leaves
+    the child any pathname or abstract Unix connect (Network::All, a non-empty ipc.unix_sockets, and any network
+    mode added later that allows one), unless the class is waived; a lowering table test MUST cover every Network
+    variant and ipc setting.
+  priority: P1
+  mitigations:
+  - mitigation.reach-table
+  acceptance:
+  - given: each Network variant crossed with an empty and a non-empty ipc.unix_sockets
+    then: service_sockets is non-empty exactly where a Unix connect is possible and the classes are not waived
+    when: the policy is lowered
+  - given: a new Network variant without a table row
+    then: they fail
+    when: the lowering tests run
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: review
+  evidence: crates/procage/src/linux/services.rs:134
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The T1 canary refuses the runtime-directory bus and systemd/private with Network::All and the generic
+    Network::None Unix-connect refusal is covered elsewhere, but no test places a fake system bus at /run/dbus/system_bus_socket
+    or checks that the fake services record no connection.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-001.2026-11-01-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable
+  result: pass
+  verdict: verified
+  justification: With Network::All the T1 canary binds live fake listeners at the runtime bus and systemd/private
+    and asserts each connect is refused (so no listener accepts), with a waived control that connects; r09_daemons_are_unreachable_without_network_access
+    shows Network::None refuses every Unix connect. The system bus at its real path cannot be bound in these lanes;
+    services.rs::tests::system_paths_are_found shows the system list goes through the same find() and cover path
+    as the runtime list, which is adequate evidence for that path.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: review
+  evidence: crates/procage-policy/src/presets.rs:191
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The macOS canary exercises one of the seven home-directory engine paths (Lima) and the Linux canary
+    only the runtime-directory docker.sock and podman/podman.sock; no test binds fake sockets at each listed home
+    path or at the listed Linux system paths.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-002.2026-11-01-2
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r34_container_engines_are_unreachable
+  result: pass
+  verdict: verified
+  justification: macOS refuses a live fake Lima engine socket with a waived control, and sockets.rs::every_engine_entry_matches_its_socket
+    checks that each of the seven home entries matches a socket at its documented place and nothing beside it; on
+    Linux T1 the canary refuses runtime docker.sock and podman/podman.sock and r34_a_socket_bound_later_is_refused
+    an engine bound after the cage. The listed Linux system paths cannot be bound in the lanes; they share find()
+    and the cover with the runtime list (services.rs::tests::system_paths_are_found), which is adequate.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_fit_waives_by_name
+  result: partial
+  verdict: partial
+  justification: The T2 gap naming the class and path and the fit waiver by name are tested, but the relaxed entry's
+    lift for a socket gap is computed by re-lowering, which never reports spawn-time socket gaps, so fit says no
+    known tier would lift it instead of stating what would.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-003.2026-11-01-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_fit_waives_by_name
+  result: pass
+  verdict: verified
+  justification: The T2 canary asserts a gap naming the class and each socket path; fit relaxes service-handoff
+    by name and its lift states tier T1 with no Landlock ABI (socket_lift in linux/mod.rs), and the relaxed cage
+    reaches the bus; a T2 cage with no listed socket is made unchanged in r34_a_socket_bound_later_is_refused.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-004.2026-11-01
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_an_abstract_bus_is_scoped
+  result: pass
+  verdict: verified
+  justification: A fake abstract bus is refused with EPERM where the host has ABI 6, the cage capped at ABI 5 fails
+    with a gap naming the @address, and the waived control connects, on each tier.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-004.2026-11-01-2
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_an_abstract_bus_is_scoped
+  result: pass
+  verdict: verified
+  justification: A fake abstract bus is refused with EPERM where the host has ABI 6, a cage capped at ABI 5 fails
+    with a gap naming the @address, and the waived control connects, on each tier.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-005.2026-11-01
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r34_container_engines_are_unreachable
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: macOS refuses the direct path, a workspace symlink and link() to the engine socket, but no Linux
+    T1 test connects through a symlink, through /var/run, or through a hard link made in the workspace.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-005.2026-11-01-2
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable
+  result: pass
+  verdict: verified
+  justification: On T1 the connect through a symbolic link in the writable workspace is refused and a hard link
+    from the workspace is never made; macOS (r34_container_engines_are_unreachable) refuses the direct path, the
+    workspace link and link(). A /var/run spelling is a symbolic link to /run, the same case as the tested workspace
+    link, since the T1 cover sits on the object and the macOS rule matches the resolved path.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-006.2026-11-01
+  requirement: SR-006
+  method: review
+  evidence: crates/procage/src/linux/services.rs:51
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: runtime_dirs reads readable /run/user/*, XDG_RUNTIME_DIR and with_runtime_dir additions, but tests
+    only use with_runtime_dir; no test unsets XDG_RUNTIME_DIR with a bus under /run/user/<uid>, redirects HOME on
+    macOS, or checks that an addition keeps /run/user/* found.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-006.2026-11-01-2
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/src/linux/services.rs::tests::extra_runtime_dirs_add
+  result: pass
+  verdict: verified
+  justification: The unit test shows a with_runtime_dir addition is found canonicalised and every directory found
+    without it (the readable /run/user/* and XDG_RUNTIME_DIR) is kept; runtime_dirs (services.rs:51) reads every
+    readable /run/user/* independently of XDG_RUNTIME_DIR and feeds the same find() the canaries exercise; on macOS
+    the engine rule is a pattern over every user home (preset fixtures), independent of HOME. No lane runs a harness
+    with XDG_RUNTIME_DIR unset; the shared code path plus the unit test is adequate evidence.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-007.2026-11-01
+  requirement: SR-007
+  method: review
+  evidence: site/content/docs/hard-deny.md:66
+  result: partial
+  verdict: partial
+  justification: The lists are versioned constants, but the docs page names only the class directories (not each
+    socket path), no source is recorded per entry, CONTAINER_HOST is not mentioned next to DOCKER_HOST, and no table
+    test compares the list with the docs.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-007.2026-11-01-2
+  requirement: SR-007
+  method: review
+  evidence: site/content/docs/hard-deny.md:74
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The docs now list every Linux and macOS entry with list version 1 and state the DOCKER_HOST and
+    CONTAINER_HOST limit next to the list, matching the constants in presets.rs, but no table test compares the
+    list with the docs (the first scenario), and the sources are given once for the whole list, not per entry.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-007.2026-11-01-3
+  requirement: SR-007
+  method: test
+  evidence: crates/procage-policy/tests/sockets.rs::the_docs_list_every_socket
+  result: pass
+  verdict: verified
+  justification: A test fails if any entry of the eleven socket lists is missing from the site's hard-deny page;
+    the page states the list version, the sources for the list, and the DOCKER_HOST and CONTAINER_HOST limit (site/content/docs/hard-deny.md).
+  verified_at: '2026-11-01T23:00:00Z'
+  commit: 66fe50e
+- id: verification.sr-008.2026-11-01
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable
+  result: pass
+  verdict: verified
+  justification: Without the snapshot T1 fails with an approximation gap naming the class and each path, with it
+    the plan records the degradation and connects are refused, and r34_a_socket_bound_later_is_refused shows a socket
+    bound in systemd/ after spawn is refused; the limit is documented in the Linux module docs and hard-deny page.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-008.2026-11-01-2
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_a_socket_bound_later_is_refused
+  result: pass
+  verdict: verified
+  justification: A socket bound in systemd/ after a T1 spawn is refused; r34_service_and_engine_sockets_are_unreachable
+    shows T1 without the snapshot fails with an approximation gap naming the class and each path, and with it the
+    plan records the degradation; the limit is documented in the Linux module docs and the hard-deny page.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-009.2026-11-01
+  requirement: SR-009
+  method: test
+  evidence: crates/procage-policy/tests/precedence.rs::waivers_remove_exactly_their_class_and_are_listed
+  result: pass
+  verdict: verified
+  justification: Every class (container-engines included) waived removes exactly its lines and is listed in plan.waivers;
+    sockets.rs::a_waiver_removes_exactly_its_class and the Linux and macOS R-34 canaries show the other class still
+    holds when one is waived.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-009.2026-11-01-2
+  requirement: SR-009
+  method: test
+  evidence: crates/procage-policy/tests/precedence.rs::waivers_remove_exactly_their_class_and_are_listed
+  result: pass
+  verdict: verified
+  justification: Every class waived removes exactly its lines and is listed in plan.waivers; sockets.rs::a_waiver_removes_exactly_its_class
+    and the Linux and macOS R-34 canaries show the other class still holds when one is waived.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-010.2026-11-01
+  requirement: SR-010
+  method: review
+  evidence: crates/procage-policy/src/lower/linux.rs:424
+  result: partial
+  verdict: partial
+  justification: The workspace project socket connects on T1 only (T2 and macOS untested), and the unrelated-abstract-socket
+    scenario cannot hold as written because every plan from ABI 6 scopes abstract sockets unconditionally.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-010.2026-11-01-2
+  requirement: SR-010
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_an_abstract_bus_is_scoped
+  result: pass
+  verdict: verified
+  justification: Below ABI 6 with no bus an unrelated abstract socket connects on each tier with service-handoff
+    unwaived; the project socket in the writable workspace connects on T1 (r34_service_and_engine_sockets_are_unreachable)
+    and macOS (r34_container_engines_are_unreachable). On T2 decide() emits only gaps and no covers, so a cage that
+    is made cannot affect a socket matching no listed name; that code path is adequate evidence for T2.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-011.2026-11-01
+  requirement: SR-011
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::an_engine_connect_is_reported_with_its_class
+  result: pass
+  verdict: verified
+  justification: With reporting on, a connect to a fake Lima engine socket yields a network-outbound violation denied
+    by HardDeny(ContainerEngines), and the Linux module docs state that a connect refused by a cover is not reported.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-011.2026-11-01-2
+  requirement: SR-011
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::an_engine_connect_is_reported_with_its_class
+  result: pass
+  verdict: verified
+  justification: With reporting on, a connect to a fake engine socket yields a violation denied by HardDeny(ContainerEngines),
+    and the Linux module docs state that a connect refused by a cover is not reported.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-012.2026-11-01
+  requirement: SR-012
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable
+  result: pass
+  verdict: verified
+  justification: Each class has a network-on canary on T1 (refused) and T2 (gap naming each socket) with a waived
+    control that connects, macOS has the engine canary with its control and a service-handoff check, and fake setups
+    unwrap so a missing setup fails.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-012.2026-11-01-2
+  requirement: SR-012
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable
+  result: pass
+  verdict: verified
+  justification: Each class has a network-on canary on T1 (refused) and T2 (gap naming each socket) with a waived
+    control that connects, macOS has the engine canary with its control and the service-handoff check, and fake
+    setups unwrap so a missing setup fails; the recorded lane results are green on macOS and Linux T1 and T2 after
+    remediation.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-013.2026-11-01
+  requirement: SR-013
+  method: review
+  evidence: CHANGELOG.md:9
+  result: partial
+  verdict: partial
+  justification: The fixture diff only adds one container-engines deny per preset and the threat model row R-34
+    names both classes and the canaries, but the changelog Security entry does not name the canaries.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-013.2026-11-01-2
+  requirement: SR-013
+  method: review
+  evidence: CHANGELOG.md:9
+  result: pass
+  verdict: verified
+  justification: The fixture diff adds exactly one container-engines deny line per preset fixture and moves no line;
+    the changelog Security entry names container-engines, the extended service-handoff and the r34 canaries, and
+    THREAT_MODEL.md R-34 names both classes and the canaries.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-014.2026-11-01
+  requirement: SR-014
+  method: review
+  evidence: crates/procage/src/linux/mod.rs:1004
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: service_covers re-scans per spawn and the T2 case is tested (asserting the class, not the path),
+    but no test binds an engine socket at a listed runtime path after a T1 cage is made, nor an abstract bus after
+    a T2 cage is made without scope.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-014.2026-11-01-2
+  requirement: SR-014
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_a_socket_bound_later_is_refused
+  result: pass
+  verdict: verified
+  justification: A bus bound after a T2 cage was made refuses the spawn with a service-handoff gap, an engine bound
+    after a T1 cage was made is refused at the next spawn, and r34_an_abstract_bus_bound_later_refuses_the_spawn
+    refuses a later abstract bus without scope. The spawn test asserts the class only; the gap comes from the same
+    decide() whose per-path subject the cage-creation canary asserts, which is adequate.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-015.2026-11-01
+  requirement: SR-015
+  method: review
+  evidence: crates/procage/src/linux/services.rs:83
+  result: partial
+  verdict: partial
+  justification: An unreadable /proc/net/unix becomes a gap and the listing parser is unit-tested, but a listed
+    path that cannot be inspected is treated as absent (symlink_metadata error in existing, read_dir error in holds_a_socket
+    makes a T2 class directory silently ignored) instead of a gap, and no cage-level test covers the symlinked bus
+    or the unreadable listing.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-015.2026-11-01-2
+  requirement: SR-015
+  method: review
+  evidence: crates/procage/src/linux/services.rs:99
+  result: partial
+  verdict: partial
+  justification: A listed name that cannot be inspected now counts as found (existing, services.rs:84) and the listing
+    parser and the symlinked-bus discovery are unit-tested, but holds_a_socket turns a read_dir failure on an existing
+    class directory into "no socket", which tier T2 ignores instead of reporting a gap, and no test covers the unreadable
+    /proc/net/unix gap.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
+- id: verification.sr-015.2026-11-01-3
+  requirement: SR-015
+  method: test
+  evidence: crates/procage/src/linux/services.rs::tests::what_cannot_be_inspected_counts
+  result: pass
+  verdict: verified
+  justification: A listed name that cannot be inspected counts as found (existing), a class directory that cannot
+    be listed counts as holding a socket (holds_a_socket), and an unreadable listing becomes an Unsupported gap
+    (decide); unit tests cover the unreadable directory, the unreadable listing, the symlinked bus and a newline
+    in an abstract name; they pass in Docker Linux 7.0.14.
+  verified_at: '2026-11-01T23:00:00Z'
+  commit: 66fe50e
+- id: verification.sr-016.2026-11-01
+  requirement: SR-016
+  method: test
+  evidence: crates/procage-policy/tests/sockets.rs::the_backend_gets_the_classes_exactly_when_a_unix_connect_is_possible
+  result: partial
+  verdict: partial
+  justification: The table crosses None and All with empty and non-empty ipc.unix_sockets, but Loopback and Proxy
+    rows are skipped when lowering returns gaps and the variant list is a hand-written array, so a new Network variant
+    without a row does not fail the tests.
+  verified_at: '2026-11-01T22:00:44Z'
+  commit: 66fe50e
+- id: verification.sr-016.2026-11-01-2
+  requirement: SR-016
+  method: test
+  evidence: crates/procage-policy/tests/sockets.rs::the_backend_gets_the_classes_exactly_when_a_unix_connect_is_possible
+  result: pass
+  verdict: verified
+  justification: The table crosses every Network variant with empty and non-empty ipc.unix_sockets and waivers,
+    asserting the carried classes or that the only gaps are the refused modes. A new variant cannot skip the classes;
+    the predicate is net != None (fail-closed), the match on Network in lower/linux.rs is exhaustive, and lowering_table.rs
+    fails without a row per construct; this meets the second scenario by construction rather than by a failing table
+    row.
+  verified_at: '2026-11-01T22:20:23Z'
+  commit: 66fe50e
 decisions: []

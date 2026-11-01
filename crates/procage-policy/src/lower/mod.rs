@@ -144,6 +144,7 @@ constructs! {
     HdSecrets => "hd-secrets",
     HdTrustHandoff => "hd-trust-handoff",
     HdPersistence => "hd-persistence",
+    HdContainerEngines => "hd-container-engines",
 }
 
 impl Construct {
@@ -156,6 +157,8 @@ impl Construct {
         Construct::HdPersistence,
         Construct::FsHide,
         Construct::IpcUnixSockets,
+        Construct::HdServiceHandoff,
+        Construct::HdContainerEngines,
     ];
 
     /// The construct of a hard-deny class.
@@ -173,6 +176,7 @@ impl Construct {
             HardDenyClass::Secrets => Construct::HdSecrets,
             HardDenyClass::TrustHandoff => Construct::HdTrustHandoff,
             HardDenyClass::Persistence => Construct::HdPersistence,
+            HardDenyClass::ContainerEngines => Construct::HdContainerEngines,
         }
     }
 }
@@ -413,7 +417,10 @@ impl LowerOptions {
     /// - `fs-hide` on tier T2: the trees around a hidden path are granted
     ///   piecewise, as listed at spawn;
     /// - `ipc-unix-sockets` on tier T1 below Landlock ABI 9: listening
-    ///   sockets outside the paths are masked at spawn.
+    ///   sockets outside the paths are masked at spawn;
+    /// - `service-handoff` and `container-engines` on tier T1: the bus,
+    ///   service-manager and engine sockets found at spawn, and the classes'
+    ///   directories, are covered.
     ///
     /// Paths created after the spawn are not covered by a mask; entries
     /// created on the way to a hidden path are denied. No other

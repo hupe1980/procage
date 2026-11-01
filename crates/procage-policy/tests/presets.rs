@@ -6,6 +6,20 @@ mod common;
 use procage_policy::presets::{self, agent_readonly, agent_workspace, build, minimal};
 use procage_policy::*;
 
+/// Compares a preset's profile with its fixture. With `PROCAGE_BLESS=1` the
+/// fixture is rewritten instead; review the diff: a frozen preset may only
+/// ever tighten, with a Security entry in the changelog.
+fn pinned(file: &str, actual: &str, fixture: &str) {
+    if std::env::var_os("PROCAGE_BLESS").is_some() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/presets")
+            .join(file);
+        std::fs::write(path, actual).unwrap();
+        return;
+    }
+    assert_eq!(actual, fixture, "preset {file} changed");
+}
+
 fn profile(p: &Policy) -> String {
     match lower(p, Target::MacOs, &LowerOptions::default()) {
         Ok(Plan::Seatbelt(plan)) => plan.profile,
@@ -32,7 +46,7 @@ fn every_preset_is_pinned() {
         include_str!("fixtures/presets/build-v1.sb"),
     ];
     for ((name, policy), fixture) in all().into_iter().zip(fixtures) {
-        assert_eq!(profile(&policy), fixture, "preset {name} v1 changed");
+        pinned(&format!("{name}-v1.sb"), &profile(&policy), fixture);
     }
 }
 
@@ -205,7 +219,7 @@ fn every_v2_preset_is_pinned() {
         include_str!("fixtures/presets/build-v2.sb"),
     ];
     for ((name, policy), fixture) in all_v2().into_iter().zip(fixtures) {
-        assert_eq!(profile(&policy), fixture, "preset {name} v2 changed");
+        pinned(&format!("{name}-v2.sb"), &profile(&policy), fixture);
     }
 }
 
@@ -252,7 +266,7 @@ fn every_v3_preset_is_pinned() {
         include_str!("fixtures/presets/build-v3.sb"),
     ];
     for ((name, policy), fixture) in all_v3().into_iter().zip(fixtures) {
-        assert_eq!(profile(&policy), fixture, "preset {name} v3 changed");
+        pinned(&format!("{name}-v3.sb"), &profile(&policy), fixture);
     }
 }
 

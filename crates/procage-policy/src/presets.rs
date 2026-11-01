@@ -13,6 +13,12 @@
 //!   need the class waived.
 //! - [`HardDenyClass::Persistence`] denies writing [`PERSISTENCE_HOME`] in
 //!   every home and [`PERSISTENCE_SYSTEM`].
+//! - [`HardDenyClass::ContainerEngines`] (version 1, 0.2.0) denies
+//!   connecting to [`ENGINE_HOME`] in every home and [`ENGINE_SYSTEM`]. The
+//!   rule matches the socket a path resolves to, so links such as
+//!   `/var/run/docker.sock` are covered by the home entry they point to.
+//!   Engines at other paths (a custom `DOCKER_HOST`) are not covered: hide
+//!   them in the policy.
 //!
 //! **Linux lists** (version 1; see [`linux_class_paths`]): homes are `/root`
 //! and every directory under `/home` ([`LINUX_HOMES`]).
@@ -22,6 +28,23 @@
 //!   in every home, and no rename or removal of `.git`.
 //! - `persistence`: [`PERSISTENCE_HOME_LINUX`] in every home and
 //!   [`PERSISTENCE_SYSTEM_LINUX`].
+//!
+//! **Linux sockets** (version 1, 0.2.0; see [`linux_socket_paths`]):
+//!
+//! - `service-handoff`: the D-Bus buses and the systemd managers —
+//!   [`SERVICE_SOCKETS_LINUX`], [`SERVICE_SOCKET_DIRS_LINUX`], and in every
+//!   runtime directory [`SERVICE_RUNTIME_LINUX`] and
+//!   [`SERVICE_RUNTIME_DIRS_LINUX`]; abstract buses named
+//!   [`SERVICE_ABSTRACT_LINUX`].
+//! - `container-engines`: [`ENGINE_SOCKETS_LINUX`],
+//!   [`ENGINE_SOCKET_DIRS_LINUX`], and in every runtime directory
+//!   [`ENGINE_RUNTIME_LINUX`] and [`ENGINE_RUNTIME_DIRS_LINUX`].
+//!
+//! Connecting to them is denied under every network setting. With the
+//! network off and no `ipc.unix_sockets`, seccomp refuses every socket, so
+//! nothing more is needed; otherwise tier T1 covers what exists at spawn
+//! (and the directories as a whole) and tier T2, which cannot refuse one
+//! socket, reports a gap naming each socket it finds.
 //!
 //! Landlock cannot deny inside a tree it allows. Where no rule of a policy
 //! can reach a class's paths, Landlock's default deny enforces the class
@@ -55,7 +78,7 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::glob::Glob;
-use crate::linux::ClassPaths;
+use crate::linux::{ClassPaths, SocketPaths};
 use crate::name::GrantName;
 use crate::path::AbsPath;
 use crate::policy::{
@@ -164,6 +187,59 @@ pub const PERSISTENCE_SYSTEM_LINUX: &[&str] = &[
     "/var/spool/cron",
 ];
 
+/// Container-engine sockets, relative to each home (macOS).
+pub const ENGINE_HOME: &[&str] = &[
+    ".colima/*/containerd.sock",
+    ".colima/*/docker.sock",
+    ".docker/run/docker.sock",
+    ".lima/*/sock/docker.sock",
+    ".local/share/containers/podman/machine/**/*.sock",
+    ".orbstack/run/docker.sock",
+    ".rd/docker.sock",
+];
+
+/// System-wide container-engine sockets (macOS).
+pub const ENGINE_SYSTEM: &[&str] = &["/private/var/run/docker.sock"];
+
+/// Linux: the D-Bus system bus and the system manager's private socket.
+pub const SERVICE_SOCKETS_LINUX: &[&str] = &["/run/dbus/system_bus_socket", "/run/systemd/private"];
+
+/// Linux: directories of the service-handoff class.
+pub const SERVICE_SOCKET_DIRS_LINUX: &[&str] = &["/run/dbus"];
+
+/// Linux: service-handoff sockets, relative to each runtime directory.
+pub const SERVICE_RUNTIME_LINUX: &[&str] = &["bus", "systemd/private"];
+
+/// Linux: service-handoff directories, relative to each runtime directory.
+pub const SERVICE_RUNTIME_DIRS_LINUX: &[&str] = &["systemd"];
+
+/// Linux: prefixes of abstract D-Bus addresses.
+pub const SERVICE_ABSTRACT_LINUX: &[&str] = &["/tmp/dbus-"];
+
+/// Linux: container-engine sockets.
+pub const ENGINE_SOCKETS_LINUX: &[&str] = &[
+    "/run/buildkit/buildkitd.sock",
+    "/run/containerd/containerd.sock",
+    "/run/docker.sock",
+    "/run/podman/podman.sock",
+    "/var/lib/incus/unix.socket",
+    "/var/lib/lxd/unix.socket",
+    "/var/snap/lxd/common/lxd/unix.socket",
+];
+
+/// Linux: directories of the container-engines class.
+pub const ENGINE_SOCKET_DIRS_LINUX: &[&str] = &["/run/containerd", "/run/podman"];
+
+/// Linux: container-engine sockets, relative to each runtime directory.
+pub const ENGINE_RUNTIME_LINUX: &[&str] = &[
+    "containerd-rootless/api.sock",
+    "docker.sock",
+    "podman/podman.sock",
+];
+
+/// Linux: container-engine directories, relative to each runtime directory.
+pub const ENGINE_RUNTIME_DIRS_LINUX: &[&str] = &["podman"];
+
 /// The environment allowlist of every preset.
 pub const PRESET_ENV: &[&str] = &["HOME", "LANG", "LC_ALL", "PATH", "TERM", "TMPDIR", "USER"];
 
@@ -210,6 +286,13 @@ pub fn patterns(class: HardDenyClass) -> Vec<Glob> {
                     .map(|p| glob(&format!("{}/**", literal(p)))),
             )
             .collect(),
+        // Sockets are files: the entries are matched as they are, with their
+        // own wildcards.
+        HardDenyClass::ContainerEngines => ENGINE_HOME
+            .iter()
+            .map(|r| glob(&format!("/Users/*/{r}")))
+            .chain(ENGINE_SYSTEM.iter().map(|p| glob(&literal(p))))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -249,6 +332,34 @@ pub fn linux_class_paths(class: HardDenyClass) -> Option<ClassPaths> {
             anywhere: Vec::new(),
             system: system(PERSISTENCE_SYSTEM_LINUX),
             pin_git: false,
+        },
+        _ => return None,
+    })
+}
+
+/// The Linux sockets of a socket class (`None` for the other classes).
+pub fn linux_socket_paths(class: HardDenyClass) -> Option<SocketPaths> {
+    let abs = |list: &[&str]| -> Vec<AbsPath> {
+        list.iter()
+            .map(|p| AbsPath::new(*p).unwrap_or_else(|_| unreachable!("valid path {p}")))
+            .collect()
+    };
+    Some(match class {
+        HardDenyClass::ServiceHandoff => SocketPaths {
+            class,
+            system: abs(SERVICE_SOCKETS_LINUX),
+            system_dirs: abs(SERVICE_SOCKET_DIRS_LINUX),
+            runtime: strings(SERVICE_RUNTIME_LINUX),
+            runtime_dirs: strings(SERVICE_RUNTIME_DIRS_LINUX),
+            abstract_prefixes: strings(SERVICE_ABSTRACT_LINUX),
+        },
+        HardDenyClass::ContainerEngines => SocketPaths {
+            class,
+            system: abs(ENGINE_SOCKETS_LINUX),
+            system_dirs: abs(ENGINE_SOCKET_DIRS_LINUX),
+            runtime: strings(ENGINE_RUNTIME_LINUX),
+            runtime_dirs: strings(ENGINE_RUNTIME_DIRS_LINUX),
+            abstract_prefixes: Vec::new(),
         },
         _ => return None,
     })

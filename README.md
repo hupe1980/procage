@@ -40,7 +40,8 @@ let status = cage
   a named capability gap, never a weaker rule. `Cage::fit` relaxes only what
   you name and says what would lift each relaxation.
 - 🔒 **A hard-deny tier in every policy.** Secrets, git hooks, shell startup
-  files and launch agents are denied last and waivable only by name.
+  files, launch agents, your service manager and container engines are
+  denied last and waivable only by name.
 - 🧹 **Hygiene and lifetime.** Inherited descriptors are closed,
   secret-looking variables dropped, and every process a run started is
   killed when it ends, double-forked daemons included.

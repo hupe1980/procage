@@ -1,0 +1,1171 @@
+{
+  "feature": "041-service-sockets",
+  "commit": "66fe50e",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "On Linux T1, the service-handoff class MUST make a connect from the caged child to the user bus, the system bus and the user service-manager sockets fail under every network setting, unless the class is waived.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T1, Network::All and a private bus at $XDG_RUNTIME_DIR/bus and a fake socket at $XDG_RUNTIME_DIR/systemd/private",
+          "then": "every connect fails and the fake services record no connection",
+          "when": "the child connects to each, and to a fake system bus socket at its path"
+        },
+        {
+          "given": "the same setup with Network::None",
+          "then": "every connect fails",
+          "when": "the child connects"
+        }
+      ],
+      "mitigations": [
+        "mitigation.linux-bus-deny"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-016] Linux lowering: both classes `Exact`; `LinuxPlan::service_sockets` filled when in force and `net == All` or `ipc.unix_sockets` is non-empty, in crates/procage-policy/src/lower/linux.rs and crates/procage-policy/src/linux.rs"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-004] [SR-005] [SR-008] [SR-010] [SR-012] Canaries in crates/procage/tests/escape_linux.rs: `r34_service_sockets_are_unreachable` (scratch runtime dir with `bus`, `systemd/private`; T1 refused, T2 gap naming the path; waived control connects; a project socket in the workspace connects), `r34_fit_waives_by_name` (T2: `Cage::fit` with `Relax::waive` for each class makes the cage and lists the relaxation), `r34_abstract_bus_is_scoped`, `r34_a_socket_bound_later_is_refused` (T2 spawn refused; T1 directory cover holds)"
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[SR-001] Add a test for SR-001 (On Linux T1, the service-handoff class MUST make a connect from the caged child to the user bus, the system bus and the user service-manager sockets fail under every network setting, unless the class is waived) \u2014 touchpoints: crates/procage-policy/src/lower/linux.rs, crates/procage-policy/src/presets.rs, crates/procage/src/linux/services.rs, crates/procage/src/linux/spawn.rs [converge: implemented-unverified; The T1 canary refuses the runtime-directory bus and systemd/private with Network::All and the generic Network::None Unix-connect refusal is covered elsewhere, but no test places a fake system bus at /run/dbus/system_bus_socket or checks that the fake services record no connection.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-001.2026-11-01",
+          "requirement": "SR-001",
+          "method": "review",
+          "evidence": "crates/procage/src/linux/services.rs:134",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The T1 canary refuses the runtime-directory bus and systemd/private with Network::All and the generic Network::None Unix-connect refusal is covered elsewhere, but no test places a fake system bus at /run/dbus/system_bus_socket or checks that the fake services record no connection.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The container-engines class MUST make a connect to every listed engine socket fail on Linux (T1) and macOS under every network setting, unless the class is waived.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "macOS, Network::All and fake engine sockets at each listed home-directory path",
+          "then": "every connect is denied and no fake engine records a connection",
+          "when": "the child connects to each"
+        },
+        {
+          "given": "Linux T1 in a container lane with fake sockets at each listed system and runtime path",
+          "then": "every connect fails",
+          "when": "the child connects to each"
+        }
+      ],
+      "mitigations": [
+        "mitigation.engine-deny"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-002] [SR-005] macOS lowering: `ContainerEngines` \u2192 `(deny network-outbound \u2026folded\u2026)` in crates/procage-policy/src/lower/macos.rs (deny reason = the class)"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-005] [SR-009] [SR-011] [SR-012] macOS canary `r34_container_engines_are_unreachable` in crates/procage/tests/escape_macos.rs: fake engine under `~/.lima/procage-r34-<pid>/sock/docker.sock` (removed afterwards), `Network::All`; direct, via a workspace symlink, and a hard-link attempt all refused; reporting on names `container-engines`; waived control connects and the bus class is unaffected"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US2] [SR-002] Linux engine canary in crates/procage/tests/escape_linux.rs (`docker.sock` and `podman/podman.sock` in the scratch runtime dir) with the waived control"
+        },
+        {
+          "id": "T017",
+          "done": true,
+          "text": "[SR-002] Add a test for SR-002 (The container-engines class MUST make a connect to every listed engine socket fail on Linux (T1) and macOS under every network setting, unless the class is waived) \u2014 touchpoints: crates/procage-policy/src/lower/linux.rs, crates/procage-policy/src/lower/macos.rs, crates/procage-policy/src/presets.rs, crates/procage/src/linux/spawn.rs [converge: implemented-unverified; The macOS canary exercises one of the seven home-directory engine paths (Lima) and the Linux canary only the runtime-directory docker.sock and podman/podman.sock; no test binds fake sockets at each listed home path or at the listed Linux system paths.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-002.2026-11-01",
+          "requirement": "SR-002",
+          "method": "review",
+          "evidence": "crates/procage-policy/src/presets.rs:191",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The macOS canary exercises one of the seven home-directory engine paths (Lima) and the Linux canary only the runtime-directory docker.sock and podman/podman.sock; no test binds fake sockets at each listed home path or at the listed Linux system paths.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "On T2, if a socket of an unwaived class exists at spawn, making the cage MUST fail with a capability gap naming the class and every such socket path; fit MUST relax the class by name and say what lifts the gap.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T2 and a socket at $XDG_RUNTIME_DIR/bus",
+          "then": "it fails with a gap naming service-handoff and that path",
+          "when": "the cage is made"
+        },
+        {
+          "given": "the same host and fit",
+          "then": "it relaxes service-handoff by name and states what would lift the gap",
+          "when": "fit runs"
+        },
+        {
+          "given": "T2 and no listed socket",
+          "then": "it succeeds unchanged",
+          "when": "the cage is made"
+        }
+      ],
+      "mitigations": [
+        "mitigation.t2-gap"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-016] Linux lowering: both classes `Exact`; `LinuxPlan::service_sockets` filled when in force and `net == All` or `ipc.unix_sockets` is non-empty, in crates/procage-policy/src/lower/linux.rs and crates/procage-policy/src/linux.rs"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-003] [SR-004] [SR-008] [SR-014] `Cage::with_options` service gaps (T2 Unsupported per path; T1 Approximation unless allowed, recorded as a degradation; abstract \u2192 scope at ABI \u2265 6 else gap) and per-spawn handling (T1 `Cover::Hide` for sockets and directories, optional; T2 re-scan refuses the spawn on a new socket; a new abstract bus without scope refuses) in crates/procage/src/linux/mod.rs; `CageOptions::with_runtime_dir`"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-004] [SR-005] [SR-008] [SR-010] [SR-012] Canaries in crates/procage/tests/escape_linux.rs: `r34_service_sockets_are_unreachable` (scratch runtime dir with `bus`, `systemd/private`; T1 refused, T2 gap naming the path; waived control connects; a project socket in the workspace connects), `r34_fit_waives_by_name` (T2: `Cage::fit` with `Relax::waive` for each class makes the cage and lists the relaxation), `r34_abstract_bus_is_scoped`, `r34_a_socket_bound_later_is_refused` (T2 spawn refused; T1 directory cover holds)"
+        },
+        {
+          "id": "T018",
+          "done": true,
+          "text": "[SR-003] Complete SR-003 (On T2, if a socket of an unwaived class exists at spawn, making the cage MUST fail with a capability gap naming the class and every such socket path; fit MUST relax the class by name and say what lifts the gap) \u2014 touchpoints: crates/procage/src/lib.rs, crates/procage/src/linux/mod.rs, crates/procage/src/linux/services.rs [converge: partial; The T2 gap naming the class and path and the fit waiver by name are tested, but the relaxed entry's lift for a socket gap is computed by re-lowering, which never reports spawn-time socket gaps, so fit says no known tier would lift it instead of stating what would.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-003.2026-11-01",
+          "requirement": "SR-003",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r34_fit_waives_by_name",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "The T2 gap naming the class and path and the fit waiver by name are tested, but the relaxed entry's lift for a socket gap is computed by re-lowering, which never reports spawn-time socket gaps, so fit says no known tier would lift it instead of stating what would.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "An abstract address of a service-handoff bus found at spawn MUST be scoped where the kernel supports abstract-socket scoping (Landlock ABI 6), and otherwise MUST fail the cage with a gap naming the address.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a fake bus on an abstract address and Landlock ABI 6",
+          "then": "the connect fails",
+          "when": "the child connects"
+        },
+        {
+          "given": "the same bus and a kernel below ABI 6",
+          "then": "it fails with a gap naming the address",
+          "when": "the cage is made"
+        }
+      ],
+      "mitigations": [
+        "mitigation.abstract-scope"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-003] [SR-004] [SR-008] [SR-014] `Cage::with_options` service gaps (T2 Unsupported per path; T1 Approximation unless allowed, recorded as a degradation; abstract \u2192 scope at ABI \u2265 6 else gap) and per-spawn handling (T1 `Cover::Hide` for sockets and directories, optional; T2 re-scan refuses the spawn on a new socket; a new abstract bus without scope refuses) in crates/procage/src/linux/mod.rs; `CageOptions::with_runtime_dir`"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-004] [SR-005] [SR-008] [SR-010] [SR-012] Canaries in crates/procage/tests/escape_linux.rs: `r34_service_sockets_are_unreachable` (scratch runtime dir with `bus`, `systemd/private`; T1 refused, T2 gap naming the path; waived control connects; a project socket in the workspace connects), `r34_fit_waives_by_name` (T2: `Cage::fit` with `Relax::waive` for each class makes the cage and lists the relaxation), `r34_abstract_bus_is_scoped`, `r34_a_socket_bound_later_is_refused` (T2 spawn refused; T1 directory cover holds)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-004.2026-11-01",
+          "requirement": "SR-004",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r34_an_abstract_bus_is_scoped",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "A fake abstract bus is refused with EPERM where the host has ABI 6, the cage capped at ABI 5 fails with a gap naming the @address, and the waived control connects, on each tier.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "A deny MUST hold for the socket object, not its spelling: a connect through a symbolic link, /var/run instead of /run, or a hard link made inside the cage to a listed socket MUST fail like the direct path.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a writable workspace with a symbolic link to a listed fake socket",
+          "then": "the connect fails on T1 and macOS",
+          "when": "the child connects through it"
+        },
+        {
+          "given": "macOS and a listed fake socket under procage's deny-default profile",
+          "then": "link() is refused",
+          "when": "the child calls link() to it from the workspace"
+        },
+        {
+          "given": "Linux T1 and a listed fake socket",
+          "then": "the link fails (no refer right) or the connect fails (the cover hides the original name)",
+          "when": "the child makes a hard link to it in the workspace and connects"
+        }
+      ],
+      "mitigations": [
+        "mitigation.resolved-object"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-002] [SR-005] macOS lowering: `ContainerEngines` \u2192 `(deny network-outbound \u2026folded\u2026)` in crates/procage-policy/src/lower/macos.rs (deny reason = the class)"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-004] [SR-005] [SR-008] [SR-010] [SR-012] Canaries in crates/procage/tests/escape_linux.rs: `r34_service_sockets_are_unreachable` (scratch runtime dir with `bus`, `systemd/private`; T1 refused, T2 gap naming the path; waived control connects; a project socket in the workspace connects), `r34_fit_waives_by_name` (T2: `Cage::fit` with `Relax::waive` for each class makes the cage and lists the relaxation), `r34_abstract_bus_is_scoped`, `r34_a_socket_bound_later_is_refused` (T2 spawn refused; T1 directory cover holds)"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-005] [SR-009] [SR-011] [SR-012] macOS canary `r34_container_engines_are_unreachable` in crates/procage/tests/escape_macos.rs: fake engine under `~/.lima/procage-r34-<pid>/sock/docker.sock` (removed afterwards), `Network::All`; direct, via a workspace symlink, and a hard-link attempt all refused; reporting on names `container-engines`; waived control connects and the bus class is unaffected"
+        },
+        {
+          "id": "T019",
+          "done": true,
+          "text": "[SR-005] Add a test for SR-005 (A deny MUST hold for the socket object, not its spelling: a connect through a symbolic link, /var/run instead of /run, or a hard link made inside the cage to a listed socket MUST fail like the direct path) \u2014 touchpoints: crates/procage-policy/src/lower/macos.rs, crates/procage/src/linux/services.rs, crates/procage/src/linux/spawn.rs [converge: implemented-unverified; macOS refuses the direct path, a workspace symlink and link() to the engine socket, but no Linux T1 test connects through a symlink, through /var/run, or through a hard link made in the workspace.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-005.2026-11-01",
+          "requirement": "SR-005",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r34_container_engines_are_unreachable",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "macOS refuses the direct path, a workspace symlink and link() to the engine socket, but no Linux T1 test connects through a symlink, through /var/run, or through a hard link made in the workspace.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Discovery MUST take the runtime directories from every /run/user/* the caller can read, the caller's XDG_RUNTIME_DIR and each with_runtime_dir addition (which adds, never replaces), canonicalised; the homes MUST be the account's home and the homes procage already knows on Linux and every user home on macOS; the listed sockets MUST be denied under each.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a harness with XDG_RUNTIME_DIR unset and a fake bus at /run/user/<uid>/bus",
+          "then": "the connect fails (T1) or the cage reports the gap (T2)",
+          "when": "the child connects"
+        },
+        {
+          "given": "HOME pointing to another directory",
+          "then": "the connect is denied",
+          "when": "the child connects to the engine socket under the account's home"
+        },
+        {
+          "given": "a scratch runtime directory added with with_runtime_dir and a fake bus in it",
+          "then": "the bus is found, and the sockets under /run/user/* are still found",
+          "when": "the cage is made"
+        }
+      ],
+      "mitigations": [
+        "mitigation.uid-expansion"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-015] `runtime_dirs` and `find` in crates/procage/src/linux/services.rs (new): readable `/run/user/*`, `XDG_RUNTIME_DIR`, `with_runtime_dir`; sockets by file type, resolved and deduplicated; class directories holding a socket; any existing listed name counts (socket, directory, link or other file; the name and its resolved object are covered); abstract names from `/proc/net/unix` with a listed prefix, parsed field by field without trusting the name's layout (skipped with a network namespace); an unreadable listing is an error that becomes a gap; unit tests with a scratch runtime dir"
+        },
+        {
+          "id": "T020",
+          "done": true,
+          "text": "[SR-006] Add a test for SR-006 (Discovery MUST take the runtime directories from every /run/user/* the caller can read, the caller's XDG_RUNTIME_DIR and each with_runtime_dir addition (which adds, never replaces), canonicalised; the homes MUST be the account's home and the homes procage already knows on Linux and every user home on macOS; the listed sockets MUST be denied under each) \u2014 touchpoints: crates/procage-policy/src/lower/macos.rs, crates/procage/src/linux/mod.rs, crates/procage/src/linux/services.rs [converge: implemented-unverified; runtime_dirs reads readable /run/user/*, XDG_RUNTIME_DIR and with_runtime_dir additions, but tests only use with_runtime_dir; no test unsets XDG_RUNTIME_DIR with a bus under /run/user/<uid>, redirects HOME on macOS, or checks that an addition keeps /run/user/* found.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-006.2026-11-01",
+          "requirement": "SR-006",
+          "method": "review",
+          "evidence": "crates/procage/src/linux/services.rs:51",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "runtime_dirs reads readable /run/user/*, XDG_RUNTIME_DIR and with_runtime_dir additions, but tests only use with_runtime_dir; no test unsets XDG_RUNTIME_DIR with a bus under /run/user/<uid>, redirects HOME on macOS, or checks that an addition keeps /run/user/* found.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "The service socket list MUST be versioned data with a source per entry, and the docs MUST list each path and directory pattern it covers, say that sockets outside it are not covered, and say that an engine at a path named only by DOCKER_HOST or CONTAINER_HOST is out of scope and is hidden by the caller's policy.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the list and the docs",
+          "then": "every entry appears in both with its version",
+          "when": "a table test compares them"
+        },
+        {
+          "given": "the docs",
+          "then": "they state the DOCKER_HOST and CONTAINER_HOST scope limit next to the list",
+          "when": "they are read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.versioned-list"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-007] [SR-010] Frozen socket lists (research.md R4) and `patterns(ContainerEngines)` (macOS globs: `<every user home>/<rel>` without a trailing `/**`, and system paths) and `linux_socket_paths(class)` in crates/procage-policy/src/presets.rs; `SocketPaths` in crates/procage-policy/src/linux.rs"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US3] [SR-007] [SR-013] THREAT_MODEL row R-34 (mitigate; platforms macOS, Linux; evidence the canaries) and `PUBLISHED` in crates/procage/tests/threat_model.rs; crate docs (hard-deny classes, Linux limits incl. unreported cover refusals and the snapshot) in crates/procage/src/lib.rs and crates/procage/src/linux/mod.rs; site pages; CHANGELOG Security (tightened presets; migration: waive `container-engines` for builds that need an engine; on T1 hosts with a bus or engine socket, accept the spawn snapshot) and Added"
+        },
+        {
+          "id": "T021",
+          "done": true,
+          "text": "[SR-007] Complete SR-007 (The service socket list MUST be versioned data with a source per entry, and the docs MUST list each path and directory pattern it covers, say that sockets outside it are not covered, and say that an engine at a path named only by DOCKER_HOST or CONTAINER_HOST is out of scope and is hidden by the caller's policy) \u2014 touchpoints: crates/procage-policy/src/presets.rs, crates/procage-policy/tests/presets.rs, crates/procage/THREAT_MODEL.md, site/content/docs [converge: partial; The lists are versioned constants, but the docs page names only the class directories (not each socket path), no source is recorded per entry, CONTAINER_HOST is not mentioned next to DOCKER_HOST, and no table test compares the list with the docs.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-007.2026-11-01",
+          "requirement": "SR-007",
+          "method": "review",
+          "evidence": "site/content/docs/hard-deny.md:66",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "The lists are versioned constants, but the docs page names only the class directories (not each socket path), no source is recorded per entry, CONTAINER_HOST is not mentioned next to DOCKER_HOST, and no table test compares the list with the docs.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "On T1 the class directories ($XDG_RUNTIME_DIR/systemd, $XDG_RUNTIME_DIR/podman, /run/podman, /run/containerd, /run/dbus) MUST be covered whole when found, so a socket bound there after spawn is unreachable; a found socket outside them MUST make its class a spawn-snapshot approximation, accepted only by the spawn-snapshot option or by name and recorded as a degradation, and documented.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T1, an empty $XDG_RUNTIME_DIR/systemd at spawn",
+          "then": "the connect fails",
+          "when": "a fake socket is bound at $XDG_RUNTIME_DIR/systemd/private after spawn and the child connects"
+        },
+        {
+          "given": "T1, a fake bus at $XDG_RUNTIME_DIR/bus and neither the spawn-snapshot option nor the class named",
+          "then": "it fails with an approximation gap naming service-handoff and the path",
+          "when": "the cage is made"
+        },
+        {
+          "given": "the same host with the spawn-snapshot option",
+          "then": "it succeeds and the receipt records the degradation",
+          "when": "the cage is made"
+        }
+      ],
+      "mitigations": [
+        "mitigation.cover-directories"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-003] [SR-004] [SR-008] [SR-014] `Cage::with_options` service gaps (T2 Unsupported per path; T1 Approximation unless allowed, recorded as a degradation; abstract \u2192 scope at ABI \u2265 6 else gap) and per-spawn handling (T1 `Cover::Hide` for sockets and directories, optional; T2 re-scan refuses the spawn on a new socket; a new abstract bus without scope refuses) in crates/procage/src/linux/mod.rs; `CageOptions::with_runtime_dir`"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-004] [SR-005] [SR-008] [SR-010] [SR-012] Canaries in crates/procage/tests/escape_linux.rs: `r34_service_sockets_are_unreachable` (scratch runtime dir with `bus`, `systemd/private`; T1 refused, T2 gap naming the path; waived control connects; a project socket in the workspace connects), `r34_fit_waives_by_name` (T2: `Cage::fit` with `Relax::waive` for each class makes the cage and lists the relaxation), `r34_abstract_bus_is_scoped`, `r34_a_socket_bound_later_is_refused` (T2 spawn refused; T1 directory cover holds)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-008.2026-11-01",
+          "requirement": "SR-008",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "Without the snapshot T1 fails with an approximation gap naming the class and each path, with it the plan records the degradation and connects are refused, and r34_a_socket_bound_later_is_refused shows a socket bound in systemd/ after spawn is refused; the limit is documented in the Linux module docs and hard-deny page.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/policy.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "Each class MUST be waivable only by its typed name; a waiver MUST remove exactly that class's denies and MUST be recorded in the receipt.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a policy compiled with and without the container-engines waiver",
+          "then": "they differ only in the engine denies, service-handoff still holds, and the receipt lists the waiver",
+          "when": "the outputs are compared"
+        },
+        {
+          "given": "container-engines waived",
+          "then": "it succeeds and a connect to the fake bus still fails",
+          "when": "the child connects to a fake engine"
+        }
+      ],
+      "mitigations": [
+        "mitigation.class-scoped-waiver"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-009] `HardDenyClass::ContainerEngines` (\"container-engines\", appended last to `ALL`, name round-trip) in crates/procage-policy/src/policy.rs; `Construct::HdContainerEngines` (\"hd-container-engines\"), `of_class`, `SPAWN_SNAPSHOT` += `HdServiceHandoff`, `HdContainerEngines` in crates/procage-policy/src/lower/mod.rs"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-005] [SR-009] [SR-011] [SR-012] macOS canary `r34_container_engines_are_unreachable` in crates/procage/tests/escape_macos.rs: fake engine under `~/.lima/procage-r34-<pid>/sock/docker.sock` (removed afterwards), `Network::All`; direct, via a workspace symlink, and a hard-link attempt all refused; reporting on names `container-engines`; waived control connects and the bus class is unaffected"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-009.2026-11-01",
+          "requirement": "SR-009",
+          "method": "test",
+          "evidence": "crates/procage-policy/tests/precedence.rs::waivers_remove_exactly_their_class_and_are_listed",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "Every class (container-engines included) waived removes exactly its lines and is listed in plan.waivers; sockets.rs::a_waiver_removes_exactly_its_class and the Linux and macOS R-34 canaries show the other class still holds when one is waived.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/policy.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "Patterns MUST match only listed names under the expanded directories; a socket under a granted writable tree that matches no pattern MUST stay reachable.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a project's own server socket in the writable workspace",
+          "then": "it succeeds on T1, T2 and macOS",
+          "when": "the child connects"
+        },
+        {
+          "given": "T1 below Landlock ABI 6 (where no plan scopes abstract sockets), no abstract service bus at spawn and an unrelated abstract socket",
+          "then": "it succeeds: the class adds no abstract scope of its own (from ABI 6 every plan already scopes abstract sockets, independent of this class)",
+          "when": "the child connects to it"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exact-patterns"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-007] [SR-010] Frozen socket lists (research.md R4) and `patterns(ContainerEngines)` (macOS globs: `<every user home>/<rel>` without a trailing `/**`, and system paths) and `linux_socket_paths(class)` in crates/procage-policy/src/presets.rs; `SocketPaths` in crates/procage-policy/src/linux.rs"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-004] [SR-005] [SR-008] [SR-010] [SR-012] Canaries in crates/procage/tests/escape_linux.rs: `r34_service_sockets_are_unreachable` (scratch runtime dir with `bus`, `systemd/private`; T1 refused, T2 gap naming the path; waived control connects; a project socket in the workspace connects), `r34_fit_waives_by_name` (T2: `Cage::fit` with `Relax::waive` for each class makes the cage and lists the relaxation), `r34_abstract_bus_is_scoped`, `r34_a_socket_bound_later_is_refused` (T2 spawn refused; T1 directory cover holds)"
+        },
+        {
+          "id": "T022",
+          "done": true,
+          "text": "[SR-010] Complete SR-010 (Patterns MUST match only listed names under the expanded directories; a socket under a granted writable tree that matches no pattern MUST stay reachable) \u2014 touchpoints: crates/procage-policy/src/presets.rs, crates/procage/src/linux/services.rs [converge: partial; The workspace project socket connects on T1 only (T2 and macOS untested), and the unrelated-abstract-socket scenario cannot hold as written because every plan from ABI 6 scopes abstract sockets unconditionally.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-010.2026-11-01",
+          "requirement": "SR-010",
+          "method": "review",
+          "evidence": "crates/procage-policy/src/lower/linux.rs:424",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "The workspace project socket connects on T1 only (T2 and macOS untested), and the unrelated-abstract-socket scenario cannot hold as written because every plan from ABI 6 scopes abstract sockets unconditionally.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-011",
+      "statement": "On macOS, with reporting on, a refused connect to a listed socket MUST be recorded with the class name as its reason; on Linux, where the refusal comes from a mount cover or the scope and is not reported, the docs MUST say so.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "macOS, reporting on and a fake engine socket",
+          "then": "the record holds a violation with reason container-engines",
+          "when": "the child connects"
+        },
+        {
+          "given": "the Linux docs page",
+          "then": "it states that service-socket refusals are not reported on Linux",
+          "when": "it is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.class-reason"
+      ],
+      "tasks": [
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-005] [SR-009] [SR-011] [SR-012] macOS canary `r34_container_engines_are_unreachable` in crates/procage/tests/escape_macos.rs: fake engine under `~/.lima/procage-r34-<pid>/sock/docker.sock` (removed afterwards), `Network::All`; direct, via a workspace symlink, and a hard-link attempt all refused; reporting on names `container-engines`; waived control connects and the bus class is unaffected"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-011.2026-11-01",
+          "requirement": "SR-011",
+          "method": "test",
+          "evidence": "crates/procage/tests/spawn_macos.rs::an_engine_connect_is_reported_with_its_class",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "With reporting on, a connect to a fake Lima engine socket yields a network-outbound violation denied by HardDeny(ContainerEngines), and the Linux module docs state that a connect refused by a cover is not reported.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-012",
+      "statement": "The escape suite MUST hold a canary per class with the network on, on T1, T2 and macOS, each paired with a positive control (class waived, connect succeeds) and failing, never skipping, when the setup is missing.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "each lane",
+          "then": "the connect is refused (T2: the gap), and the waived control connects",
+          "when": "the canary runs"
+        },
+        {
+          "given": "a lane where the private bus cannot start",
+          "then": "it fails",
+          "when": "the canary runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.paired-canaries"
+      ],
+      "tasks": [
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-004] [SR-005] [SR-008] [SR-010] [SR-012] Canaries in crates/procage/tests/escape_linux.rs: `r34_service_sockets_are_unreachable` (scratch runtime dir with `bus`, `systemd/private`; T1 refused, T2 gap naming the path; waived control connects; a project socket in the workspace connects), `r34_fit_waives_by_name` (T2: `Cage::fit` with `Relax::waive` for each class makes the cage and lists the relaxation), `r34_abstract_bus_is_scoped`, `r34_a_socket_bound_later_is_refused` (T2 spawn refused; T1 directory cover holds)"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-005] [SR-009] [SR-011] [SR-012] macOS canary `r34_container_engines_are_unreachable` in crates/procage/tests/escape_macos.rs: fake engine under `~/.lima/procage-r34-<pid>/sock/docker.sock` (removed afterwards), `Network::All`; direct, via a workspace symlink, and a hard-link attempt all refused; reporting on names `container-engines`; waived control connects and the bus class is unaffected"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-012.2026-11-01",
+          "requirement": "SR-012",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "Each class has a network-on canary on T1 (refused) and T2 (gap naming each socket) with a waived control that connects, macOS has the engine canary with its control and a service-handoff check, and fake setups unwrap so a missing setup fails.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-013",
+      "statement": "The change MUST ship with a Security entry in the changelog and the escape class in the threat model, and the regenerated preset fixtures MUST differ only by the new denies.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the fixture diff",
+          "then": "every changed line is a service-handoff or container-engines deny and no existing line moves",
+          "when": "it is reviewed"
+        },
+        {
+          "given": "the changelog and the threat model",
+          "then": "both name container-engines, the extended service-handoff and the canaries",
+          "when": "they are read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.reviewed-fixtures"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[P] [SR-013] [SR-016] Policy tests: a reachability table (each network mode \u00d7 `ipc.unix_sockets` empty or not \u00d7 waived or not \u2192 `service_sockets` filled or empty); lowering of the class on both targets (crates/procage-policy/tests/presets.rs, lowering_table.rs), presets data (no duplicate, every path absolute), fixture regeneration in crates/procage-policy/tests/fixtures/presets/*.sb with a diff that only adds `container-engines` denies; lowering.md rows"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US3] [SR-007] [SR-013] THREAT_MODEL row R-34 (mitigate; platforms macOS, Linux; evidence the canaries) and `PUBLISHED` in crates/procage/tests/threat_model.rs; crate docs (hard-deny classes, Linux limits incl. unreported cover refusals and the snapshot) in crates/procage/src/lib.rs and crates/procage/src/linux/mod.rs; site pages; CHANGELOG Security (tightened presets; migration: waive `container-engines` for builds that need an engine; on T1 hosts with a bus or engine socket, accept the spawn snapshot) and Added"
+        },
+        {
+          "id": "T023",
+          "done": true,
+          "text": "[SR-013] Complete SR-013 (The change MUST ship with a Security entry in the changelog and the escape class in the threat model, and the regenerated preset fixtures MUST differ only by the new denies) \u2014 touchpoints: CHANGELOG.md, crates/procage-policy/src/policy.rs, crates/procage-policy/tests/fixtures/presets, crates/procage/THREAT_MODEL.md, crates/procage/tests/threat_model.rs [converge: partial; The fixture diff only adds one container-engines deny per preset and the threat model row R-34 names both classes and the canaries, but the changelog Security entry does not name the canaries.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-013.2026-11-01",
+          "requirement": "SR-013",
+          "method": "review",
+          "evidence": "CHANGELOG.md:9",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "The fixture diff only adds one container-engines deny per preset and the threat model row R-34 names both classes and the canaries, but the changelog Security entry does not name the canaries.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "CHANGELOG.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/policy.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/fixtures/presets",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-014",
+      "statement": "Discovery MUST run again for each spawn, in the parent before the child is created: on T2 a socket or abstract bus of an unwaived class found then MUST refuse the spawn with the same gaps; on T1 every found socket MUST be covered in that spawn, and a cover MAY be skipped only when its name no longer exists; a socket bound after the child starts outside a class directory MUST be documented as the spawn-snapshot limit on T1 and T2.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T2, a cage made with no listed socket, then a fake bus bound at the runtime path",
+          "then": "it fails with a gap naming service-handoff and the path",
+          "when": "spawn is called"
+        },
+        {
+          "given": "T1, a cage made with no listed socket, then a fake engine socket bound at a listed runtime path",
+          "then": "the connect fails",
+          "when": "spawn is called and the child connects"
+        },
+        {
+          "given": "T2, a cage made before an abstract bus exists, then a fake abstract bus and no scope",
+          "then": "it fails with a gap naming the address",
+          "when": "spawn is called"
+        }
+      ],
+      "mitigations": [
+        "mitigation.per-spawn-recheck"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-003] [SR-004] [SR-008] [SR-014] `Cage::with_options` service gaps (T2 Unsupported per path; T1 Approximation unless allowed, recorded as a degradation; abstract \u2192 scope at ABI \u2265 6 else gap) and per-spawn handling (T1 `Cover::Hide` for sockets and directories, optional; T2 re-scan refuses the spawn on a new socket; a new abstract bus without scope refuses) in crates/procage/src/linux/mod.rs; `CageOptions::with_runtime_dir`"
+        },
+        {
+          "id": "T024",
+          "done": true,
+          "text": "[SR-014] Add a test for SR-014 (Discovery MUST run again for each spawn, in the parent before the child is created: on T2 a socket or abstract bus of an unwaived class found then MUST refuse the spawn with the same gaps; on T1 every found socket MUST be covered in that spawn, and a cover MAY be skipped only when its name no longer exists; a socket bound after the child starts outside a class directory MUST be documented as the spawn-snapshot limit on T1 and T2) \u2014 touchpoints: crates/procage/THREAT_MODEL.md, crates/procage/src/linux/mod.rs, crates/procage/src/linux/services.rs, crates/procage/src/linux/spawn.rs [converge: implemented-unverified; service_covers re-scans per spawn and the T2 case is tested (asserting the class, not the path), but no test binds an engine socket at a listed runtime path after a T1 cage is made, nor an abstract bus after a T2 cage is made without scope.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-014.2026-11-01",
+          "requirement": "SR-014",
+          "method": "review",
+          "evidence": "crates/procage/src/linux/mod.rs:1004",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "service_covers re-scans per spawn and the T2 case is tested (asserting the class, not the path), but no test binds an engine socket at a listed runtime path after a T1 cage is made, nor an abstract bus after a T2 cage is made without scope.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-015",
+      "statement": "Discovery MUST treat an existing listed name as found whatever it is (socket, directory, symbolic link or other file), covering the name and its resolved object; it MUST parse /proc/net/unix without trusting the name field's layout; and a failure to read /proc/net/unix while the child shares the network namespace, or to inspect an existing listed path, MUST be a gap, not an empty result.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a writable runtime directory where the listed bus name is a symbolic link to a fake bus elsewhere",
+          "then": "both connects fail",
+          "when": "the cage is made on T1 and the child connects by either name"
+        },
+        {
+          "given": "a fake abstract socket whose name holds a newline and a listed prefix",
+          "then": "it neither panics nor drops a real fake bus listed after it",
+          "when": "discovery runs"
+        },
+        {
+          "given": "T2 with Network::All and /proc/net/unix unreadable",
+          "then": "it fails with a gap naming service-handoff",
+          "when": "the cage is made"
+        }
+      ],
+      "mitigations": [
+        "mitigation.discovery-fail-closed"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-015] `runtime_dirs` and `find` in crates/procage/src/linux/services.rs (new): readable `/run/user/*`, `XDG_RUNTIME_DIR`, `with_runtime_dir`; sockets by file type, resolved and deduplicated; class directories holding a socket; any existing listed name counts (socket, directory, link or other file; the name and its resolved object are covered); abstract names from `/proc/net/unix` with a listed prefix, parsed field by field without trusting the name's layout (skipped with a network namespace); an unreadable listing is an error that becomes a gap; unit tests with a scratch runtime dir"
+        },
+        {
+          "id": "T025",
+          "done": true,
+          "text": "[SR-015] Complete SR-015 (Discovery MUST treat an existing listed name as found whatever it is (socket, directory, symbolic link or other file), covering the name and its resolved object; it MUST parse /proc/net/unix without trusting the name field's layout; and a failure to read /proc/net/unix while the child shares the network namespace, or to inspect an existing listed path, MUST be a gap, not an empty result) \u2014 touchpoints: crates/procage/src/linux/services.rs, crates/procage/src/linux/spawn.rs [converge: partial; An unreadable /proc/net/unix becomes a gap and the listing parser is unit-tested, but a listed path that cannot be inspected is treated as absent (symlink_metadata error in existing, read_dir error in holds_a_socket makes a T2 class directory silently ignored) instead of a gap, and no cage-level test covers the symlinked bus or the unreadable listing.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-015.2026-11-01",
+          "requirement": "SR-015",
+          "method": "review",
+          "evidence": "crates/procage/src/linux/services.rs:83",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "An unreadable /proc/net/unix becomes a gap and the listing parser is unit-tested, but a listed path that cannot be inspected is treated as absent (symlink_metadata error in existing, read_dir error in holds_a_socket makes a T2 class directory silently ignored) instead of a gap, and no cage-level test covers the symlinked bus or the unreadable listing.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/services.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-016",
+      "statement": "The Linux lowering MUST carry both classes in LinuxPlan::service_sockets for every policy that leaves the child any pathname or abstract Unix connect (Network::All, a non-empty ipc.unix_sockets, and any network mode added later that allows one), unless the class is waived; a lowering table test MUST cover every Network variant and ipc setting.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "each Network variant crossed with an empty and a non-empty ipc.unix_sockets",
+          "then": "service_sockets is non-empty exactly where a Unix connect is possible and the classes are not waived",
+          "when": "the policy is lowered"
+        },
+        {
+          "given": "a new Network variant without a table row",
+          "then": "they fail",
+          "when": "the lowering tests run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.reach-table"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-016] Linux lowering: both classes `Exact`; `LinuxPlan::service_sockets` filled when in force and `net == All` or `ipc.unix_sockets` is non-empty, in crates/procage-policy/src/lower/linux.rs and crates/procage-policy/src/linux.rs"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[P] [SR-013] [SR-016] Policy tests: a reachability table (each network mode \u00d7 `ipc.unix_sockets` empty or not \u00d7 waived or not \u2192 `service_sockets` filled or empty); lowering of the class on both targets (crates/procage-policy/tests/presets.rs, lowering_table.rs), presets data (no duplicate, every path absolute), fixture regeneration in crates/procage-policy/tests/fixtures/presets/*.sb with a diff that only adds `container-engines` denies; lowering.md rows"
+        },
+        {
+          "id": "T026",
+          "done": true,
+          "text": "[SR-016] Complete SR-016 (The Linux lowering MUST carry both classes in LinuxPlan::service_sockets for every policy that leaves the child any pathname or abstract Unix connect (Network::All, a non-empty ipc.unix_sockets, and any network mode added later that allows one), unless the class is waived; a lowering table test MUST cover every Network variant and ipc setting) \u2014 touchpoints: crates/procage-policy/src/linux.rs, crates/procage-policy/src/lower/linux.rs, crates/procage-policy/tests/lowering_table.rs [converge: partial; The table crosses None and All with empty and non-empty ipc.unix_sockets, but Loopback and Proxy rows are skipped when lowering returns gaps and the variant list is a hand-written array, so a new Network variant without a row does not fail the tests.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-016.2026-11-01",
+          "requirement": "SR-016",
+          "method": "test",
+          "evidence": "crates/procage-policy/tests/sockets.rs::the_backend_gets_the_classes_exactly_when_a_unix_connect_is_possible",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "The table crosses None and All with empty and non-empty ipc.unix_sockets, but Loopback and Proxy rows are skipped when lowering returns gaps and the variant list is a hand-written array, so a new Network variant without a row does not fail the tests.",
+          "verified_at": "2026-11-01T22:00:44Z",
+          "commit": "66fe50e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/lowering_table.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.alias-path",
+    "threat.discovery-race",
+    "threat.discovery-shaped",
+    "threat.engine-handoff",
+    "threat.list-gap",
+    "threat.over-deny",
+    "threat.reach-predicate",
+    "threat.runtime-dir-expansion",
+    "threat.silent-tightening",
+    "threat.system-bus-handoff",
+    "threat.t2-silent-reach",
+    "threat.user-bus-handoff"
+  ],
+  "decisions": [],
+  "check_findings": [],
+  "metrics": {
+    "threats": 17,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "mitigated": 5,
+      "open": 12
+    },
+    "threats_by_severity": {
+      "high": 8,
+      "medium": 6,
+      "critical": 2,
+      "low": 1
+    },
+    "mitigations": 16,
+    "requirements": 16,
+    "requirements_with_tasks": 16,
+    "requirements_verified": 5,
+    "decisions": 0,
+    "findings": {}
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

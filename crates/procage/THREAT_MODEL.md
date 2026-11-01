@@ -7,8 +7,9 @@ and in the crate documentation.
 
 ## Release status
 
-This is procage 0.1.0, the first release. The list below states what it does
-not contain; the catalog states the evidence for every escape class.
+This is procage 0.2.0, in development after 0.1.0. The list below states
+what it does not contain; the catalog states the evidence for every escape
+class.
 
 Seatbelt is the macOS kernel sandbox. On Linux, Landlock controls files and
 network ports and seccomp filters system calls; tier T1 adds user namespaces
@@ -21,8 +22,10 @@ construct the host cannot enforce is an error unless the caller accepts it
 by name, as an approximation or through `Cage::fit`. On both systems procage
 also closes inherited descriptors, drops secret-looking variables, can give
 each run a private temporary directory, and kills every process a run
-started when it ends. `Cage::exec` lets a helper become the caged command;
-the lifetime then belongs to whoever started the helper.
+started when it ends. With the network on, the child reaches neither the
+user's service manager nor a container engine (R-34). `Cage::exec` lets a
+helper become the caged command; the lifetime then belongs to whoever
+started the helper.
 
 It does **not**:
 
@@ -210,6 +213,7 @@ why the numbering has gaps.
 | R-30 | Landlock rule loss | Landlock rules attach to existing files: replacing a file by rename drops its rule, and paths that do not exist yet cannot be ruled. On a tier without mount isolation this is reported as a capability gap. | Linux | mitigate | mitigated | tests/escape_linux.rs::r30_a_protected_file_cannot_be_replaced | — |
 | R-31 | Truncation without write access | Below Landlock ABI 3 the kernel cannot deny truncation: truncating a file by path, or opening it with `O_TRUNC` but no write access, empties any file the child may read. | Linux | mitigate | mitigated | tests/escape_linux.rs::r31_files_outside_the_writable_paths_cannot_be_truncated | KF-L14 |
 | R-32 | Seccomp listener hijack | With violation reporting on Linux, the filter reports refused calls to a listener; a process holding it could answer its own refused call with `CONTINUE` and run it. The listener goes to the parent before the exec; the child keeps no copy, and the kernel refuses reopening it through `/proc`. | Linux | mitigate | mitigated | tests/escape_linux.rs::r32_the_seccomp_listener_stays_out_of_reach | KF-L15 |
+| R-34 | Service handoff over Unix sockets | With the network on, the child asks a program outside the sandbox to run code for it: the user's D-Bus bus or the systemd service manager (`systemd-run --user`), or a container engine (Docker, Podman, containerd, Colima, OrbStack, Lima) that starts a container with the home directory mounted. The `service-handoff` class (Linux buses and service managers; on macOS the Mach services) and the `container-engines` class deny them under every network setting. On Linux tier T1 the sockets found at spawn and the classes' directories are covered, an approximation the caller accepts with the spawn snapshot; tier T2 refuses the cage while such a socket exists. Engines at unlisted paths (a custom `DOCKER_HOST`) are the caller's to hide. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r34_container_engines_are_unreachable, tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable, tests/escape_linux.rs::r34_an_abstract_bus_is_scoped, tests/escape_linux.rs::r34_a_socket_bound_later_is_refused | — |
 
 ### Harness responsibilities
 

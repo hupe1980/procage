@@ -100,7 +100,11 @@ fn class_rules(class: HardDenyClass) -> Vec<SeccompRule> {
         // Privilege: `no_new_privs` is always set. RenameAnchors: REFER is
         // never granted and T1 protect/hide targets are mountpoints.
         HardDenyClass::Privilege | HardDenyClass::RenameAnchors => vec![],
-        HardDenyClass::FcntlModify | HardDenyClass::ServiceHandoff => vec![],
+        // Socket classes are found and handled by the backend (see
+        // `service_sockets` in `lower`).
+        HardDenyClass::FcntlModify
+        | HardDenyClass::ServiceHandoff
+        | HardDenyClass::ContainerEngines => vec![],
         // Masked at spawn (T1) or enforced by Landlock's default deny where
         // no rule reaches them (see `covered`).
         HardDenyClass::Secrets | HardDenyClass::TrustHandoff | HardDenyClass::Persistence => vec![],
@@ -109,7 +113,7 @@ fn class_rules(class: HardDenyClass) -> Vec<SeccompRule> {
 
 fn class_outcome(class: HardDenyClass) -> Outcome {
     match class {
-        HardDenyClass::FcntlModify | HardDenyClass::ServiceHandoff => Outcome::NotApplicable,
+        HardDenyClass::FcntlModify => Outcome::NotApplicable,
         _ => Outcome::Exact,
     }
 }
@@ -535,8 +539,27 @@ pub(super) fn lower(
     }
 
     let mut classes = Vec::new();
+    let mut service_sockets = Vec::new();
+    // With the network off and no `ipc.unix_sockets`, seccomp refuses every
+    // socket, so the socket classes hold without help; any other setting
+    // leaves Unix connects to the backend.
+    let unix_reachable = policy.net != Network::None || !policy.ipc.unix_sockets.is_empty();
     for &class in HardDenyClass::ALL {
         if policy.waive.contains(&class) {
+            continue;
+        }
+        if let Some(paths) = crate::presets::linux_socket_paths(class) {
+            // Whether a socket exists (a gap on T2, an approximation on T1)
+            // is known only at spawn; the backend reports it.
+            if ledger.outcome(
+                Construct::of_class(class),
+                Outcome::Exact,
+                Some(class.to_string()),
+                "",
+            ) && unix_reachable
+            {
+                service_sockets.push(paths);
+            }
             continue;
         }
         if let Some(paths) = crate::presets::linux_class_paths(class) {
@@ -617,6 +640,7 @@ pub(super) fn lower(
         degradations,
         waivers: policy.waive.iter().copied().collect(),
         classes,
+        service_sockets,
         hygiene: Hygiene::of(policy),
     })
 }

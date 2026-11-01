@@ -37,6 +37,7 @@
 (deny mach-lookup (require-any (global-name "com.apple.coreservices.launchservicesd") (global-name-prefix "com.apple.lsd.") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1")))
 (deny mach-lookup (xpc-service-name-prefix ""))
 (deny mach-priv-task-port mach-task-name mach-task-inspect mach-task-read)
+(deny network-outbound (require-any (regex "^/[uU][sS][eE][rR][sS]/[^/]*/\\.[cC][oO][lL][iI][mM][aA]/[^/]*/[cC][oO][nN][tT][aA][iI][nN][eE][rR][dD]\\.[sS][oO][cC][kK]$") (regex "^/[uU][sS][eE][rR][sS]/[^/]*/\\.[cC][oO][lL][iI][mM][aA]/[^/]*/[dD][oO][cC][kK][eE][rR]\\.[sS][oO][cC][kK]$") (regex "^/[uU][sS][eE][rR][sS]/[^/]*/\\.[dD][oO][cC][kK][eE][rR]/[rR][uU][nN]/[dD][oO][cC][kK][eE][rR]\\.[sS][oO][cC][kK]$") (regex "^/[uU][sS][eE][rR][sS]/[^/]*/\\.[lL][iI][mM][aA]/[^/]*/[sS][oO][cC][kK]/[dD][oO][cC][kK][eE][rR]\\.[sS][oO][cC][kK]$") (regex "^/[uU][sS][eE][rR][sS]/[^/]*/\\.[lL][oO][cC][aA][lL]/[sS][hH][aA][rR][eE]/[cC][oO][nN][tT][aA][iI][nN][eE][rR][sS]/[pP][oO][dD][mM][aA][nN]/[mM][aA][cC][hH][iI][nN][eE]/(.*/)?[^/]*\\.[sS][oO][cC][kK]$") (regex "^/[uU][sS][eE][rR][sS]/[^/]*/\\.[oO][rR][bB][sS][tT][aA][cC][kK]/[rR][uU][nN]/[dD][oO][cC][kK][eE][rR]\\.[sS][oO][cC][kK]$") (regex "^/[uU][sS][eE][rR][sS]/[^/]*/\\.[rR][dD]/[dD][oO][cC][kK][eE][rR]\\.[sS][oO][cC][kK]$") (regex "^/[pP][rR][iI][vV][aA][tT][eE]/[vV][aA][rR]/[rR][uU][nN]/[dD][oO][cC][kK][eE][rR]\\.[sS][oO][cC][kK]$")))
 (deny process-exec* (file-mode #o2000))
 (deny process-exec* (file-mode #o4000))
 (deny process-info* (require-not (target same-sandbox)))

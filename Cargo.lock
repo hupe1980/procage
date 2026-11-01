@@ -31,7 +31,7 @@ dependencies = [
 
 [[package]]
 name = "procage"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "procage-policy",
@@ -40,7 +40,7 @@ dependencies = [
 
 [[package]]
 name = "procage-kernel-facts"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "procage-policy",
@@ -49,7 +49,7 @@ dependencies = [
 
 [[package]]
 name = "procage-policy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",

@@ -1735,6 +1735,36 @@ fn a_single_process_run_reports_its_denials() {
 }
 
 /// Without the option nothing is reported and the profile has no message.
+/// A refused connect to a container engine is reported with its class.
+#[test]
+fn an_engine_connect_is_reported_with_its_class() {
+    use procage::DeniedBy;
+    let _guard = violation_lock();
+    let (_root, work) = violation_workspace("v-engine");
+    let home = std::fs::canonicalize(std::env::var_os("HOME").expect("HOME")).unwrap();
+    let dir = home.join(format!(".lima/procage-v-engine-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("sock")).unwrap();
+    let socket = dir.join("sock/docker.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let mut policy = developer_policy(Base::V2, &work);
+    policy.net = procage::policy::Network::All;
+    let cage = reporting(&policy);
+    let record = violations_of(
+        &cage,
+        &work,
+        &format!("/usr/bin/nc -U {} </dev/null", socket.display()),
+    );
+    drop(listener);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir(dir.parent().unwrap());
+    let denied = find(&record, "network-outbound", &socket)
+        .unwrap_or_else(|| panic!("no network-outbound {}: {record:#?}", socket.display()));
+    assert_eq!(
+        denied.denied_by,
+        DeniedBy::HardDeny(HardDenyClass::ContainerEngines)
+    );
+}
+
 #[test]
 fn reporting_is_off_by_default() {
     let (root, work) = violation_workspace("v-off");
