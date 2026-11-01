@@ -21,6 +21,10 @@
 
 #![cfg(target_os = "linux")]
 
+#[path = "support/scratch.rs"]
+mod scratch_support;
+use scratch_support::Scratch;
+
 use std::io::{BufRead, Read};
 use std::net::TcpListener;
 use std::os::fd::{AsFd, AsRawFd};
@@ -46,11 +50,9 @@ fn abs(p: impl AsRef<Path>) -> AbsPath {
 }
 
 /// A fresh directory for one canary.
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("procage-esc-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::canonicalize(dir).unwrap()
+fn scratch(name: &str) -> Scratch {
+    Scratch::at(std::env::temp_dir().join(format!("procage-esc-{name}-{}", std::process::id())))
+        .canonical()
 }
 
 fn host_tier() -> Tier {

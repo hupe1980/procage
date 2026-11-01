@@ -10,6 +10,10 @@
 
 #![cfg(target_os = "macos")]
 
+#[path = "support/scratch.rs"]
+mod scratch_support;
+use scratch_support::Scratch;
+
 use std::io::Read;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -32,12 +36,9 @@ use procage::policy::{linux, seatbelt};
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// A fresh directory under the system temp dir (reached through a symlink).
-fn scratch(tag: &str) -> PathBuf {
+fn scratch(tag: &str) -> Scratch {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("procage-{}-{tag}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    Scratch::at(std::env::temp_dir().join(format!("procage-{}-{tag}-{n}", std::process::id())))
 }
 
 fn abs(p: impl AsRef<Path>) -> AbsPath {
@@ -271,12 +272,12 @@ fn contention_every_child_is_caged_and_none_hangs() {
 
 // ---- User story 2: paths mean what was written ----
 
-fn tmp_dir(tag: &str) -> PathBuf {
+fn tmp_dir(tag: &str) -> Scratch {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = PathBuf::from(format!("/tmp/procage-{}-{tag}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    Scratch::at(PathBuf::from(format!(
+        "/tmp/procage-{}-{tag}-{n}",
+        std::process::id()
+    )))
 }
 
 #[test]
@@ -792,6 +793,8 @@ fn a_reaped_leader_still_takes_its_group_down() {
 #[test]
 fn a_detached_child_keeps_running() {
     let (child, pids) = start("sleepers", forking_policy());
+    // A detached child keeps its private TMPDIR; the test removes it.
+    let tmp = child.tmpdir().map(Path::to_path_buf);
     let mut inner = child.detach();
     std::thread::sleep(Duration::from_millis(100));
     assert!(
@@ -802,6 +805,9 @@ fn a_detached_child_keeps_running() {
     inner.wait().unwrap();
     for pid in pids.split(' ') {
         let _ = Command::new("/bin/kill").args(["-9", pid]).status();
+    }
+    if let Some(tmp) = tmp {
+        let _ = std::fs::remove_dir_all(tmp);
     }
 }
 
@@ -1090,7 +1096,8 @@ fn base_runs_a_rust_program_and_dev_null_stdio() {
 #[test]
 fn base_grants_nothing_personal() {
     let home = std::env::var("HOME").unwrap();
-    let tmp_file = scratch("base-personal").join("f");
+    let tmp = scratch("base-personal");
+    let tmp_file = tmp.join("f");
     std::fs::write(&tmp_file, "secret").unwrap();
     let marker = PathBuf::from(format!("/tmp/procage-{}-base-marker", std::process::id()));
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1347,7 +1354,7 @@ fn hard_deny_secrets() {
 }
 
 /// A writable workspace with `.git/hooks`, `.git/objects` and `src`.
-fn repo(tag: &str) -> PathBuf {
+fn repo(tag: &str) -> Scratch {
     let w = scratch(tag);
     for dir in [".git/hooks", ".git/objects", ".git/refs/heads", "src"] {
         std::fs::create_dir_all(w.join(dir)).unwrap();
@@ -1541,7 +1548,8 @@ fn the_run_marker_matches_only_its_run() {
 fn forking_runs_have_a_marker_and_reuse_the_cache() {
     let mut p = base();
     p.process.fork = true;
-    p.fs.push(rule(Access::Read, scratch("marker-slot")));
+    let slot = scratch("marker-slot");
+    p.fs.push(rule(Access::Read, &*slot));
     let cage = Cage::new(&p).unwrap();
     assert!(cage.plan().run_marker);
     for _ in 0..3 {
@@ -1631,8 +1639,8 @@ fn find<'a>(
 
 /// A workspace with a hidden `.env`, a protected `.git` (with `hooks`, a
 /// trust-handoff path) and a sibling directory outside the policy.
-fn violation_workspace(tag: &str) -> (PathBuf, PathBuf) {
-    let root = std::fs::canonicalize(scratch(tag)).unwrap();
+fn violation_workspace(tag: &str) -> (Scratch, PathBuf) {
+    let root = scratch(tag).canonical();
     let work = root.join("work");
     std::fs::create_dir_all(work.join(".git/hooks")).unwrap();
     std::fs::create_dir_all(root.join("outside")).unwrap();
@@ -1966,13 +1974,15 @@ fn a_detached_runs_marker_is_not_reused() {
     let _guard = violation_lock();
     let (root, work) = violation_workspace("v-detach");
     let cage = reporting(&developer_policy(Base::V2, &work));
-    let detached = cage
+    let child = cage
         .spawn(
             &mut command("/bin/sleep", &[Path::new("5")]),
             &Grants::new(),
         )
-        .unwrap()
-        .detach();
+        .unwrap();
+    // A detached child keeps its private TMPDIR; the test removes it.
+    let tmp = child.tmpdir().map(Path::to_path_buf);
+    let detached = child.detach();
     let mut next = cage
         .spawn(
             &mut command("/bin/sleep", &[Path::new("5")]),
@@ -1985,6 +1995,9 @@ fn a_detached_runs_marker_is_not_reused() {
     let mut detached = detached;
     let _ = detached.kill();
     let _ = detached.wait();
+    if let Some(tmp) = tmp {
+        let _ = std::fs::remove_dir_all(tmp);
+    }
     let _ = std::fs::remove_dir_all(root);
 }
 

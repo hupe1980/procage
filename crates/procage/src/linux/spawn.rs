@@ -260,6 +260,7 @@ fn read_only(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
             source: target.clone(),
             target: target.clone(),
             recursive: true,
+            optional: false,
         },
         ChildMount::Remount {
             target,
@@ -277,6 +278,7 @@ fn hide(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
             target,
             flags: sealed,
             data: c"mode=000".into(),
+            optional: false,
         }]);
     }
     let null = c"/dev/null";
@@ -286,6 +288,7 @@ fn hide(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
             source: null.into(),
             target: target.clone(),
             recursive: false,
+            optional: false,
         },
         ChildMount::Remount {
             target,
@@ -300,6 +303,7 @@ fn pin(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
         source: target.clone(),
         target,
         recursive: true,
+        optional: false,
     }])
 }
 
@@ -325,22 +329,66 @@ pub(super) fn mounts(
                     target: c"/dev/shm".into(),
                     flags: libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC,
                     data: c"mode=1777".into(),
+                    optional: false,
                 }];
                 (shm, group)
             }
         };
         groups.push((depth(&path), group));
     }
+    // Covers come from the file system at spawn (class names, foreign
+    // sockets): one whose file is removed before it is mounted, here or in
+    // the child, has nothing left to cover and is skipped, as a file created
+    // after the spawn is never covered.
     for (path, cover) in covers {
         let group = match cover {
-            Cover::Pin => pin(path)?,
-            Cover::ReadOnly => read_only(path)?,
-            Cover::Hide => hide(path)?,
+            Cover::Pin => pin(path),
+            Cover::ReadOnly => read_only(path),
+            Cover::Hide => hide(path),
         };
-        groups.push((depth(path), group));
+        let group = match group {
+            Ok(g) => g,
+            Err(SpawnError::Path { error, .. }) if error.raw_os_error() == Some(libc::ENOENT) => {
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+        groups.push((depth(path), optional(group)));
     }
     groups.sort_by_key(|(d, _)| *d);
     Ok(groups.into_iter().flat_map(|(_, g)| g).collect())
+}
+
+/// `group` with its mounts marked optional (see [`ChildMount::Tmpfs`]).
+fn optional(group: Vec<ChildMount>) -> Vec<ChildMount> {
+    group
+        .into_iter()
+        .map(|m| match m {
+            ChildMount::Bind {
+                source,
+                target,
+                recursive,
+                ..
+            } => ChildMount::Bind {
+                source,
+                target,
+                recursive,
+                optional: true,
+            },
+            ChildMount::Tmpfs {
+                target,
+                flags,
+                data,
+                ..
+            } => ChildMount::Tmpfs {
+                target,
+                flags,
+                data,
+                optional: true,
+            },
+            remount @ ChildMount::Remount { .. } => remount,
+        })
+        .collect()
 }
 
 /// The id map that keeps `id` as itself.

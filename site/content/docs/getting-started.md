@@ -10,7 +10,7 @@ group = "Start"
 ## Before you start
 
 - procage is **pre-1.0**. The crate on crates.io (0.0.1) only reserves the name; the code described here is the development version on `main`. Expect the API to change, and do not use it as your only containment yet.
-- It runs on **macOS** (tested on macOS 26.6.2 on Apple silicon; the kernel facts also run as x86_64 under Rosetta) and on **Linux** with Landlock ABI 1 or later (Linux 5.13 and up). On other targets only the policy types and the hygiene helpers build.
+- It runs on **macOS** (tested on macOS 26.6.2 on Apple silicon) and on **Linux** with Landlock ABI 1 or later (Linux 5.13 and up). On other targets only the policy types and the hygiene helpers build.
 - It needs **Rust 1.99** or newer (edition 2024).
 - The calling process must **not already be sandboxed**. On macOS a second Seatbelt profile fails or is ignored by the kernel, so procage refuses with `SpawnError::AlreadySandboxed` instead of running a child uncaged. Inside an AI agent's own sandbox, run from a plain terminal.
 

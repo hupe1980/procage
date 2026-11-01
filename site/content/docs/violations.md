@@ -65,10 +65,10 @@ Two things keep records to what matters:
 
 - **While it runs.** `Child::violation_receiver` yields violations as they arrive, so a harness can show them before the command ends. It buffers 1,024; when it lags, later violations are still in the record.
 - **Complete.** `Violations::complete` is true once the child has exited and every denial reported before that has arrived. `Child::violations` waits up to a second for this after the exit; on a loaded host it may return an incomplete record, which you can read again.
-- **Coverage.** `Violations::coverage` says what the record can show: `Observed` (macOS: every denial), `SystemCalls` (Linux: every refused system call), `Off` (the cage was built without the option), `Unavailable(reason)` (reporting could not start or stopped), or `NotObserved` (a platform that reports nothing).
+- **Coverage.** `Violations::coverage` says what the record can show: `Observed` (macOS: every denial the kernel logs), `SystemCalls` (Linux: every refused system call), `Off` (the cage was built without the option), `Unavailable(reason)` (reporting could not start or stopped), or `NotObserved` (a platform that reports nothing).
 - **Bounded.** A record keeps 10,000 violations and counts the rest (`Violations::dropped`).
 
-An empty record proves nothing unless it is complete and its coverage is `Observed`.
+An empty record never proves that nothing was denied. Linux reports refused system calls only. macOS reports are best effort: under heavy load the system drops some before any reader sees them (on macOS 26.6.2, 82 of 640 denials were missing from an independent `log stream` with 16 runs in parallel; none in serial runs). Use the record to explain a failure, never to rule the sandbox out.
 
 ## How it works on macOS
 

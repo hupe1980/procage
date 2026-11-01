@@ -4,8 +4,9 @@
 //! `Child::violations` returns the record for one run. Reporting is
 //! diagnostic: it shows what was refused so a harness can explain the
 //! failure or ask for a grant. Enforcement never depends on it, and an empty
-//! record proves nothing unless it is [`complete`](Violations::complete) and
-//! its [coverage](Violations::coverage) is [`Coverage::Observed`].
+//! record never proves that nothing was denied: Linux reports refused system
+//! calls only, and macOS drops some reports under heavy load (see
+//! [`Coverage::Observed`]).
 
 // The log parser serves the macOS monitor; Linux keeps it compiled and
 // tested.
@@ -141,8 +142,13 @@ impl fmt::Display for Violation {
 pub enum Coverage {
     /// The cage was built without `CageOptions::with_violations`.
     Off,
-    /// Every denial is reported, best effort: identical denials by one
-    /// process (same operation and target) are reported once (macOS).
+    /// Every denial the kernel logs is reported (macOS). Best effort:
+    /// identical denials by one process (same operation and target) are
+    /// logged once, and under heavy load macOS drops reports before any
+    /// reader sees them (measured on 26.6.2: 82 of 640 denials missing from
+    /// an independent `log stream` with 16 runs in parallel, none in serial
+    /// runs). A [complete](Violations::complete) record holds every denial
+    /// that was logged.
     Observed,
     /// Every system call the seccomp filter refuses is reported, exactly;
     /// file, network and signal denials by Landlock are not (Linux).
@@ -204,6 +210,8 @@ impl Violations {
 
     /// Whether the record holds every denial reported up to the child's
     /// exit: the child has exited and every earlier report was delivered.
+    /// What the kernel never reported is not in it (see
+    /// [`Coverage::Observed`]).
     pub fn complete(&self) -> bool {
         self.complete
     }

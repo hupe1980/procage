@@ -26,9 +26,9 @@ rustc-ice-*.txt
 # macOS
 .DS_Store
 
-# Internal design notes and Spec Kit planning, as in billing, sepa and
-# speccoder: working documents, not claims procage makes to its users. The
-# published tree (src/, README, docs, tests, examples) may not cite a path here.
+# Internal design notes and Spec Kit planning: working documents, not claims
+# procage makes to its users. The published tree (src/, README, docs, tests,
+# examples) may not cite a path here.
 /concepts/
 /specs/
 /.specify/

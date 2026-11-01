@@ -254,6 +254,9 @@ pub(crate) enum ChildMount {
         source: CString,
         target: CString,
         recursive: bool,
+        /// Skipped, with the remounts of the same target that follow, when
+        /// the target no longer exists (see [`ChildMount::Tmpfs`]).
+        optional: bool,
     },
     /// `mount(NULL, target, NULL, MS_BIND|MS_REMOUNT|flags)`.
     Remount { target: CString, flags: c_ulong },
@@ -262,6 +265,11 @@ pub(crate) enum ChildMount {
         target: CString,
         flags: c_ulong,
         data: CString,
+        /// Skipped, with the remounts of the same target that follow, when
+        /// the target no longer exists: a cover made from the file system
+        /// at spawn (a class name, a foreign socket) whose file was removed
+        /// before the child mounts has nothing left to cover.
+        optional: bool,
     },
 }
 
@@ -587,30 +595,50 @@ impl ChildPlan {
                 .map_err(|e| fail(steps::ID_MAP, e))?;
             mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)
                 .map_err(|e| fail(steps::MOUNTS, e))?;
+            // The target of an optional mount that was skipped: the
+            // remounts of that target that follow are skipped with it, so
+            // none lands on the mount that contains the vanished path.
+            let mut skipped: Option<&CStr> = None;
             for m in &iso.mounts {
-                match m {
+                let (result, optional, target) = match m {
                     ChildMount::Bind {
                         source,
                         target,
                         recursive,
+                        optional,
                     } => {
                         let rec = if *recursive { libc::MS_REC } else { 0 };
-                        mount(Some(source), target, None, libc::MS_BIND | rec, None)
+                        let r = mount(Some(source), target, None, libc::MS_BIND | rec, None);
+                        (r, *optional, target.as_c_str())
                     }
-                    ChildMount::Remount { target, flags } => mount(
-                        None,
-                        target,
-                        None,
-                        libc::MS_BIND | libc::MS_REMOUNT | flags,
-                        None,
-                    ),
+                    ChildMount::Remount { target, flags } => {
+                        if skipped == Some(target.as_c_str()) {
+                            continue;
+                        }
+                        let r = mount(
+                            None,
+                            target,
+                            None,
+                            libc::MS_BIND | libc::MS_REMOUNT | flags,
+                            None,
+                        );
+                        (r, false, target.as_c_str())
+                    }
                     ChildMount::Tmpfs {
                         target,
                         flags,
                         data,
-                    } => mount(Some(c"tmpfs"), target, Some(c"tmpfs"), *flags, Some(data)),
+                        optional,
+                    } => {
+                        let r = mount(Some(c"tmpfs"), target, Some(c"tmpfs"), *flags, Some(data));
+                        (r, *optional, target.as_c_str())
+                    }
+                };
+                skipped = None;
+                match result {
+                    Err(libc::ENOENT) if optional => skipped = Some(target),
+                    r => r.map_err(|e| fail(steps::MOUNTS, e))?,
                 }
-                .map_err(|e| fail(steps::MOUNTS, e))?;
             }
         }
         drop_capabilities(t1).map_err(|e| fail(steps::CAPABILITIES, e))?;

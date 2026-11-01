@@ -12,9 +12,13 @@
 
 #![cfg(target_os = "linux")]
 
+#[path = "support/scratch.rs"]
+mod scratch_support;
+use scratch_support::Scratch;
+
 use std::io::Read;
 use std::net::TcpListener;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
@@ -36,11 +40,9 @@ fn abs(p: impl AsRef<Path>) -> AbsPath {
 }
 
 /// A fresh directory for one test.
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("procage-linux-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::canonicalize(dir).unwrap()
+fn scratch(name: &str) -> Scratch {
+    Scratch::at(std::env::temp_dir().join(format!("procage-linux-{name}-{}", std::process::id())))
+        .canonical()
 }
 
 fn host_tier() -> Tier {
@@ -559,7 +561,7 @@ fn a_failed_step_is_named_and_the_target_does_not_run() {
 // ---- US3: data-driven hard-deny classes ----
 
 /// A home with secrets and a persistence directory.
-fn fake_home(name: &str) -> PathBuf {
+fn fake_home(name: &str) -> Scratch {
     let home = scratch(name);
     for d in [".ssh", ".aws", ".config/systemd/user"] {
         std::fs::create_dir_all(home.join(d)).unwrap();
@@ -599,7 +601,7 @@ fn t1_masks_secrets_in_a_readable_home() {
 }
 
 /// A workspace with a repository and trust-handoff files.
-fn workspace(name: &str) -> PathBuf {
+fn workspace(name: &str) -> Scratch {
     let w = scratch(name);
     for d in [
         ".git/hooks",
@@ -1702,4 +1704,47 @@ fn reporting_spawns_from_many_threads() {
     for t in threads {
         t.join().unwrap();
     }
+}
+
+/// On T1 the foreign sockets found at spawn are masked in the child. A
+/// socket removed between that scan and the child's mount has nothing left
+/// to mask: the spawn goes on (here, with another thread binding and
+/// removing a socket the whole time).
+#[test]
+fn a_socket_removed_during_the_spawn_does_not_fail_it() {
+    if !t1("a_socket_removed_during_the_spawn_does_not_fail_it") {
+        return;
+    }
+    let allowed = scratch("churn-allowed");
+    let churn = scratch("churn-foreign");
+    let mut p = base();
+    p.ipc.unix_sockets = vec![abs(&allowed)];
+    let cage = Cage::with_options(
+        &p,
+        &options(Tier::T1).with_lower(masked().allow(Construct::IpcUnixSockets)),
+    )
+    .unwrap();
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = stop.clone();
+    let socket = churn.join("s");
+    let churner = std::thread::spawn(move || {
+        let mut n = 0u64;
+        while !flag.load(std::sync::atomic::Ordering::Relaxed) {
+            let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+            let _ = std::fs::remove_file(&socket);
+            drop(listener);
+            n += 1;
+        }
+        n
+    });
+    for i in 0..300 {
+        let mut cmd = Command::new("/bin/true");
+        let mut child = cage
+            .spawn(&mut cmd, &Grants::new())
+            .unwrap_or_else(|e| panic!("spawn {i}: {e}"));
+        assert!(child.wait().unwrap().success(), "spawn {i}");
+    }
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let rounds = churner.join().unwrap();
+    assert!(rounds > 300, "the socket barely changed ({rounds} rounds)");
 }

@@ -19,6 +19,10 @@
 
 #![cfg(target_os = "macos")]
 
+#[path = "support/scratch.rs"]
+mod scratch_support;
+use scratch_support::Scratch;
+
 use std::io::{BufRead, Read};
 use std::net::TcpListener;
 use std::os::fd::{AsFd, AsRawFd};
@@ -50,12 +54,9 @@ fn cage_for(policy: &Policy) -> Result<Cage, SpawnError> {
 
 /// A fresh directory under the system temp dir, spelled as the system gives
 /// it (`/var/folders/…`, through the `/var` symlink).
-fn scratch(tag: &str) -> PathBuf {
+fn scratch(tag: &str) -> Scratch {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("procage-esc-{}-{tag}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    Scratch::at(std::env::temp_dir().join(format!("procage-esc-{}-{tag}-{n}", std::process::id())))
 }
 
 /// The spelling the kernel reports (`/private/var/folders/…`).
@@ -405,7 +406,7 @@ fn r02_a_protect_rule_spelled_through_a_symlink_holds() {
 /// A rule on a directory named `a*` does not reach its sibling `ab`.
 #[test]
 fn r03_glob_characters_in_a_path_stay_literal() {
-    let d = real(&scratch("r03"));
+    let d = scratch("r03").canonical();
     std::fs::create_dir(d.join("a*")).unwrap();
     std::fs::create_dir(d.join("ab")).unwrap();
     let mut p = policy();
@@ -420,7 +421,7 @@ fn r03_glob_characters_in_a_path_stay_literal() {
 /// protected file stays unwritable under any name.
 #[test]
 fn r04_a_protected_ancestor_cannot_be_renamed() {
-    let w = real(&scratch("r04"));
+    let w = scratch("r04").canonical();
     std::fs::create_dir_all(w.join("sub/p")).unwrap();
     std::fs::write(w.join("sub/p/c"), "original").unwrap();
     let mut p = policy();
@@ -448,7 +449,7 @@ fn r04_a_protected_ancestor_cannot_be_renamed() {
 /// refused; with the class waived the sandbox no longer refuses them.
 #[test]
 fn r05_modifying_fcntl_commands_are_refused() {
-    let d = real(&scratch("r05"));
+    let d = scratch("r05").canonical();
     std::fs::write(d.join("f"), "content").unwrap();
     let mut p = policy();
     p.fs.push(rule(Access::Read, &d));
@@ -499,7 +500,7 @@ fn r06_service_handoff_lookups_are_refused() {
 /// refused; ordinary files are not.
 #[test]
 fn r07_trust_handoff_files_are_refused_in_a_writable_workspace() {
-    let w = real(&scratch("r07"));
+    let w = scratch("r07").canonical();
     std::fs::create_dir_all(w.join(".git/hooks")).unwrap();
     std::fs::create_dir_all(w.join("src")).unwrap();
     let mut p = policy();
@@ -520,7 +521,7 @@ fn r07_trust_handoff_files_are_refused_in_a_writable_workspace() {
 #[test]
 #[ignore = "open: R-08 a pre-existing hard link to a hidden file is neither reported nor refused"]
 fn r08_a_hard_link_to_a_hidden_file_is_refused() {
-    let d = real(&scratch("r08"));
+    let d = scratch("r08").canonical();
     std::fs::create_dir_all(d.join("secret")).unwrap();
     std::fs::create_dir_all(d.join("ws")).unwrap();
     std::fs::write(d.join("secret/key"), "key").unwrap();
@@ -543,7 +544,7 @@ fn r08_a_hard_link_to_a_hidden_file_is_refused() {
 fn r09_other_ports_and_daemon_sockets_are_unreachable() {
     let allowed = TcpListener::bind("127.0.0.1:0").unwrap();
     let other = TcpListener::bind("127.0.0.1:0").unwrap();
-    let d = real(&scratch("r09"));
+    let d = scratch("r09").canonical();
     let sock = d.join("daemon.sock");
     let _daemon = std::os::unix::net::UnixListener::bind(&sock).unwrap();
     let a = allowed.local_addr().unwrap().port();
@@ -630,7 +631,7 @@ fn r10_runs_do_not_share_temporary_files() {
 /// cannot be expressed, so no exec escapes the profile.
 #[test]
 fn r11_executed_programs_stay_caged() {
-    let d = real(&scratch("r11"));
+    let d = scratch("r11").canonical();
     std::fs::create_dir(d.join("in")).unwrap();
     std::fs::create_dir(d.join("out")).unwrap();
     std::fs::write(d.join("in/f"), "granted").unwrap();
@@ -648,7 +649,7 @@ fn r11_executed_programs_stay_caged() {
 /// programs use.
 #[test]
 fn r12_a_data_volume_spelling_protects_the_visible_path() {
-    let w = real(&scratch("r12"));
+    let w = scratch("r12").canonical();
     std::fs::create_dir(w.join("p")).unwrap();
     let data = PathBuf::from(format!("/System/Volumes/Data{}", w.display()));
     assert!(data.exists(), "{data:?} does not exist");

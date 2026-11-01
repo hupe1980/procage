@@ -10,6 +10,10 @@
 
 #![cfg(any(target_os = "macos", target_os = "linux"))]
 
+#[path = "support/scratch.rs"]
+mod scratch_support;
+use scratch_support::Scratch;
+
 use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -76,13 +80,12 @@ fn abs(p: &Path) -> AbsPath {
     AbsPath::new(p.as_os_str().as_encoded_bytes()).unwrap()
 }
 
-fn scratch(tag: &str) -> PathBuf {
-    let dir = std::fs::canonicalize(std::env::temp_dir())
-        .unwrap()
-        .join(format!("procage-exec-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn scratch(tag: &str) -> Scratch {
+    Scratch::at(
+        std::fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!("procage-exec-{}-{tag}", std::process::id())),
+    )
 }
 
 /// Base profile V1, fork, exec anywhere, write to `dir`.
@@ -247,7 +250,7 @@ fn a_group_kill_ends_everything(tier: &str) {
         .args(["-c", r#""$0"; true"#, exe.to_str().unwrap()])
         .env(ROLE, "shell")
         .env("PROCAGE_TIER", tier)
-        .env("IN", &dir)
+        .env("IN", dir.as_os_str())
         .env("SCRIPT", "/bin/sleep 30 & echo pid=$$ bg=$!; wait")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -343,7 +346,7 @@ fn the_command_dies_with_the_helpers_parent(tier: &str) {
         ])
         .env(ROLE, "shell")
         .env("PROCAGE_TIER", tier)
-        .env("IN", &dir)
+        .env("IN", dir.as_os_str())
         .env("SCRIPT", "/bin/sleep 30")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
