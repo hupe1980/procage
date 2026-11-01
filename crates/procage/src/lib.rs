@@ -32,7 +32,7 @@
 //! use procage::policy::{AbsPath, Access, Base, FsRule, FsTarget, Policy};
 //!
 //! let mut policy = Policy::default();
-//! policy.base = Base::V2; // what ordinary programs and developer tools need
+//! policy.base = Base::V3; // what ordinary programs and developer tools need
 //! policy.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(AbsPath::new("/tmp/project")?)));
 //!
 //! let cage = Cage::new(&policy)?;
@@ -70,7 +70,7 @@
 //! use procage::policy::{Base, Policy};
 //!
 //! let mut policy = Policy::default();
-//! policy.base = Base::V2;
+//! policy.base = Base::V3;
 //! let cage = Cage::new(&policy).unwrap_or_else(|e| panic!("{e}"));
 //! let mut command = Command::new("/usr/bin/env");
 //! command.current_dir("/tmp"); // a directory the policy lets it read
@@ -178,7 +178,8 @@
 //!   denial; the cage's profile tags each with the run and the rule kind,
 //!   and one helper per process (`/usr/bin/log stream`, which needs an
 //!   administrator account) collects them. Identical denials by one process
-//!   are reported once.
+//!   are reported once. Base V3 refuses the probes every program makes
+//!   (logging, the DTrace helper, `/dev/tty`, …) without reporting them.
 //! - **Linux** ([`Coverage::SystemCalls`]): every system call the seccomp
 //!   filter refuses (`ptrace`, `io_uring_setup`, an IP socket without
 //!   network, `setsid` under `Lifetime::Run`, …) is reported exactly, by a
@@ -186,7 +187,9 @@
 //!   reporting). File, network and signal denials by Landlock are not: it
 //!   reports them only to the privileged audit subsystem.
 //!
-//! Reporting is diagnostic. Enforcement never depends on it.
+//! Identical denials are merged into one entry with a count
+//! ([`Violation::repeats`]). Reporting is diagnostic. Enforcement never
+//! depends on it.
 //!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.

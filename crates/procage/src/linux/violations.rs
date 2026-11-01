@@ -80,6 +80,7 @@ fn supervise(listener: &OwnedFd, rules: &[SeccompRule], record: &Sink) {
                 DeniedBy::from_reason(r.reason)
             }),
             received: SystemTime::now(),
+            repeats: 1,
         };
         lock(record).push(violation);
     }

@@ -302,6 +302,13 @@ pub enum Base {
     /// (measured on macOS 26.6.2 with Apple's tool shims, Xcode, the Command
     /// Line Tools and Homebrew). Frozen.
     V2,
+    /// Base profile version 3: version 2, with the benign probes every
+    /// program makes (logging services, the DTrace helper, `dirhelper`,
+    /// group membership, `/dev/tty` without a terminal) denied quietly, so
+    /// violation records show only what matters. It allows nothing version
+    /// 2 does not (measured on macOS 26.6.2). On Linux the same as version 2.
+    /// Frozen.
+    V3,
 }
 
 /// A member of the hard-deny tier, emitted last in every plan.

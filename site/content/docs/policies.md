@@ -93,7 +93,9 @@ Most programs cannot even start under a pure deny-everything policy: the dynamic
 - `Base::V1`: system code and libraries, `/etc` files, locale and time-zone data, standard devices, the sysctls the Rust runtime and `uname` read, and a few system services (user names, notifications, certificate trust). Nothing under `/Users`, the temporary directories or `/Volumes`; no network; no writes beyond standard devices.
 - `Base::V2`: V1 plus what developer tools need. On macOS, measured with Apple's tool shims, Xcode, the Command Line Tools and Homebrew: the developer directories, `xcode-select`'s link, the Xcode license state, Homebrew's code directories (not its `etc` or `var`) and OpenSSL configuration. On Linux V2 is the same as V1.
 
-Each version is frozen: a loosening needs a new version. The macOS content was measured on macOS 26.6.2; with `Base::V1`, Xcode shims such as `/usr/bin/git` do not run, so use V2 for developer tools.
+- `Base::V3` (recommended): V2, with the probes every program makes refused **quietly**: the logging services (`logd`, `diagnosticd`), `dirhelper`, group membership lookups, the dyld DTrace helper's ioctl and `/dev/tty`. None is needed, so V3 allows exactly what V2 allows; it only keeps these probes out of [violation records](@/docs/violations.md), which then show what matters. On Linux V3 is the same as V2.
+
+Each version is frozen: a loosening needs a new version. The macOS content was measured on macOS 26.6.2; with `Base::V1`, Xcode shims such as `/usr/bin/git` do not run, so use V3 (or V2) for developer tools.
 
 ## Grants
 

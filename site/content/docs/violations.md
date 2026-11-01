@@ -32,6 +32,13 @@ sandbox: cat (pid 815) was denied file-read-data /Users/me/project/.env: the pat
 sandbox: sh (pid 816) was denied file-write-create /Users/me/project/.git/hooks/pre-commit: denied by the trust-handoff hard-deny class
 ```
 
+## Quiet records
+
+Two things keep records to what matters:
+
+- **Base V3** refuses the probes every program makes (the logging services, the DTrace helper, `dirhelper`, group membership, `/dev/tty`) without reporting them. Measured over a set of everyday and developer commands, V3 cuts the reports by about 95 % against V2, and commands that do not go through Apple's Xcode shim leave an empty record. The shim's reads of your preferences and caches stay reported: they name your files.
+- **Identical denials merge**: one entry per process, operation, target and rule, with `repeats` counting how often it happened (`xcodebuild` retries one refused lookup thousands of times; a flood of one refused system call on Linux becomes one line).
+
 ## What each violation says
 
 | Field | Meaning |
@@ -40,7 +47,8 @@ sandbox: sh (pid 816) was denied file-write-create /Users/me/project/.git/hooks/
 | `operation` | The Seatbelt operation, such as `file-read-data`, `file-write-create`, `mach-lookup`, `process-exec*` |
 | `target` | The path, service name or other object, when the kernel names one |
 | `denied_by` | Which kind of rule denied it (below) |
-| `received` | When procage received the report |
+| `received` | When procage received the first report |
+| `repeats` | How often this exact denial happened (at least 1) |
 
 `denied_by` decides the fix:
 

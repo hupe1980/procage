@@ -71,10 +71,15 @@ fn rule(access: Access, p: impl AsRef<Path>) -> FsRule {
     FsRule::new(access, FsTarget::Subpath(abs(p)))
 }
 
-/// Base profile V1 plus exec of this test binary.
+/// Base profile V1 plus exec of this test binary; with
+/// `PROCAGE_ESCAPE_BASE=v3`, base V3 (the most permissive base), so the
+/// suite shows that every canary holds there too.
 fn policy() -> Policy {
     let mut p = Policy::default();
-    p.base = Base::V1;
+    p.base = match std::env::var("PROCAGE_ESCAPE_BASE").as_deref() {
+        Ok("v3") => Base::V3,
+        _ => Base::V1,
+    };
     let exe = real(&std::env::current_exe().unwrap());
     p.fs.push(FsRule::new(Access::Exec, FsTarget::Literal(abs(exe))));
     p

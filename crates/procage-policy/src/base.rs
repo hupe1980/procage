@@ -321,6 +321,42 @@ pub fn macos_v2(tty: Tty) -> Vec<Rule> {
     rules
 }
 
+/// The Mach services every program asks for that base V3 denies quietly:
+/// the logging services, `dirhelper` (left out since V2: each run has its
+/// own `TMPDIR`) and group membership lookups. None is needed (measured on
+/// macOS 26.6.2 with the developer-tool set of V2).
+pub const MACOS_V3_QUIET_SERVICES: &[&str] = &[
+    "com.apple.bsd.dirhelper",
+    "com.apple.diagnosticd",
+    "com.apple.logd",
+    "com.apple.system.opendirectoryd.membership",
+];
+
+/// The quiet denies of base V3, emitted before every allow so that a policy
+/// that grants one of these targets (`Tty::Inherit` and `/dev/tty`) still
+/// gets it: the Mach services above, the dyld DTrace helper's ioctl, and
+/// `/dev/tty`, which shells probe.
+pub fn macos_v3_quiet() -> Vec<Rule> {
+    let deny = |ops: &[&str], filters: Vec<Filter>| Rule::new(Effect::Deny, ops, filters).quietly();
+    alloc::vec![
+        deny(
+            &["mach-lookup"],
+            MACOS_V3_QUIET_SERVICES
+                .iter()
+                .map(|n| Filter::GlobalName((*n).into()))
+                .collect(),
+        ),
+        deny(
+            &["file-ioctl"],
+            alloc::vec![Filter::Literal(b"/dev/dtracehelper".to_vec())]
+        ),
+        deny(
+            &["file-read*", "file-write*"],
+            alloc::vec![Filter::Literal(b"/dev/tty".to_vec())],
+        ),
+    ]
+}
+
 fn path(p: &str) -> AbsPath {
     // The constants above are absolute and normal.
     AbsPath::new(p).unwrap_or_else(|_| AbsPath::root())

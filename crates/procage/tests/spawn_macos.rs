@@ -579,6 +579,9 @@ fn child_entry() {
             let wrote = std::fs::write(Path::new(&dir).join("f"), "x").is_ok();
             format!("{dir} wrote={wrote}")
         }
+        lookup if lookup.starts_with("lookup:") => {
+            format!("kr={}", testing::mach_lookup(&lookup["lookup:".len()..]))
+        }
         "outer-env" => outer_env(),
         "cleared-env" => cleared_env(),
         other => format!("unknown action {other}"),
@@ -1982,5 +1985,196 @@ fn a_detached_runs_marker_is_not_reused() {
     let mut detached = detached;
     let _ = detached.kill();
     let _ = detached.wait();
+    let _ = std::fs::remove_dir_all(root);
+}
+
+// ---- Base V3: quiet records ----
+
+/// Spawns the caged test binary for `action` under `policy` with reporting,
+/// waits, and returns its result line and record.
+fn reported_child(policy: Policy, action: &str) -> (String, procage::Violations) {
+    let cage = reporting(&child_policy(policy));
+    let mut child = cage
+        .spawn(&mut child_command(action), &Grants::new())
+        .unwrap();
+    let mut out = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
+    child.wait().unwrap();
+    let line = out
+        .lines()
+        .find_map(|l| l.split_once("procage-result: ").map(|(_, r)| r.to_string()))
+        .unwrap_or_else(|| panic!("no result: {out}"));
+    (line, child.violations())
+}
+
+const QUIET: [&str; 6] = [
+    "com.apple.logd",
+    "com.apple.diagnosticd",
+    "com.apple.bsd.dirhelper",
+    "com.apple.system.opendirectoryd.membership",
+    "/dev/dtracehelper",
+    "/dev/tty",
+];
+
+fn quiet_probe(v: &procage::Violation) -> bool {
+    let target = v.target.as_deref().unwrap_or("");
+    QUIET.iter().any(|q| target.contains(q))
+}
+
+/// US1: under V3 the probes every program makes are refused but never
+/// reported; `/bin/ls` leaves an empty record.
+#[test]
+fn v3_records_leave_out_the_probes_every_program_makes() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v3-quiet");
+    let cage = reporting(&developer_policy(Base::V3, &work));
+    let record = violations_of(&cage, &work, "/bin/ls >/dev/null");
+    assert!(record.complete() && record.is_empty(), "{record:#?}");
+    let record = violations_of(
+        &cage,
+        &work,
+        "bash -c 'echo b' && zsh -c 'echo z' >/dev/null",
+    );
+    assert!(record.iter().all(|v| !quiet_probe(v)), "{record:#?}");
+    // Still refused: a logd lookup fails, and nothing is reported.
+    let mut policy = base();
+    policy.base = Base::V3;
+    let (line, record) = reported_child(policy, "lookup:com.apple.logd");
+    assert_ne!(line, "kr=0", "the lookup must be refused");
+    assert!(record.iter().all(|v| !quiet_probe(v)), "{record:#?}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// SR-003: a quiet deny never takes away what the policy grants: the quiet
+/// rule comes before every allow, and with `Tty::Inherit` opening
+/// `/dev/tty` is not refused by the sandbox (the test has no controlling
+/// terminal, so the kernel answers ENXIO instead of EPERM).
+#[test]
+fn v3_keeps_a_granted_terminal() {
+    let open_tty = |tty: Tty| {
+        let mut policy = base();
+        policy.base = Base::V3;
+        policy.tty = tty;
+        let cage = Cage::new(&child_policy(policy)).unwrap();
+        let profile = cage.plan().profile.clone();
+        let quiet = profile
+            .find("(literal \"/dev/tty\") (with no-report))")
+            .unwrap();
+        let allow = profile.find("(allow").unwrap();
+        assert!(quiet < allow, "{profile}");
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "exec 3</dev/tty; echo opened"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let out = run(&cage, cmd, &Grants::new());
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    };
+    let granted = open_tty(Tty::Inherit);
+    assert!(
+        granted.contains("/dev/tty: Device not configured"),
+        "{granted}"
+    );
+}
+
+/// US2: a repeated denial is one entry with its count.
+#[test]
+fn repeated_denials_merge() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v3-merge");
+    let cage = reporting(&developer_policy(Base::V3, &work));
+    let mut cmd = Command::new("/usr/bin/perl");
+    cmd.args(["-e", "for (1..50) { open(my $f, '<', '../outside') }"])
+        .current_dir(&work)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    child.wait().unwrap();
+    let record = child.violations();
+    let outside = root.join("outside");
+    let hits: Vec<_> = record
+        .iter()
+        .filter(|v| v.target.as_deref() == Some(outside.to_str().unwrap()))
+        .collect();
+    assert_eq!(hits.len(), 1, "{record:#?}");
+    assert!(hits[0].repeats >= 1, "{:?}", hits[0]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// SC-001/SC-002: the developer-tool set still works under V3, its reports
+/// fall by at least 90 % against V2, no quiet probe is left, and commands
+/// that do not go through Apple's Xcode shim leave an empty record.
+#[test]
+fn v3_shrinks_developer_tool_records() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v3-tools");
+    std::fs::write(
+        work.join("hello.c"),
+        "#include <stdio.h>\nint main(){puts(\"hi\");}\n",
+    )
+    .unwrap();
+    let dev = developer_tools();
+    {
+        let cage = reporting(&developer_policy(Base::V3, &work));
+        for script in [
+            "ls -la >/dev/null",
+            "echo a | sed s/a/b/ | grep b >/dev/null",
+            "perl -e 1",
+        ] {
+            let record = violations_of(&cage, &work, script);
+            assert!(record.is_empty(), "{script}: {record:#?}");
+        }
+    }
+    let mut scripts = vec![
+        "ls -la >/dev/null",
+        "echo a | sed s/a/b/ | grep b >/dev/null",
+        "perl -e 1",
+        "ruby -e 1",
+    ];
+    if dev {
+        scripts.extend([
+            "clang -o hello hello.c && ./hello >/dev/null",
+            "make --version >/dev/null",
+        ]);
+    }
+    let count = |base: Base| -> usize {
+        let cage = reporting(&developer_policy(base, &work));
+        scripts
+            .iter()
+            .map(|script| {
+                let mut cmd = Command::new("/bin/sh");
+                cmd.args(["-c", script])
+                    .current_dir(&work)
+                    .env("PATH", "/usr/bin:/bin")
+                    .env("HOME", std::env::var("HOME").unwrap())
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+                assert!(child.wait().unwrap().success(), "{base:?}: {script}");
+                let record = child.violations();
+                if base == Base::V3 {
+                    assert!(
+                        record.iter().all(|v| !quiet_probe(v)),
+                        "{script}: {record:#?}"
+                    );
+                }
+                record.iter().map(|v| v.repeats as usize).sum::<usize>()
+            })
+            .sum()
+    };
+    let (v2, v3) = (count(Base::V2), count(Base::V3));
+    println!("reports: V2 {v2}, V3 {v3} (developer tools: {dev})");
+    assert!(v3 * 10 <= v2, "V2 {v2}, V3 {v3}");
     let _ = std::fs::remove_dir_all(root);
 }

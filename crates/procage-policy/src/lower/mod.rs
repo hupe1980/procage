@@ -131,6 +131,7 @@ constructs! {
     Hygiene => "hygiene",
     BaseV1 => "base-v1",
     BaseV2 => "base-v2",
+    BaseV3 => "base-v3",
     HdFcntlModify => "hd-fcntl-modify",
     HdPrivilege => "hd-privilege",
     HdServiceHandoff => "hd-service-handoff",

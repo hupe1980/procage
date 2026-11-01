@@ -73,6 +73,7 @@ changes the profile.
 | `hygiene` | exact | exact | exact | Environment, limits and terminal are carried into the plan unchanged. |
 | `base-v1` | exact | exact | exact | The curated base profile (see the `base` module). The Linux content is verified once Linux spawning exists. |
 | `base-v2` | exact | exact | exact | V1 plus what developer tools need, measured on macOS 26.6.2 (see the `base` module): the Command Line Tools and Xcode bundles, `xcode-select`'s link, the Xcode license state, system Ruby and Perl paths, Homebrew's and `/usr/local`'s code directories, Homebrew's OpenSSL configuration, CoreFoundation's encoding setting and path-lookup metadata. No Mach service beyond V1 (`dirhelper` would point tools at the shared per-user temporary directory). Linux: the same as V1. |
+| `base-v3` | exact | exact | exact | V2, with the probes every program makes denied quietly (`(with no-report)`, before every allow so a granted target still wins): the logging services (`logd`, `diagnosticd`), `dirhelper`, group membership lookups, the dyld DTrace helper's ioctl and `/dev/tty`. Allows nothing V2 does not. Linux: the same as V2. |
 | `hd-fcntl-modify` | exact | n/a | n/a | `(deny system-fcntl (fcntl-command 80 110))`; compiles. |
 | `hd-privilege` | exact | exact | exact | macOS: setugid writes and setuid/setgid exec denied; compiles. Linux: `no_new_privs`, which is always set. |
 | `hd-service-handoff` | exact | n/a | n/a | Launch Services, Apple events, pasteboard and XPC service lookups, `lsopen`, `appleevent-send`; compiles. |

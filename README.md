@@ -43,7 +43,8 @@ What it does today:
   it (`CageOptions::with_violations`): every denial on macOS, every refused
   system call on Linux;
 - four frozen presets, opt-in base profiles that let ordinary programs and
-  developer tools start, and `Cage::exec` for helper programs that become the
+  developer tools start (V3 also keeps their harmless probes out of violation
+  reports), and `Cage::exec` for helper programs that become the
   caged command.
 
 Not yet: pseudo-terminals, a Linux PID namespace, loopback and proxy

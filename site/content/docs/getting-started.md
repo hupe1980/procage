@@ -33,7 +33,7 @@ use procage::policy::{AbsPath, Access, Base, FsRule, FsTarget, Policy};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut policy = Policy::default(); // denies everything
-    policy.base = Base::V2; // what ordinary programs and developer tools need to start
+    policy.base = Base::V3; // what ordinary programs and developer tools need to start
     policy.fs.push(FsRule::new(
         Access::Read,
         FsTarget::Subpath(AbsPath::new("/tmp/project")?),
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 What happens:
 
 - `Policy::default()` grants nothing: no files, no network, no process creation, an empty environment, no terminal.
-- `Base::V2` is an opt-in, frozen set of rules that lets ordinary programs and developer tools start (system libraries, `/etc` files, locale data, the Xcode and Homebrew code directories on macOS). It grants nothing in your home directory. See [Policies](@/docs/policies.md#base-profiles).
+- `Base::V3` is an opt-in, frozen set of rules that lets ordinary programs and developer tools start (system libraries, `/etc` files, locale data, the Xcode and Homebrew code directories on macOS). It grants nothing in your home directory. See [Policies](@/docs/policies.md#base-profiles).
 - `Cage::new` resolves paths (on macOS `/tmp` becomes `/private/tmp`), lowers the policy and prepares it. A `Cage` is reusable for any number of spawns, from any thread.
 - `spawn` takes a `std::process::Command`, so arguments, working directory, standard streams and explicit environment variables work as usual. The returned `Child` dereferences to `std::process::Child`.
 

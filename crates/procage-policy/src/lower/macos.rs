@@ -189,6 +189,8 @@ fn class_outcome(class: HardDenyClass) -> Outcome {
 
 pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltPlan, LowerError> {
     let mut ledger = Ledger::new(Target::MacOs, options);
+    // Quiet denies come first, so every later allow wins over them.
+    let mut quiet = Vec::new();
     let mut allow = Vec::new();
     let mut within = Vec::new();
     let mut hard = Vec::new();
@@ -370,8 +372,13 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
             allow.extend(crate::base::macos_v1(policy.tty));
         }
-        Base::V2 => {
-            ledger.outcome(Construct::BaseV2, Outcome::Exact, None, "");
+        Base::V2 | Base::V3 => {
+            if policy.base == Base::V3 {
+                ledger.outcome(Construct::BaseV3, Outcome::Exact, None, "");
+                quiet.extend(crate::base::macos_v3_quiet());
+            } else {
+                ledger.outcome(Construct::BaseV2, Outcome::Exact, None, "");
+            }
             allow.extend(crate::base::macos_v2(policy.tty));
             let paths = policy
                 .fs
@@ -426,8 +433,9 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
     let degradations = ledger.finish()?;
 
     let run_marker = !marker.is_empty();
-    let mut rules = Vec::with_capacity(allow.len() + within.len() + hard.len() + marker.len());
-    for mut block in [allow, within, hard] {
+    let mut rules =
+        Vec::with_capacity(quiet.len() + allow.len() + within.len() + hard.len() + marker.len());
+    for mut block in [quiet, allow, within, hard] {
         if !options.violations {
             // Without reporting, reasons must not keep apart rules that would
             // otherwise be deduplicated or merged.

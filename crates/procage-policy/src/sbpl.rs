@@ -199,6 +199,8 @@ pub struct Rule {
     /// Why a deny rule denies, rendered into its message when the profile
     /// reports violations.
     pub reason: Option<DenyReason>,
+    /// A deny that is never reported: `(with no-report)`.
+    pub quiet: bool,
 }
 
 impl Rule {
@@ -209,7 +211,14 @@ impl Rule {
             ops: ops.iter().map(|op| op.to_string()).collect(),
             filters,
             reason: None,
+            quiet: false,
         }
+    }
+
+    /// This deny, never reported.
+    pub fn quietly(mut self) -> Self {
+        self.quiet = true;
+        self
     }
 
     /// This rule with `reason`.
@@ -279,7 +288,11 @@ impl Rule {
                 out.push(')');
             }
         }
-        if let (Some(marker), Effect::Deny, Some(reason)) = (marker, self.effect, &self.reason) {
+        if self.quiet && self.effect == Effect::Deny {
+            out.push_str(" (with no-report)");
+        } else if let (Some(marker), Effect::Deny, Some(reason)) =
+            (marker, self.effect, &self.reason)
+        {
             out.push_str(&format!(
                 " (with message (string-append (param {}) {}))",
                 quote(marker.as_bytes())?,
@@ -393,7 +406,9 @@ pub const MAX_MERGED_FILTERS: usize = 64;
 /// are put into one rule.
 pub fn merge_adjacent(rules: Vec<Rule>, max_filters: usize) -> Vec<Rule> {
     let mut out: Vec<Rule> = Vec::with_capacity(rules.len());
-    let same = |a: &Rule, b: &Rule| a.effect == b.effect && a.ops == b.ops && a.reason == b.reason;
+    let same = |a: &Rule, b: &Rule| {
+        a.effect == b.effect && a.ops == b.ops && a.reason == b.reason && a.quiet == b.quiet
+    };
     for rule in rules {
         if rule.filters.is_empty() {
             // An unfiltered rule covers every neighbour like it.

@@ -75,7 +75,20 @@ fn blocks_are_in_fixed_order_and_the_tier_is_last() {
         let Ok(Plan::Seatbelt(plan)) = lower(&policy, Target::MacOs, &allow_all()) else {
             panic!("{name}: no Seatbelt plan");
         };
-        let lines = without_marker(&plan);
+        let all = without_marker(&plan);
+        // Quiet denies (base V3) come before every allow, so every allow
+        // wins over them; the rest of the order is as for every base.
+        let quiet = |l: &&str| l.ends_with(" (with no-report))");
+        let last_quiet = all.iter().rposition(quiet);
+        let first_allow = all.iter().position(|l| l.starts_with("(allow"));
+        if let (Some(q), Some(a)) = (last_quiet, first_allow) {
+            assert!(
+                q < a,
+                "{name}: a quiet deny follows an allow:\n{}",
+                plan.profile
+            );
+        }
+        let lines: Vec<&str> = all.iter().copied().filter(|l| !quiet(l)).collect();
         let first_deny = lines
             .iter()
             .position(|l| l.starts_with("(deny"))

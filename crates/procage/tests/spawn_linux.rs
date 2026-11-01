@@ -1647,19 +1647,22 @@ fn refused_calls_are_answered_quickly() {
     let (line, record) = reported(&cage, "median:ptrace:20");
     let median: u128 = line.strip_prefix("median=").unwrap().parse().unwrap();
     assert!(median < 10_000, "median {median} µs");
-    assert_eq!(by_op(&record, "ptrace").len(), 20);
+    let ptrace = by_op(&record, "ptrace");
+    assert!(ptrace.len() == 1 && ptrace[0].repeats == 20, "{record:#?}");
 }
 
-/// SR-006: a flood is answered in full; the record keeps 10,000 and counts
-/// the rest. (`ptrace`: Docker's own profile refuses `bpf` first, and a call
-/// an outer filter refuses never reaches procage's.)
+/// SR-006: a flood is answered in full, and identical refusals merge into
+/// one entry with their count (036). (`ptrace`: Docker's own profile refuses
+/// `bpf` first, and a call an outer filter refuses never reaches procage's.)
 #[test]
-fn a_flood_is_answered_and_capped() {
+fn a_flood_is_answered_and_merged() {
     let cage = reporting(refusing(), host_tier());
     let (line, record) = reported(&cage, "flood:ptrace:20000");
     assert_eq!(line, "refused=20000");
-    assert_eq!(record.len(), 10_000);
-    assert_eq!(record.dropped(), 10_000);
+    let ptrace = by_op(&record, "ptrace");
+    assert_eq!(ptrace.len(), 1, "{record:#?}");
+    assert_eq!(ptrace[0].repeats, 20_000);
+    assert_eq!(record.dropped(), 0);
     assert!(record.complete());
 }
 

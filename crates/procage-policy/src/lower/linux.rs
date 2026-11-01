@@ -500,8 +500,13 @@ pub(super) fn lower(
                 .rules
                 .extend(crate::base::linux_v1(policy.tty, handled));
         }
-        Base::V2 => {
-            ledger.outcome(Construct::BaseV2, Outcome::Exact, None, "");
+        Base::V2 | Base::V3 => {
+            let construct = if policy.base == Base::V3 {
+                Construct::BaseV3
+            } else {
+                Construct::BaseV2
+            };
+            ledger.outcome(construct, Outcome::Exact, None, "");
             landlock
                 .rules
                 .extend(crate::base::linux_v2(policy.tty, handled));

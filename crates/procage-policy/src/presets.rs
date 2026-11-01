@@ -263,10 +263,14 @@ pub fn git_dir() -> Glob {
     glob("/**/.git")
 }
 
-/// The common start of preset `name` at `version` (1: base V1, 2: base V2).
+/// The common start of preset `name` at `version` (base V1, V2 or V3).
 fn base(name: &str, version: u32) -> Policy {
     Policy {
-        base: if version == 1 { Base::V1 } else { Base::V2 },
+        base: match version {
+            1 => Base::V1,
+            2 => Base::V2,
+            _ => Base::V3,
+        },
         env: EnvPolicy::Allowlist(PRESET_ENV.iter().map(|v| v.to_string()).collect()),
         preset: Some(PresetTag {
             name: name.into(),
@@ -301,6 +305,11 @@ pub mod minimal {
     pub fn v2() -> Policy {
         base("minimal", 2)
     }
+
+    /// Version 3: base profile V3.
+    pub fn v3() -> Policy {
+        base("minimal", 3)
+    }
 }
 
 /// `agent_readonly`: read a workspace, no network.
@@ -317,6 +326,13 @@ pub mod agent_readonly {
     /// Version 2: as version 1 on base profile V2.
     pub fn v2(root: &AbsPath) -> Policy {
         let mut p = base("agent_readonly", 2);
+        workspace(&mut p, root, &[Access::Read]);
+        p
+    }
+
+    /// Version 3: as version 2 on base profile V3.
+    pub fn v3(root: &AbsPath) -> Policy {
+        let mut p = base("agent_readonly", 3);
         workspace(&mut p, root, &[Access::Read]);
         p
     }
@@ -339,6 +355,13 @@ pub mod agent_workspace {
         workspace(&mut p, root, &[Access::Write, Access::Exec]);
         p
     }
+
+    /// Version 3: as version 2 on base profile V3.
+    pub fn v3(root: &AbsPath) -> Policy {
+        let mut p = base("agent_workspace", 3);
+        workspace(&mut p, root, &[Access::Write, Access::Exec]);
+        p
+    }
 }
 
 /// `build`: as `agent_workspace`, plus loopback network for test servers.
@@ -357,6 +380,15 @@ pub mod build {
     /// workspace (test servers).
     pub fn v2(root: &AbsPath) -> Policy {
         let mut p = base("build", 2);
+        workspace(&mut p, root, &[Access::Write, Access::Exec]);
+        p.net = Network::Loopback(Ports::Any);
+        p.ipc.unix_sockets = alloc::vec![root.clone()];
+        p
+    }
+
+    /// Version 3: as version 2 on base profile V3.
+    pub fn v3(root: &AbsPath) -> Policy {
+        let mut p = base("build", 3);
         workspace(&mut p, root, &[Access::Write, Access::Exec]);
         p.net = Network::Loopback(Ports::Any);
         p.ipc.unix_sockets = alloc::vec![root.clone()];

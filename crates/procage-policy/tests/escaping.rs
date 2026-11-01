@@ -101,9 +101,15 @@ fn every_quoted_string_in_every_reference_profile_is_well_formed() {
         };
         for line in plan.profile.lines() {
             assert!(quoted_strings(line).is_some(), "{name}: {line}");
+            // The only modifiers: the default's message, and a quiet deny's
+            // `(with no-report)` at the end of the line (base V3).
             let with = line.matches("(with").count();
             assert!(
-                with == 0 || line.starts_with("(deny default (with message "),
+                with == 0
+                    || line.starts_with("(deny default (with message ")
+                    || (with == 1
+                        && line.starts_with("(deny ")
+                        && line.ends_with(" (with no-report))")),
                 "{name}: {line}"
             );
             assert!(

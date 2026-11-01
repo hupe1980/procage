@@ -335,6 +335,14 @@ mod macos {
             run: m28,
         },
         Fact {
+            id: "KF-M30",
+            statement: "a deny with (with no-report) refuses without a log line, and a later allow overrides it",
+            kind: Kind::Enforcement,
+            tiers: &[],
+            slow: false,
+            run: m30,
+        },
+        Fact {
             id: "KF-M29",
             statement: "denials are logged with the rule's parameter message on the last line, and in order across processes",
             kind: Kind::Enforcement,
@@ -774,6 +782,84 @@ mod macos {
                     observed: misses.join("; "),
                 })
             }
+        })();
+        let _ = stream.kill();
+        let _ = stream.wait();
+        result
+    }
+
+    /// `(with no-report)`, which base V3 relies on: the quiet read is refused
+    /// and never logged (it would come before the default's line), the
+    /// overridden one is allowed, the default deny is logged.
+    fn m30(c: &Ctx) -> Check {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        use std::sync::mpsc;
+
+        let tag = format!("procage-kf-m30-{}", std::process::id());
+        let predicate = format!("sender == \"Sandbox\" AND eventMessage CONTAINS \"{tag}\"");
+        let mut stream = Command::new("/usr/bin/log")
+            .args(["stream", "--style", "ndjson", "--predicate", &predicate])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| Outcome::SetupFailed(format!("log stream: {e}")))?;
+        let stdout = stream.stdout.take().expect("piped");
+        let (tx, rx) = mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+                    continue;
+                };
+                if let Some(m) = value.get("eventMessage").and_then(|m| m.as_str())
+                    && tx.send(m.to_string()).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        let result = (|| {
+            let dir = scratch()?;
+            for attempt in 0..20 {
+                let run = format!("{tag}.{attempt}");
+                let s = ran(c.step(&["quiet-deny", &run, dir.as_str()]))?;
+                expect(
+                    &s,
+                    &[
+                        ("quiet_errno", "1"),
+                        ("overridden_errno", "0"),
+                        ("default_errno", "1"),
+                    ],
+                )?;
+                // The default deny of `d` comes after the quiet read of `q`:
+                // once its line is in, a line for `q` would be too.
+                let deadline = Instant::now() + Duration::from_millis(250);
+                let mut seen = Vec::new();
+                while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+                    let Ok(m) = rx.recv_timeout(left) else { break };
+                    let done = m.ends_with(&format!("/d\n{run}"));
+                    seen.push(m);
+                    if done {
+                        let quiet = seen.iter().any(|m| m.contains("/q\n"));
+                        let overridden = seen.iter().any(|m| m.contains("/o\n"));
+                        return if quiet || overridden {
+                            Err(Outcome::Fail {
+                                expected: "no line for the quiet or the overridden read".into(),
+                                observed: format!("{seen:?}"),
+                            })
+                        } else {
+                            Ok(format!(
+                                "{} (default logged, quiet and overridden not)",
+                                s.summary()
+                            ))
+                        };
+                    }
+                }
+            }
+            Err(Outcome::SetupFailed(
+                "log stream delivered nothing in 20 tries".into(),
+            ))
         })();
         let _ = stream.kill();
         let _ = stream.wait();

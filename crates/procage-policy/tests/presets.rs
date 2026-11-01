@@ -232,3 +232,45 @@ fn v2_presets_differ_from_v1_only_by_the_base_and_sockets() {
         assert_eq!(same, v1, "{name}");
     }
 }
+
+fn all_v3() -> Vec<(&'static str, Policy)> {
+    let w = AbsPath::new("/work").unwrap();
+    vec![
+        ("minimal", minimal::v3()),
+        ("agent_readonly", agent_readonly::v3(&w)),
+        ("agent_workspace", agent_workspace::v3(&w)),
+        ("build", build::v3(&w)),
+    ]
+}
+
+#[test]
+fn every_v3_preset_is_pinned() {
+    let fixtures = [
+        include_str!("fixtures/presets/minimal-v3.sb"),
+        include_str!("fixtures/presets/agent_readonly-v3.sb"),
+        include_str!("fixtures/presets/agent_workspace-v3.sb"),
+        include_str!("fixtures/presets/build-v3.sb"),
+    ];
+    for ((name, policy), fixture) in all_v3().into_iter().zip(fixtures) {
+        assert_eq!(profile(&policy), fixture, "preset {name} v3 changed");
+    }
+}
+
+/// Version 3 is version 2 on base V3.
+#[test]
+fn v3_presets_differ_from_v2_only_by_the_base() {
+    for ((name, v2), (_, v3)) in all_v2().into_iter().zip(all_v3()) {
+        assert_eq!(
+            v3.preset,
+            Some(PresetTag {
+                name: name.into(),
+                version: 3
+            })
+        );
+        assert_eq!(v3.base, Base::V3);
+        let mut same = v3.clone();
+        same.base = Base::V2;
+        same.preset = v2.preset.clone();
+        assert_eq!(same, v2, "{name}");
+    }
+}

@@ -11,6 +11,7 @@
 // tested.
 #![cfg_attr(target_os = "linux", allow(dead_code))]
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -39,12 +40,15 @@ pub struct Violation {
     pub target: Option<String>,
     /// The kind of rule that denied it.
     pub denied_by: DeniedBy,
-    /// When procage received the report.
+    /// When procage received the first report.
     pub received: SystemTime,
+    /// How often this process was denied this operation on this target by
+    /// this kind of rule (at least 1): identical denials are merged.
+    pub repeats: u32,
 }
 
 /// The kind of rule that denied an operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum DeniedBy {
     /// Nothing in the policy allows it (the profile's default).
@@ -123,7 +127,11 @@ impl fmt::Display for Violation {
         if let Some(target) = &self.target {
             write!(f, " {target}")?;
         }
-        write!(f, ": {}", self.denied_by)
+        write!(f, ": {}", self.denied_by)?;
+        if self.repeats > 1 {
+            write!(f, " (×{})", self.repeats)?;
+        }
+        Ok(())
     }
 }
 
@@ -229,6 +237,28 @@ impl<'a> IntoIterator for &'a Violations {
     }
 }
 
+/// What makes two violations the same denial.
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct Key {
+    pid: u32,
+    process: String,
+    operation: String,
+    target: Option<String>,
+    denied_by: DeniedBy,
+}
+
+impl Key {
+    fn of(v: &Violation) -> Key {
+        Key {
+            pid: v.pid,
+            process: v.process.clone(),
+            operation: v.operation.clone(),
+            target: v.target.clone(),
+            denied_by: v.denied_by.clone(),
+        }
+    }
+}
+
 /// A run's record, shared by its handle and whatever collects it.
 pub(crate) type Sink = Arc<Mutex<Record>>;
 
@@ -241,6 +271,8 @@ pub(crate) fn lock(sink: &Sink) -> MutexGuard<'_, Record> {
 #[derive(Debug)]
 pub(crate) struct Record {
     violations: Violations,
+    /// Where each distinct violation is in the list.
+    index: HashMap<Key, usize>,
     cap: usize,
     live: Option<SyncSender<Violation>>,
     receiver: Option<Receiver<Violation>>,
@@ -255,15 +287,23 @@ impl Record {
         let (live, receiver) = sync_channel(RECEIVER_BOUND);
         Record {
             violations: Violations::empty(coverage),
+            index: HashMap::new(),
             cap,
             live: Some(live),
             receiver: Some(receiver),
         }
     }
 
-    /// Adds `v`: kept below the cap, counted above it; sent to the live
+    /// Adds `v`: merged into an equal one already kept (its count grows);
+    /// otherwise kept below the cap, counted above it, and sent to the live
     /// receiver unless it lags or is gone.
     pub(crate) fn push(&mut self, v: Violation) {
+        let key = Key::of(&v);
+        if let Some(&i) = self.index.get(&key) {
+            let kept = &mut self.violations.list[i];
+            kept.repeats = kept.repeats.saturating_add(v.repeats);
+            return;
+        }
         if let Some(live) = &self.live {
             match live.try_send(v.clone()) {
                 Ok(()) | Err(TrySendError::Full(_)) => {}
@@ -271,6 +311,7 @@ impl Record {
             }
         }
         if self.violations.list.len() < self.cap {
+            self.index.insert(key, self.violations.list.len());
             self.violations.list.push(v);
         } else {
             self.violations.dropped += 1;
@@ -360,6 +401,7 @@ pub(crate) fn parse(message: &str, received: SystemTime) -> Option<(&str, Violat
             target,
             denied_by: DeniedBy::of(code),
             received,
+            repeats: 1,
         },
     ))
 }
@@ -456,16 +498,22 @@ mod tests {
     fn the_record_keeps_the_cap_and_counts_the_rest() {
         let mut record = Record::with_cap(Coverage::Observed, 3);
         let rx = record.take_receiver().unwrap();
-        let msg = format!("Sandbox: cat(5) deny(1) file-read-data /x\n{M}");
-        let v = parse(&msg, now()).unwrap().1;
-        for _ in 0..5 {
-            record.push(v.clone());
+        let at = |path: usize| {
+            let msg = format!("Sandbox: cat(5) deny(1) file-read-data /x{path}\n{M}");
+            parse(&msg, now()).unwrap().1
+        };
+        for path in 0..5 {
+            record.push(at(path));
         }
+        // A kept entry keeps counting past the cap; a new one is dropped.
+        record.push(at(0));
+        record.push(at(4));
         let snap = record.snapshot();
         assert_eq!(snap.len(), 3);
-        assert_eq!(snap.dropped(), 2);
+        assert_eq!(snap.dropped(), 3);
+        assert_eq!(snap.iter().next().unwrap().repeats, 2);
         assert!(!snap.complete());
-        assert_eq!(rx.try_iter().count(), 5);
+        assert_eq!(rx.try_iter().count(), 6);
         assert!(record.take_receiver().is_none());
         record.finish();
         assert!(record.snapshot().complete());
@@ -475,15 +523,46 @@ mod tests {
     fn the_receiver_is_bounded_and_never_blocks() {
         let mut record = Record::with_cap(Coverage::Observed, CAP);
         let rx = record.take_receiver().unwrap();
-        let msg = format!("Sandbox: cat(5) deny(1) file-read-data /x\n{M}");
-        let v = parse(&msg, now()).unwrap().1;
-        for _ in 0..RECEIVER_BOUND + 10 {
-            record.push(v.clone());
+        let at = |path: usize| {
+            let msg = format!("Sandbox: cat(5) deny(1) file-read-data /x{path}\n{M}");
+            parse(&msg, now()).unwrap().1
+        };
+        for path in 0..RECEIVER_BOUND + 10 {
+            record.push(at(path));
         }
         assert_eq!(rx.try_iter().count(), RECEIVER_BOUND);
         assert_eq!(record.snapshot().len(), RECEIVER_BOUND + 10);
         drop(rx);
+        record.push(at(0));
+    }
+
+    /// SR-004: only equal denials merge, and the count saturates.
+    #[test]
+    fn only_equal_denials_merge() {
+        let mut record = Record::new(Coverage::Observed);
+        let base = |msg: &str| parse(msg, now()).unwrap().1;
+        let v = base(&format!("Sandbox: cat(5) deny(1) file-read-data /x\n{M}"));
+        let variants = [
+            base(&format!("Sandbox: cat(6) deny(1) file-read-data /x\n{M}")),
+            base(&format!("Sandbox: dog(5) deny(1) file-read-data /x\n{M}")),
+            base(&format!("Sandbox: cat(5) deny(1) file-write-data /x\n{M}")),
+            base(&format!("Sandbox: cat(5) deny(1) file-read-data /y\n{M}")),
+            base(&format!(
+                "Sandbox: cat(5) deny(1) file-read-data /x\n{M} hide"
+            )),
+        ];
+        record.push(v.clone());
+        for other in variants.iter().cloned() {
+            record.push(other);
+        }
+        assert_eq!(record.snapshot().len(), 6);
+        let mut big = v.clone();
+        big.repeats = u32::MAX;
+        record.push(big);
         record.push(v);
+        let first = record.snapshot().iter().next().unwrap().clone();
+        assert_eq!(first.repeats, u32::MAX);
+        assert!(first.to_string().ends_with(&format!("(×{})", u32::MAX)));
     }
 
     #[test]

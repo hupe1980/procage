@@ -127,6 +127,7 @@ escape:
     @echo "==> gate: escape (macOS)"
     cargo test --locked -p procage --test escape_macos
     PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_macos
+    PROCAGE_ESCAPE_BASE=v3 PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_macos
 
 # Linux facts in a container under Docker's default seccomp profile (tier T2).
 kf-linux tier="T2":

@@ -21,15 +21,15 @@ policy.net = Network::All; // your own addition; the preset tag stays for receip
 
 | Preset | Adds |
 |---|---|
-| `minimal::v1`, `minimal::v2` | nothing |
-| `agent_readonly::v1`, `agent_readonly::v2` | read of the workspace, the `tmpdir` grant, fork, signals to self and children |
-| `agent_workspace::v1`, `agent_workspace::v2` | as `agent_readonly`, plus write and exec on the workspace |
+| `minimal::v1`, `v2`, `v3` | nothing |
+| `agent_readonly::v1`, `v2`, `v3` | read of the workspace, the `tmpdir` grant, fork, signals to self and children |
+| `agent_workspace::v1`, `v2`, `v3` | as `agent_readonly`, plus write and exec on the workspace |
 | `build::v1` | as `agent_workspace`, plus loopback network (any port) |
-| `build::v2` | as `build::v1`, plus Unix sockets in the workspace |
+| `build::v2`, `build::v3` | as `build::v1`, plus Unix sockets in the workspace |
 
 Every preset also has:
 
-- a base profile: `Base::V1` for version 1, `Base::V2` for version 2, which runs developer tools such as `git`, `clang` and Homebrew's;
+- a base profile: `Base::V1` for version 1, `Base::V2` for version 2, which runs developer tools such as `git`, `clang` and Homebrew's, and `Base::V3` for version 3: version 2 with the probes every program makes refused quietly (recommended with violation reporting);
 - the full [hard-deny tier](@/docs/hard-deny.md), nothing waived;
 - an environment allowlist of `HOME`, `LANG`, `LC_ALL`, `PATH`, `TERM`, `TMPDIR` and `USER`;
 - a `PresetTag` with its name and version;

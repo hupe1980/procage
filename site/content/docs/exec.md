@@ -21,7 +21,7 @@ use procage::policy::{Base, Policy};
 
 fn main() {
     let mut policy = Policy::default();
-    policy.base = Base::V2;
+    policy.base = Base::V3;
     let cage = Cage::new(&policy).unwrap_or_else(|e| panic!("{e}"));
     let mut command = Command::new("/usr/bin/env");
     command.current_dir("/tmp"); // a directory the policy lets it read

@@ -298,3 +298,71 @@ fn v2_allows_metadata_of_the_policys_ancestors() {
         MACOS_V1.len() + MACOS_V2_ADDED.len()
     );
 }
+
+fn macos_profile(p: &Policy) -> String {
+    match lower(p, Target::MacOs, &allow_all()) {
+        Ok(Plan::Seatbelt(plan)) => plan.profile,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// SR-001: V3 allows nothing V2 does not: removing its quiet lines gives the
+/// V2 profile of the same policy, for every reference policy.
+#[test]
+fn v3_is_v2_plus_quiet_denies() {
+    for (name, mut policy) in reference_policies() {
+        policy.base = Base::V2;
+        let v2 = macos_profile(&policy);
+        policy.base = Base::V3;
+        let v3 = macos_profile(&policy);
+        let stripped: String = v3
+            .lines()
+            .filter(|l| !l.ends_with(" (with no-report))"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert_eq!(stripped, v2, "{name}");
+        assert_eq!(v3.lines().count() - v2.lines().count(), 3, "{name}");
+    }
+}
+
+/// SR-002: no quiet target is the target of a hard-deny or data-class rule,
+/// so silencing never hides an attempt on them.
+#[test]
+fn quiet_targets_are_not_hard_deny_targets() {
+    let mut policy = hard_deny_base();
+    policy.base = Base::V3;
+    let hard: Vec<String> = macos_profile(&hard_deny_base())
+        .lines()
+        .filter(|l| l.starts_with("(deny") && !l.starts_with("(deny default"))
+        .map(String::from)
+        .collect();
+    for service in base::MACOS_V3_QUIET_SERVICES {
+        assert!(hard.iter().all(|l| !l.contains(service)), "{service}");
+    }
+    for path in ["/dev/dtracehelper", "/dev/tty"] {
+        assert!(
+            hard.iter().all(|l| !l.contains(&format!("\"{path}\""))),
+            "{path}"
+        );
+    }
+    let quiet: Vec<String> = macos_profile(&policy)
+        .lines()
+        .filter(|l| l.ends_with(" (with no-report))"))
+        .map(String::from)
+        .collect();
+    assert_eq!(quiet.len(), 3, "{quiet:?}");
+}
+
+/// On Linux, V3 is V2.
+#[test]
+fn v3_lowers_like_v2_on_linux() {
+    for (name, mut policy) in reference_policies() {
+        for target in targets().into_iter().filter(|t| *t != Target::MacOs) {
+            policy.base = Base::V2;
+            let v2 = lower(&policy, target, &allow_all());
+            policy.base = Base::V3;
+            let v3 = lower(&policy, target, &allow_all());
+            assert_eq!(v2, v3, "{name} on {target}");
+        }
+    }
+}

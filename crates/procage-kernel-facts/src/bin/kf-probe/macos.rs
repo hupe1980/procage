@@ -29,6 +29,7 @@ pub(crate) fn run(step: &str, args: &[String]) -> StepResult {
         "compile-rules" => compile_rules(args),
         "apply-selfcheck" => apply_selfcheck(),
         "report-denial" => report_denial(args),
+        "quiet-deny" => quiet_deny(args),
         "apply-then-spawn" => apply_then_spawn(),
         "read" => read(choice(
             args,
@@ -397,6 +398,43 @@ fn report_denial(args: &[String]) -> StepResult {
     let (ea, eb) = (read(&a), read(&b));
     emit("a_errno", ea);
     emit("b_errno", eb);
+    Ok(())
+}
+
+/// Applies a deny-default profile (message: the parameter `T`, `args[0]`)
+/// with a quiet deny of `<dir>/q`, and a quiet deny of `<dir>/o` followed by
+/// an allow of it, then reads `q`, `o` and `<dir>/d` (default deny).
+fn quiet_deny(args: &[String]) -> StepResult {
+    let tag = args
+        .first()
+        .ok_or_else(|| Fail::Usage("missing tag".into()))?;
+    let dir = scratch_arg(args, 1)?;
+    let (q, o, d) = (format!("{dir}/q"), format!("{dir}/o"), format!("{dir}/d"));
+    for p in [&q, &o, &d] {
+        std::fs::write(p, "x").map_err(|e| setup(e.to_string()))?;
+    }
+    let sbpl = format!(
+        "(version 1)(deny default (with message (param \"T\")))(allow file-read-metadata)\
+         (deny file-read-data (literal \"{q}\") (with no-report))\
+         (deny file-read-data (literal \"{o}\") (with no-report))\
+         (allow file-read-data (literal \"{o}\"))"
+    );
+    let sb = sandbox()?;
+    let bc = sb
+        .compile(&sbpl, &[("T", tag)])
+        .map_err(|e| setup(format!("compile failed: {:?}", e.text)))?;
+    sb.apply_path_a(&bc).map_err(|e| {
+        emit("apply_errno", e);
+        setup(format!("apply failed: errno {e}"))
+    })?;
+    let read = |p: &str| match std::fs::read(p) {
+        Ok(_) => 0,
+        Err(e) => io_errno(&e),
+    };
+    let (eq, eo, ed) = (read(&q), read(&o), read(&d));
+    emit("quiet_errno", eq);
+    emit("overridden_errno", eo);
+    emit("default_errno", ed);
     Ok(())
 }
 

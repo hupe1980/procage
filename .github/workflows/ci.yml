@@ -75,6 +75,11 @@ jobs:
         run: cargo test --locked -p procage --test escape_macos --target ${{ matrix.target }}
         env:
           PROCAGE_ESCAPE_VIOLATIONS: "1"
+      - name: Escape suite on base V3 with violation reporting
+        run: cargo test --locked -p procage --test escape_macos --target ${{ matrix.target }}
+        env:
+          PROCAGE_ESCAPE_BASE: v3
+          PROCAGE_ESCAPE_VIOLATIONS: "1"
       - name: Lowered profiles compile (well-formedness only)
         run: cargo test --locked -p procage-kernel-facts --test policy_compiles --target ${{ matrix.target }}
 
