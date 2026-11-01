@@ -100,3 +100,23 @@ fn errors_explain_themselves() {
     let err = Cage::new(&p).map(drop).unwrap_err();
     assert!(err.to_string().contains("Tty::NewPty"), "{err}");
 }
+
+/// Fitting is part of the subset: a policy every host enforces relaxes
+/// nothing, and a relaxed entry reads as a sentence.
+#[test]
+fn fitting_has_the_same_shape() {
+    use procage::policy::{Relax, Relaxed};
+    let options =
+        CageOptions::default().with_lower(LowerOptions::default().accept_spawn_snapshot());
+    let relax = Relax::new().leave_out_protect().signals_same_user();
+    let (cage, relaxed): (Cage, Vec<Relaxed>) =
+        Cage::fit(&policy(), &options, &relax).unwrap_or_else(|e| panic!("{e}"));
+    assert!(relaxed.is_empty(), "{relaxed:?}");
+    let mut c = cage
+        .spawn(
+            &mut quiet("/bin/echo", "ok"),
+            &Grants::new().bind("data", data_dir()),
+        )
+        .unwrap();
+    assert!(c.wait().unwrap().success());
+}

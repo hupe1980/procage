@@ -1,7 +1,10 @@
 #![doc = include_str!("../lowering.md")]
 
+mod fit;
 mod linux;
 mod macos;
+
+pub use fit::{Lift, Relax, Relaxation, Relaxed, lift};
 
 use alloc::collections::BTreeSet;
 use alloc::string::String;

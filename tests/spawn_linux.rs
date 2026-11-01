@@ -1335,3 +1335,100 @@ fn signals_reach_outside_processes_only_when_the_policy_says_so() {
     let _ = sleeper.kill();
     let _ = sleeper.wait();
 }
+
+// ---- Fitting a policy to the host ----
+
+/// A harness-shaped policy on T2: the four parts T2 cannot enforce are
+/// relaxed by name, each with what would lift it, and the rest still holds.
+/// Below ABI 6 the signal scope joins them; without its relaxation the cage
+/// fails with exactly that gap.
+#[test]
+fn a_fitted_cage_gives_up_only_what_was_named() {
+    use procage::policy::{Relax, Relaxation};
+    let w = scratch("fit-w");
+    let o = scratch("fit-o");
+    std::fs::create_dir(w.join(".git")).unwrap();
+    std::fs::write(w.join(".env"), "secret").unwrap();
+    let mut p = base();
+    p.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(abs(&w))));
+    p.fs.push(FsRule::new(
+        Access::Protect,
+        FsTarget::Subpath(abs(w.join(".git"))),
+    ));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Subpath(abs(w.join(".env"))),
+    ));
+    p.ipc.unix_sockets = vec![abs(&w)];
+    p.process.fork = true;
+    p.process.signals = Signals::SelfAndChildren;
+    let p = child_policy(p);
+    let relax = Relax::new()
+        .leave_out_protect()
+        .leave_out_hide()
+        .waive(HardDenyClass::TrustHandoff)
+        .no_unix_sockets()
+        .signals_same_user();
+    let kernel = probe().landlock_abi.min(procage::linux::BACKEND_MAX_ABI);
+    let (cage, relaxed) = Cage::fit(&p, &options(Tier::T2), &relax).unwrap();
+    for r in &relaxed {
+        println!("{r}");
+    }
+    let mut got: Vec<Relaxation> = relaxed.iter().map(|r| r.relaxation).collect();
+    got.sort();
+    let mut want = vec![
+        Relaxation::LeaveOutProtect,
+        Relaxation::LeaveOutHide,
+        Relaxation::Waive(HardDenyClass::TrustHandoff),
+        Relaxation::NoUnixSockets,
+    ];
+    if kernel < 6 {
+        want.push(Relaxation::SignalsSameUser);
+    }
+    want.sort();
+    assert_eq!(got, want);
+    let protect = relaxed
+        .iter()
+        .find(|r| r.relaxation == Relaxation::LeaveOutProtect)
+        .unwrap();
+    assert!(protect.lift.tier1, "{protect}");
+    let got = run_in(
+        &cage,
+        &format!(
+            "write:{o}/f;socket;write:{w}/.git/x;read:{w}/.env",
+            o = o.display(),
+            w = w.display()
+        ),
+        &Grants::new(),
+    );
+    assert_eq!(got, format!("{EACCES} {EPERM} ok ok"));
+
+    // As on a kernel without the signal scope.
+    let old = options(Tier::T2).with_landlock_abi(5.min(kernel));
+    let (_, relaxed) = Cage::fit(&p, &old, &relax).unwrap();
+    let signals = relaxed
+        .iter()
+        .find(|r| r.relaxation == Relaxation::SignalsSameUser)
+        .expect("the signal scope is relaxed below ABI 6");
+    if kernel >= 6 {
+        assert_eq!(signals.lift.landlock_abi, Some(6), "{signals}");
+        assert!(!signals.lift.tier1, "{signals}");
+    }
+    let without = Relax::new()
+        .leave_out_protect()
+        .leave_out_hide()
+        .waive(HardDenyClass::TrustHandoff)
+        .no_unix_sockets();
+    match Cage::fit(&p, &old, &without) {
+        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => {
+            let constructs: Vec<Construct> = gaps.iter().map(|g| g.construct).collect();
+            assert_eq!(constructs, [Construct::SignalsSelfAndChildren]);
+        }
+        other => panic!("expected the signal gap, got {other:?}"),
+    }
+
+    // Nothing to relax: the same cage as without fitting.
+    let (cage, relaxed) = Cage::fit(&child_policy(base()), &options(host_tier()), &relax).unwrap();
+    assert!(relaxed.is_empty());
+    assert_eq!(cage.tier(), host_tier());
+}

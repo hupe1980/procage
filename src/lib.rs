@@ -94,6 +94,43 @@
 //! finds it, when that matters. The `examples/exec_helper.rs` program in the
 //! repository is a complete helper.
 //!
+//! # Fitting a policy to the host
+//!
+//! A host that cannot enforce part of a policy refuses the cage and lists
+//! each part as a capability gap: procage never runs a child under a weaker
+//! policy on its own. A harness that would rather run with a known, stated
+//! limit than not at all names the relaxations it accepts and calls
+//! `Cage::fit`. It gets the cage and the list of what was relaxed, each with
+//! what would lift it, to show its user:
+//!
+//! ```no_run
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use procage::native::{Cage, CageOptions};
+//! use procage::policy::{HardDenyClass, Policy, Relax};
+//! # let policy = Policy::default();
+//!
+//! let relax = Relax::new()
+//!     .leave_out_protect() // e.g. `.git` inside a writable workspace
+//!     .waive(HardDenyClass::TrustHandoff)
+//!     .signals_same_user(); // Linux older than 6.12
+//! let (cage, relaxed) = Cage::fit(&policy, &CageOptions::default(), &relax)?;
+//! for r in &relaxed {
+//!     eprintln!("sandbox: {r}");
+//!     // fs-protect /w/.git on Linux T2 (Landlock ABI 8): the protect rule is
+//!     // left out; tier T1 (user namespaces) would enforce it
+//! }
+//! # let _ = cage;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Each relaxation has one effect: leave out the protect or hide rule a gap
+//! names, waive a hard-deny class, allow no Unix sockets or no network
+//! (stricter), or let signals reach every process of the user. Any gap
+//! without an accepted relaxation still fails, with every remaining gap.
+//! Approximations are a different consent and stay in
+//! [`LowerOptions::allow_degrade`](policy::LowerOptions::allow_degrade).
+//!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.
 
@@ -113,7 +150,8 @@ pub mod threat_model;
 ///
 /// Code that uses only the subset both backends share builds on both
 /// without `cfg`: [`Cage::new`](native::Cage::new),
-/// [`Cage::with_options`](native::Cage::with_options) with
+/// [`Cage::with_options`](native::Cage::with_options) and
+/// [`Cage::fit`](native::Cage::fit) with
 /// [`CageOptions::default`](native::CageOptions)`().with_lower(…)`,
 /// [`Cage::spawn`](native::Cage::spawn),
 /// [`Cage::spawn_with_fds`](native::Cage::spawn_with_fds),

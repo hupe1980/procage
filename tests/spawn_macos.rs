@@ -1552,3 +1552,29 @@ fn forking_runs_have_a_marker_and_reuse_the_cache() {
     assert!(!quiet.plan().run_marker);
     assert_eq!(testing::run_slot(&sleeper(&quiet)), None);
 }
+
+/// macOS enforces a harness-shaped policy in full: fitting relaxes nothing
+/// and gives the profile preparing it directly gives.
+#[test]
+fn fitting_on_macos_relaxes_nothing_it_can_enforce() {
+    use procage::policy::Relax;
+    let dir = std::env::temp_dir().join(format!("procage-fit-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join(".git")).unwrap();
+    let w = std::fs::canonicalize(&dir).unwrap();
+    let mut p = base();
+    p.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(abs(&w))));
+    p.fs.push(FsRule::new(
+        Access::Protect,
+        FsTarget::Subpath(abs(w.join(".git"))),
+    ));
+    p.process.fork = true;
+    p.process.signals = procage::policy::Signals::SelfAndChildren;
+    let relax = Relax::new()
+        .leave_out_protect()
+        .signals_same_user()
+        .no_unix_sockets();
+    let (cage, relaxed) = Cage::fit(&p, &CageOptions::default(), &relax).unwrap();
+    assert!(relaxed.is_empty(), "{relaxed:?}");
+    assert_eq!(cage.plan(), Cage::new(&p).unwrap().plan());
+    let _ = std::fs::remove_dir_all(&dir);
+}

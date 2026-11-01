@@ -22,7 +22,8 @@ seccomp), whichever the host allows, and refuses to spawn without Landlock
 truncation, it refuses truncating a file by path and opening one with
 `O_TRUNC` without write access everywhere.
 A construct the tier cannot enforce is an error unless the caller accepts
-it by name. Its integration tests run in containers for both tiers on one
+it by name: as an approximation, or with `Cage::fit`, which relaxes only
+what the caller names and returns each relaxation with what would lift it. Its integration tests run in containers for both tiers on one
 kernel (7.0, aarch64).
 
 On both systems it also closes every inherited descriptor the caller did not

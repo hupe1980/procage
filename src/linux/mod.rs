@@ -154,7 +154,8 @@ use std::sync::Arc;
 
 use procage_policy::linux::RuleTarget;
 use procage_policy::{
-    HardDenyClass, LinuxPlan, LowerError, LowerOptions, Plan, Policy, Target, Tier, Tty, lower,
+    HardDenyClass, LinuxPlan, LowerError, LowerOptions, Plan, Policy, Relax, Relaxed, Target, Tier,
+    Tty, lift, lower,
 };
 
 pub use crate::unix::TMPDIR_GRANT;
@@ -597,6 +598,37 @@ impl Cage {
     /// Prepares `policy` with default options.
     pub fn new(policy: &Policy) -> Result<Cage, SpawnError> {
         Cage::with_options(policy, &CageOptions::default())
+    }
+
+    /// Prepares `policy`, giving up exactly the constructs this host cannot
+    /// enforce and `relax` accepts. Returns the cage and what was relaxed,
+    /// each with what would lift it (tier T1 or a newer Landlock ABI). Any
+    /// other gap fails as [`Cage::with_options`] does, with every remaining
+    /// gap, and nothing is relaxed that `relax` does not name.
+    pub fn fit(
+        policy: &Policy,
+        options: &CageOptions,
+        relax: &Relax,
+    ) -> Result<(Cage, Vec<Relaxed>), SpawnError> {
+        let mut fitted = policy.clone();
+        let mut relaxed = Vec::new();
+        // Each round relaxes at least one construct; a few always suffice.
+        for _ in 0..4 {
+            let gaps = match Cage::with_options(&fitted, options) {
+                Ok(cage) => return Ok((cage, relaxed)),
+                Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
+                Err(e) => return Err(e),
+            };
+            let done = relax
+                .apply(&mut fitted, &gaps)
+                .map_err(|rest| SpawnError::Lower(LowerError::Gaps(rest)))?;
+            relaxed.extend(done.into_iter().map(|(gap, relaxation)| Relaxed {
+                lift: lift(policy, &gap, &options.lower, BACKEND_MAX_ABI),
+                gap,
+                relaxation,
+            }));
+        }
+        Cage::with_options(&fitted, options).map(|cage| (cage, relaxed))
     }
 
     /// Prepares `policy` for the strongest tier the host allows, or for
