@@ -143,6 +143,7 @@ mod probe;
 mod seccomp;
 mod spawn;
 mod sys;
+mod violations;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -195,6 +196,8 @@ pub enum Step {
     Seccomp,
     /// Confirming that seccomp and `no_new_privs` hold.
     Verify,
+    /// Handing the seccomp listener to the parent (violation reporting).
+    Listener,
 }
 
 impl Step {
@@ -213,6 +216,7 @@ impl Step {
             LANDLOCK => Step::Landlock,
             SECCOMP => Step::Seccomp,
             VERIFY => Step::Verify,
+            LISTENER => Step::Listener,
             _ => return None,
         })
     }
@@ -233,6 +237,7 @@ impl fmt::Display for Step {
             Step::Landlock => "apply Landlock",
             Step::Seccomp => "install seccomp filter",
             Step::Verify => "verify sandbox",
+            Step::Listener => "hand over the seccomp listener",
         })
     }
 }
@@ -568,10 +573,21 @@ impl CageOptions {
         self
     }
 
-    /// These options with violation reporting, for the same code on both
-    /// backends. Linux does not report denials yet: Landlock reports them
-    /// only to the privileged audit subsystem. Every record's coverage is
-    /// [`Coverage::NotObserved`]; confinement is unchanged.
+    /// These options with violation reporting: every spawn's
+    /// [`Child::violations`] lists the system calls the seccomp filter
+    /// refused it (`ptrace`, `io_uring_setup`, an IP socket without network,
+    /// …), with the process, the target and why, exactly and complete once
+    /// the run's processes are gone ([`Coverage::SystemCalls`]). File,
+    /// network and signal denials by Landlock are not reported: Landlock
+    /// reports them only to the privileged audit subsystem.
+    ///
+    /// Each reporting spawn runs one supervisor thread, which answers every
+    /// refused call with `EPERM` (what it returns without reporting) and
+    /// ends with the run's processes. Inside a sandbox whose filter already
+    /// has a listener, the kernel refuses a second one: the run is confined
+    /// as without reporting and its record says why. A call an outer
+    /// sandbox refuses first (Docker's default profile refuses `bpf`) never
+    /// reaches procage's filter and is not reported.
     pub fn with_violations(mut self) -> Self {
         self.violations = true;
         self
@@ -606,7 +622,8 @@ pub struct Cage {
     filter: Arc<[seccomp::Insn]>,
     homes: Vec<PathBuf>,
     walk_limit: usize,
-    violations: bool,
+    /// With violation reporting: the filter whose `EPERM` denies notify.
+    notifying: Option<Arc<[seccomp::Insn]>>,
 }
 
 impl Cage {
@@ -683,9 +700,16 @@ impl Cage {
         let Plan::Linux(mut plan) = lower(policy, target, &options.lower)? else {
             unreachable!("lowering for Linux yields a Linux plan");
         };
-        let filter: Arc<[seccomp::Insn]> = seccomp::build(&plan.seccomp, &seccomp::NATIVE)
-            .map_err(|name| SpawnError::Unsupported(Unsupported::Syscall { name }))?
-            .into();
+        let build = |notify| {
+            seccomp::build(&plan.seccomp, &seccomp::NATIVE, notify)
+                .map_err(|name| SpawnError::Unsupported(Unsupported::Syscall { name }))
+        };
+        let filter: Arc<[seccomp::Insn]> = build(false)?.into();
+        let notifying = if options.violations {
+            Some(Arc::from(build(true)?))
+        } else {
+            None
+        };
         let homes = classes::homes(&options.homes);
         let rules = spawn::rule_paths(&plan);
         classes::home_gaps(&mut plan, &rules, &homes, &options.lower, target)?;
@@ -694,7 +718,7 @@ impl Cage {
             filter,
             homes,
             walk_limit: options.walk_limit,
-            violations: options.violations,
+            notifying,
         })
     }
 
@@ -758,14 +782,49 @@ impl Cage {
         } else {
             sys::Session::New
         };
-        let (dropped, removal) = self.prepare(command, grants, fds, session)?;
-        let inner = command.spawn().map_err(spawn::decode)?;
-        let coverage = if self.violations {
-            Coverage::NotObserved
-        } else {
-            Coverage::Off
+        let (parent_end, notify) = match &self.notifying {
+            Some(filter) => {
+                let (parent_end, child_end) = sys::socket_pair().map_err(SpawnError::Io)?;
+                (
+                    Some(parent_end),
+                    Some(sys::Notify::new(filter.to_vec(), child_end)),
+                )
+            }
+            None => (None, None),
         };
-        Ok(Child::new(inner, dropped, removal.disarm(), coverage))
+        let (dropped, removal) = self.prepare(command, grants, fds, session, notify)?;
+        let inner = command.spawn().map_err(spawn::decode)?;
+        let reporting = match parent_end {
+            None => child::Reporting::Off,
+            Some(socket) => self.supervise(&socket),
+        };
+        Ok(Child::new(inner, dropped, removal.disarm(), reporting))
+    }
+
+    /// Takes the listener the child sent and starts the run's supervisor;
+    /// without a listener, the record says why.
+    fn supervise(&self, socket: &std::os::fd::OwnedFd) -> child::Reporting {
+        let unavailable = |reason: String| child::Reporting::Unavailable(reason);
+        match sys::receive(socket) {
+            Ok(sys::HandOver::Listener(listener)) => {
+                let record = Arc::new(std::sync::Mutex::new(crate::violation::Record::new(
+                    Coverage::SystemCalls,
+                )));
+                let rules: Arc<[_]> = self.plan.seccomp.clone().into();
+                match violations::start(listener, rules, record.clone()) {
+                    Ok(done) => child::Reporting::On { record, done },
+                    Err(e) => unavailable(format!("cannot start the supervisor: {e}")),
+                }
+            }
+            Ok(sys::HandOver::Refused(errno)) => unavailable(format!(
+                "the kernel refused a seccomp listener ({}); refused calls still fail",
+                std::io::Error::from_raw_os_error(errno)
+            )),
+            Err(errno) => unavailable(format!(
+                "no listener arrived from the child ({})",
+                std::io::Error::from_raw_os_error(errno)
+            )),
+        }
     }
 
     /// Turns the calling process into `command`, running in this cage: like
@@ -816,7 +875,8 @@ impl Cage {
         if self.plan.namespaces.is_some() && threads > 1 {
             return SpawnError::Unsupported(Unsupported::ExecThreads { threads });
         }
-        match self.prepare(command, grants, fds, sys::Session::Keep) {
+        // No handle and no supervisor: the kernel answers refused calls.
+        match self.prepare(command, grants, fds, sys::Session::Keep, None) {
             Ok(_) => spawn::decode(command.exec()),
             Err(e) => e,
         }
@@ -831,6 +891,7 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
         session: sys::Session,
+        notify: Option<sys::Notify>,
     ) -> Result<(Vec<String>, TmpdirGuard), SpawnError> {
         let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
         if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
@@ -900,6 +961,7 @@ impl Cage {
             keep,
             ruleset,
             filter: self.filter.to_vec(),
+            notify,
         }
         .install(command);
         Ok((dropped, removal))
@@ -1209,5 +1271,22 @@ pub mod testing {
                 0,
             ],
         )
+    }
+
+    /// Installs, on the calling thread, a filter with a listener that
+    /// notifies `kcmp` (which nothing here calls), as an outer sandbox using
+    /// notification would; children spawned from this thread inherit it.
+    /// Returns the listener, which must stay open.
+    pub fn install_outer_listener() -> std::io::Result<std::os::fd::OwnedFd> {
+        use procage_policy::linux::{Action, Condition, SeccompRule, Syscall};
+        let rule = SeccompRule {
+            syscall: Syscall::Kcmp,
+            condition: Condition::Always,
+            action: Action::Eperm,
+            reason: None,
+        };
+        let filter = super::seccomp::build(&[rule], &super::seccomp::NATIVE, true)
+            .map_err(std::io::Error::other)?;
+        sys::install_outer_listener(filter).map_err(std::io::Error::from_raw_os_error)
     }
 }

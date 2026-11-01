@@ -110,15 +110,21 @@ fn for_tier(mut p: Policy, tier: Tier) -> Policy {
 }
 
 /// Options for `tier`: on T1 the data classes and literal rules may be
-/// approximated.
+/// approximated. With `PROCAGE_ESCAPE_VIOLATIONS=1` cages report refused
+/// calls, so the suite shows that reporting weakens nothing.
 fn options(tier: Tier) -> CageOptions {
-    CageOptions::default().with_tier(tier).with_lower(
+    let options = CageOptions::default().with_tier(tier).with_lower(
         LowerOptions::default()
             .allow(Construct::HdSecrets)
             .allow(Construct::HdTrustHandoff)
             .allow(Construct::HdPersistence)
             .allow(Construct::FsLiteral),
-    )
+    );
+    if std::env::var_os("PROCAGE_ESCAPE_VIOLATIONS").is_some_and(|v| v == "1") {
+        options.with_violations()
+    } else {
+        options
+    }
 }
 
 fn cage(p: &Policy, tier: Tier) -> Cage {
@@ -310,6 +316,39 @@ fn child_entry() {
         fd if fd.starts_with("fd:") => {
             let n: i32 = fd[3..].parse().unwrap();
             format!("open={}", testing::fd_is_open(n))
+        }
+        listeners if listeners.starts_with("listeners:") => {
+            // How many seccomp listeners this process holds, and what
+            // reopening the parent's through /proc gives.
+            let is_listener = |link: &Path| {
+                std::fs::read_link(link)
+                    .is_ok_and(|t| t.to_string_lossy().contains("seccomp notify"))
+            };
+            let own = std::fs::read_dir("/proc/self/fd")
+                .map(|d| {
+                    d.filter_map(Result::ok)
+                        .filter(|e| is_listener(&e.path()))
+                        .count()
+                })
+                .unwrap_or(0);
+            let parent = &listeners["listeners:".len()..];
+            let mut seen = 0;
+            let mut reopened = 0;
+            for fd in 3..64 {
+                let link = PathBuf::from(format!("/proc/{parent}/fd/{fd}"));
+                if is_listener(&link) {
+                    seen += 1;
+                    if std::fs::OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .open(&link)
+                        .is_ok()
+                    {
+                        reopened += 1;
+                    }
+                }
+            }
+            format!("own={own} parent-seen={seen} reopened={reopened}")
         }
         "sleepers" => {
             let same = testing::spawn_sleeper(false).unwrap();
@@ -1045,4 +1084,35 @@ fn r30_a_protected_file_cannot_be_replaced() {
         .spawn(&mut Command::new("/bin/true"), &Grants::new())
         .unwrap_err();
     assert!(matches!(err, SpawnError::Path { .. }), "{err}");
+}
+
+// ---- R-32 Seccomp listener hijack ----
+
+/// With violation reporting, no process of the run holds the seccomp
+/// listener, and reopening the parent's through `/proc` (granted here) is
+/// refused by the kernel: caged code cannot answer its own refused calls.
+#[test]
+fn r32_the_seccomp_listener_stays_out_of_reach() {
+    for tier in tiers() {
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, "/proc"));
+        let c = Cage::with_options(&p, &options(tier).with_violations())
+            .unwrap_or_else(|e| panic!("{tier}: {e}"));
+        let mut child = c
+            .spawn(
+                &mut child_command(&format!("listeners:{}", std::process::id())),
+                &Grants::new(),
+            )
+            .unwrap();
+        let mut out = String::new();
+        std::io::Read::read_to_string(child.stdout.as_mut().unwrap(), &mut out).unwrap();
+        child.wait().unwrap();
+        let line = first_result(out.as_bytes()).unwrap_or_else(|| panic!("{tier}: {out}"));
+        assert!(line.starts_with("own=0 "), "{tier}: {line}");
+        assert!(line.ends_with(" reopened=0"), "{tier}: {line}");
+        assert_eq!(
+            child.violations().coverage(),
+            &procage::Coverage::SystemCalls
+        );
+    }
 }

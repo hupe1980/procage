@@ -174,7 +174,10 @@ procage inside it for finer-grained policy.
   identical denials are reported once per process), and no decision of the
   sandbox depends on them. Caged code chooses the paths it is denied, so a
   report's target is untrusted text; it cannot change which run a report
-  belongs to. Linux does not report denials yet.
+  belongs to. On Linux a cage can report the system calls its seccomp
+  filter refuses, exactly: the filter hands each to a supervisor in the
+  calling process, which answers it with `EPERM` (R-32 covers the
+  listener). Landlock denials (files, network, signals) are not reported.
 
 ## Non-goals
 
@@ -239,6 +242,7 @@ why the numbering has gaps.
 | R-29 | Nested user namespaces | A user namespace created inside the sandbox is used to remount, unmount or remap and so undo the sandbox's mounts. | Linux | mitigate | mitigated | tests/escape_linux.rs::r29_nested_user_namespaces_and_mount_changes_are_refused | KF-L09, KF-L10 |
 | R-30 | Landlock rule loss | Landlock rules attach to existing files: replacing a file by rename drops its rule, and paths that do not exist yet cannot be ruled. On a tier without mount isolation this is reported as a capability gap. | Linux | mitigate | mitigated | tests/escape_linux.rs::r30_a_protected_file_cannot_be_replaced | — |
 | R-31 | Truncation without write access | Below Landlock ABI 3 the kernel cannot deny truncation: truncating a file by path, or opening it with `O_TRUNC` but no write access, empties any file the child may read. | Linux | mitigate | mitigated | tests/escape_linux.rs::r31_files_outside_the_writable_paths_cannot_be_truncated | KF-L14 |
+| R-32 | Seccomp listener hijack | With violation reporting on Linux, the filter reports refused calls to a listener; a process holding it could answer its own refused call with `CONTINUE` and run it. The listener goes to the parent before the exec; the child keeps no copy, and the kernel refuses reopening it through `/proc`. | Linux | mitigate | mitigated | tests/escape_linux.rs::r32_the_seccomp_listener_stays_out_of_reach | KF-L15 |
 
 ### Harness responsibilities
 

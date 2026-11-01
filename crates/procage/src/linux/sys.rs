@@ -230,6 +230,7 @@ pub(crate) mod steps {
     pub(crate) const LANDLOCK: u32 = 10;
     pub(crate) const SECCOMP: u32 = 11;
     pub(crate) const VERIFY: u32 = 12;
+    pub(crate) const LISTENER: u32 = 13;
 }
 
 const STEP_MARKER: i32 = 0x5043_0000;
@@ -298,6 +299,84 @@ pub(crate) struct ChildPlan {
     pub(crate) keep: Vec<c_int>,
     pub(crate) ruleset: OwnedFd,
     pub(crate) filter: Vec<Insn>,
+    /// With violation reporting: the listener hand-over.
+    pub(crate) notify: Option<Notify>,
+}
+
+/// The child's side of violation reporting: the notifying filter, its end
+/// of the socket pair, and a control buffer for the listener, all
+/// allocated in the parent.
+pub(crate) struct Notify {
+    pub(crate) filter: Vec<Insn>,
+    pub(crate) socket: OwnedFd,
+    pub(crate) control: Vec<u8>,
+}
+
+impl Notify {
+    /// The hand-over for `filter`, with the child's end `socket`.
+    pub(crate) fn new(filter: Vec<Insn>, socket: OwnedFd) -> Notify {
+        // SAFETY: CMSG_SPACE only computes a size.
+        let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as u32) } as usize;
+        Notify {
+            filter,
+            socket,
+            control: vec![0; space],
+        }
+    }
+}
+
+/// `seccomp(SET_MODE_FILTER, flags, filter)`: the listener descriptor with
+/// `SECCOMP_FILTER_FLAG_NEW_LISTENER`, else 0.
+fn install_filter(filter: &mut [Insn], flags: libc::c_ulong) -> Result<c_int, i32> {
+    let prog = libc::sock_fprog {
+        len: u16::try_from(filter.len()).map_err(|_| libc::E2BIG)?,
+        filter: filter.as_mut_ptr().cast(),
+    };
+    // SAFETY: `Insn` has the layout of `struct sock_filter` (checked by a
+    // test); prog points to the parent's buffer for the whole call.
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_seccomp,
+            libc::SECCOMP_SET_MODE_FILTER,
+            flags,
+            &raw const prog,
+        )
+    };
+    if rc < 0 {
+        Err(errno())
+    } else {
+        Ok(c_int::try_from(rc).unwrap_or(-1))
+    }
+}
+
+/// Sends `bytes` on `socket`, with descriptor `fd` attached when given.
+/// System calls only; `control` was allocated in the parent.
+fn send(socket: c_int, bytes: &[u8], fd: Option<c_int>, control: &mut [u8]) -> Result<(), i32> {
+    let mut iov = libc::iovec {
+        iov_base: bytes.as_ptr().cast_mut().cast(),
+        iov_len: bytes.len(),
+    };
+    // SAFETY: a zeroed msghdr is a valid empty message.
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_iov = &raw mut iov;
+    msg.msg_iovlen = 1;
+    if let Some(fd) = fd {
+        msg.msg_control = control.as_mut_ptr().cast();
+        msg.msg_controllen = control.len() as _;
+        // SAFETY: the control buffer holds CMSG_SPACE(sizeof(int)) bytes, so
+        // the first header and its data fit.
+        unsafe {
+            let header = libc::CMSG_FIRSTHDR(&raw const msg);
+            (*header).cmsg_level = libc::SOL_SOCKET;
+            (*header).cmsg_type = libc::SCM_RIGHTS;
+            (*header).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<c_int>() as u32) as _;
+            std::ptr::write_unaligned(libc::CMSG_DATA(header).cast::<c_int>(), fd);
+        }
+    }
+    // SAFETY: msg and everything it points to live on this frame or in the
+    // parent's buffers for the whole call.
+    let rc = unsafe { libc::sendmsg(socket, &raw const msg, libc::MSG_NOSIGNAL) };
+    if rc < 0 { Err(errno()) } else { Ok(()) }
 }
 
 fn write_file(path: &CStr, data: &[u8]) -> Result<(), i32> {
@@ -562,21 +641,33 @@ impl ChildPlan {
             )
         };
         check(rc).map_err(|e| fail(steps::LANDLOCK, e))?;
-        let prog = libc::sock_fprog {
-            len: u16::try_from(self.filter.len()).map_err(|_| fail(steps::SECCOMP, libc::E2BIG))?,
-            filter: self.filter.as_mut_ptr().cast(),
-        };
-        // SAFETY: `Insn` has the layout of `struct sock_filter` (checked by a
-        // test); prog points to the parent's buffer for the whole call.
-        let rc = unsafe {
-            libc::syscall(
-                libc::SYS_seccomp,
-                libc::SECCOMP_SET_MODE_FILTER,
-                0u32,
-                &raw const prog,
-            )
-        };
-        check(rc).map_err(|e| fail(steps::SECCOMP, e))?;
+        match &mut self.notify {
+            // Violation reporting: the filter reports refused calls to a
+            // listener, which goes to the parent before the exec; the child
+            // keeps no copy. Without a listener (a filter of an outer
+            // sandbox already has one), the plain filter, and the reason.
+            Some(notify) => {
+                let socket = notify.socket.as_raw_fd();
+                match install_filter(&mut notify.filter, libc::SECCOMP_FILTER_FLAG_NEW_LISTENER) {
+                    Ok(listener) => {
+                        let sent = send(socket, &[1], Some(listener), &mut notify.control);
+                        // SAFETY: closing the listener this sequence created.
+                        unsafe { libc::close(listener) };
+                        sent.map_err(|e| fail(steps::LISTENER, e))?;
+                    }
+                    Err(refused) => {
+                        install_filter(&mut self.filter, 0).map_err(|e| fail(steps::SECCOMP, e))?;
+                        let mut status = [0u8; 5];
+                        status[1..].copy_from_slice(&refused.to_le_bytes());
+                        send(socket, &status, None, &mut notify.control)
+                            .map_err(|e| fail(steps::LISTENER, e))?;
+                    }
+                }
+            }
+            None => {
+                install_filter(&mut self.filter, 0).map_err(|e| fail(steps::SECCOMP, e))?;
+            }
+        }
         let seccomp = prctl(libc::PR_GET_SECCOMP, 0).map_err(|e| fail(steps::VERIFY, e))?;
         let nnp = prctl(libc::PR_GET_NO_NEW_PRIVS, 0).map_err(|e| fail(steps::VERIFY, e))?;
         if seccomp != 2 || nnp != 1 {
@@ -592,7 +683,8 @@ impl ChildPlan {
         // SAFETY: `run` issues only system calls (setsid or setpgid, prctl,
         // getppid, unshare, open/write/close on /proc/self, mount,
         // capset, setrlimit, close_range or fcntl, getrlimit,
-        // landlock_restrict_self, seccomp). Everything it reads was
+        // landlock_restrict_self, seccomp, and with reporting sendmsg and
+        // close). Everything it reads was
         // allocated in the parent and is owned by the closure.
         unsafe {
             command.pre_exec(move || plan.run());
@@ -779,6 +871,197 @@ pub(crate) fn tty_ioctl_errno(fd: c_int, byte: Option<u8>) -> i32 {
         }
     };
     if rc == -1 { errno() } else { 0 }
+}
+
+// ------------------------------------------------------------------ listener
+
+/// Sets `no_new_privs` on the calling thread and installs `filter` with a
+/// listener there (for tests: an outer sandbox using notification).
+pub(crate) fn install_outer_listener(mut filter: Vec<Insn>) -> Result<OwnedFd, i32> {
+    prctl(libc::PR_SET_NO_NEW_PRIVS, 1)?;
+    let fd = install_filter(&mut filter, libc::SECCOMP_FILTER_FLAG_NEW_LISTENER)?;
+    // SAFETY: the kernel just created this descriptor for us.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// A `SOCK_SEQPACKET` pair, close-on-exec: the parent's end and the child's.
+pub(crate) fn socket_pair() -> std::io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0 as c_int; 2];
+    // SAFETY: socketpair writes two descriptors into the array.
+    let rc = unsafe {
+        libc::socketpair(
+            libc::AF_UNIX,
+            libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC,
+            0,
+            fds.as_mut_ptr(),
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors are new and owned here.
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+}
+
+/// What the child sent before its exec.
+pub(crate) enum HandOver {
+    /// The seccomp listener.
+    Listener(OwnedFd),
+    /// No listener: the errno the kernel gave; the plain filter is in force.
+    Refused(i32),
+}
+
+/// Reads the child's message from the parent's end, without waiting (it
+/// was sent before the exec that the spawn waited for).
+pub(crate) fn receive(socket: &OwnedFd) -> Result<HandOver, i32> {
+    let mut bytes = [0u8; 5];
+    let mut iov = libc::iovec {
+        iov_base: bytes.as_mut_ptr().cast(),
+        iov_len: bytes.len(),
+    };
+    // SAFETY: CMSG_SPACE only computes a size.
+    let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as u32) } as usize;
+    let mut control = vec![0u8; space];
+    // SAFETY: a zeroed msghdr is a valid empty message.
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_iov = &raw mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.as_mut_ptr().cast();
+    msg.msg_controllen = control.len() as _;
+    // SAFETY: msg points to buffers on this frame for the whole call.
+    let n = unsafe {
+        libc::recvmsg(
+            socket.as_raw_fd(),
+            &raw mut msg,
+            libc::MSG_DONTWAIT | libc::MSG_CMSG_CLOEXEC,
+        )
+    };
+    if n < 1 {
+        return Err(if n < 0 { errno() } else { libc::EPIPE });
+    }
+    // SAFETY: the kernel filled msg; CMSG_FIRSTHDR checks the length.
+    let header = unsafe { libc::CMSG_FIRSTHDR(&raw const msg) };
+    let fd = if header.is_null() {
+        None
+    } else {
+        // SAFETY: a non-null header lies within the control buffer.
+        let h = unsafe { &*header };
+        (h.cmsg_level == libc::SOL_SOCKET && h.cmsg_type == libc::SCM_RIGHTS).then(|| {
+            // SAFETY: an SCM_RIGHTS header carries at least one descriptor.
+            unsafe { std::ptr::read_unaligned(libc::CMSG_DATA(header).cast::<c_int>()) }
+        })
+    };
+    // SAFETY: the kernel installed this descriptor for us; owned at once so
+    // that a malformed message does not leak it.
+    let fd = fd.map(|fd| unsafe { OwnedFd::from_raw_fd(fd) });
+    match (bytes[0], fd) {
+        (1, Some(fd)) => Ok(HandOver::Listener(fd)),
+        (0, None) if n == 5 => Ok(HandOver::Refused(i32::from_le_bytes([
+            bytes[1], bytes[2], bytes[3], bytes[4],
+        ]))),
+        _ => Err(libc::EPROTO),
+    }
+}
+
+/// What waiting on a listener found.
+pub(crate) enum Wait {
+    /// A notification is ready.
+    Ready,
+    /// No process uses the filter any more.
+    HungUp,
+    /// Nothing within the timeout.
+    Idle,
+}
+
+/// Waits up to `timeout_ms` on `listener`.
+pub(crate) fn wait_listener(listener: &OwnedFd, timeout_ms: c_int) -> Result<Wait, i32> {
+    let mut pfd = libc::pollfd {
+        fd: listener.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: poll on one pollfd on this frame.
+    let rc = unsafe { libc::poll(&raw mut pfd, 1, timeout_ms) };
+    if rc < 0 {
+        let e = errno();
+        return if e == libc::EINTR {
+            Ok(Wait::Idle)
+        } else {
+            Err(e)
+        };
+    }
+    if rc == 0 {
+        return Ok(Wait::Idle);
+    }
+    if pfd.revents & libc::POLLIN != 0 {
+        Ok(Wait::Ready)
+    } else {
+        Ok(Wait::HungUp)
+    }
+}
+
+/// One refused call the kernel reported.
+pub(crate) struct Notification {
+    pub(crate) id: u64,
+    pub(crate) pid: u32,
+    pub(crate) nr: u32,
+    pub(crate) args: [u64; 6],
+}
+
+/// Receives one notification (`SECCOMP_IOCTL_NOTIF_RECV`).
+pub(crate) fn receive_notification(listener: &OwnedFd) -> Result<Notification, i32> {
+    // SAFETY: the kernel requires a zeroed structure.
+    let mut n: libc::seccomp_notif = unsafe { std::mem::zeroed() };
+    // SAFETY: the ioctl fills the structure on this frame.
+    let rc = unsafe {
+        libc::ioctl(
+            listener.as_raw_fd(),
+            libc::SECCOMP_IOCTL_NOTIF_RECV,
+            &raw mut n,
+        )
+    };
+    if rc != 0 {
+        return Err(errno());
+    }
+    Ok(Notification {
+        id: n.id,
+        pid: n.pid,
+        nr: n.data.nr as u32,
+        args: n.data.args,
+    })
+}
+
+/// Answers notification `id`: the call fails with `EPERM`. Never anything
+/// else: no value, no flags (`SECCOMP_USER_NOTIF_FLAG_CONTINUE` would let the
+/// call run). `ENOENT`: the caller was interrupted and the call withdrawn.
+pub(crate) fn answer_eperm(listener: &OwnedFd, id: u64) -> Result<(), i32> {
+    let mut resp = libc::seccomp_notif_resp {
+        id,
+        val: 0,
+        error: -libc::EPERM,
+        flags: 0,
+    };
+    // SAFETY: the ioctl reads the structure on this frame.
+    let rc = unsafe {
+        libc::ioctl(
+            listener.as_raw_fd(),
+            libc::SECCOMP_IOCTL_NOTIF_SEND,
+            &raw mut resp,
+        )
+    };
+    if rc != 0 { Err(errno()) } else { Ok(()) }
+}
+
+/// Whether notification `id` is still pending (its caller still blocked).
+pub(crate) fn notification_valid(listener: &OwnedFd, id: u64) -> bool {
+    // SAFETY: the ioctl reads one u64 on this frame.
+    unsafe {
+        libc::ioctl(
+            listener.as_raw_fd(),
+            libc::SECCOMP_IOCTL_NOTIF_ID_VALID,
+            &raw const id,
+        ) == 0
+    }
 }
 
 #[cfg(test)]

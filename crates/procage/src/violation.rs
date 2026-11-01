@@ -7,12 +7,13 @@
 //! record proves nothing unless it is [`complete`](Violations::complete) and
 //! its [coverage](Violations::coverage) is [`Coverage::Observed`].
 
-// The record and the parser serve the macOS monitor; Linux reports nothing
-// yet but keeps them compiled and tested.
+// The log parser serves the macOS monitor; Linux keeps it compiled and
+// tested.
 #![cfg_attr(target_os = "linux", allow(dead_code))]
 
 use std::fmt;
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
 
 use procage_policy::{DenyReason, HardDenyClass};
@@ -54,8 +55,15 @@ pub enum DeniedBy {
     Protect,
     /// A `Hide` rule: the path is unreadable.
     Hide,
-    /// A deny rule of the policy's raw Seatbelt layer.
+    /// A deny rule of the policy's raw layer (Seatbelt rules on macOS,
+    /// `syscalls_deny` on Linux).
     Layer,
+    /// Linux `Lifetime::Run`: leaving the run's process group is refused, so
+    /// that ending the run reaches every descendant.
+    Lifetime,
+    /// Linux below Landlock ABI 3: truncation is refused everywhere, because
+    /// Landlock cannot confine it on this kernel.
+    OlderKernel,
     /// A code this version does not know, kept as reported.
     Unknown(String),
 }
@@ -66,11 +74,22 @@ impl DeniedBy {
             return DeniedBy::NotGranted;
         };
         match DenyReason::from_code(code) {
+            Some(reason) => DeniedBy::from_reason(Some(reason)),
+            None => DeniedBy::Unknown(code.to_string()),
+        }
+    }
+
+    /// The kind for a rule's reason; `None`: not granted.
+    pub(crate) fn from_reason(reason: Option<DenyReason>) -> DeniedBy {
+        match reason {
+            None => DeniedBy::NotGranted,
             Some(DenyReason::HardDeny(class)) => DeniedBy::HardDeny(class),
             Some(DenyReason::Protect) => DeniedBy::Protect,
             Some(DenyReason::Hide) => DeniedBy::Hide,
             Some(DenyReason::Layer) => DeniedBy::Layer,
-            _ => DeniedBy::Unknown(code.to_string()),
+            Some(DenyReason::Lifetime) => DeniedBy::Lifetime,
+            Some(DenyReason::OlderKernel) => DeniedBy::OlderKernel,
+            Some(other) => DeniedBy::Unknown(other.code()),
         }
     }
 }
@@ -82,7 +101,13 @@ impl fmt::Display for DeniedBy {
             DeniedBy::HardDeny(class) => write!(f, "denied by the {class} hard-deny class"),
             DeniedBy::Protect => f.write_str("the path is protected (read-only)"),
             DeniedBy::Hide => f.write_str("the path is hidden"),
-            DeniedBy::Layer => f.write_str("denied by a raw Seatbelt rule"),
+            DeniedBy::Layer => f.write_str("denied by a rule of the policy's raw layer"),
+            DeniedBy::Lifetime => f.write_str(
+                "refused so that descendants stay in the run (Lifetime::Run; Lifetime::Tree allows it)",
+            ),
+            DeniedBy::OlderKernel => f.write_str(
+                "refused because this kernel's Landlock cannot confine truncation (below ABI 3)",
+            ),
             DeniedBy::Unknown(code) => write!(f, "denied ({code})"),
         }
     }
@@ -109,8 +134,11 @@ pub enum Coverage {
     /// The cage was built without `CageOptions::with_violations`.
     Off,
     /// Every denial is reported, best effort: identical denials by one
-    /// process (same operation and target) are reported once.
+    /// process (same operation and target) are reported once (macOS).
     Observed,
+    /// Every system call the seccomp filter refuses is reported, exactly;
+    /// file, network and signal denials by Landlock are not (Linux).
+    SystemCalls,
     /// Reporting could not start or stopped; the reason.
     Unavailable(String),
     /// This platform does not report denials yet.
@@ -122,6 +150,9 @@ impl fmt::Display for Coverage {
         match self {
             Coverage::Off => f.write_str("reporting is off for this cage"),
             Coverage::Observed => f.write_str("denials are reported"),
+            Coverage::SystemCalls => {
+                f.write_str("refused system calls are reported; file and network denials are not")
+            }
             Coverage::Unavailable(reason) => write!(f, "reporting is unavailable: {reason}"),
             Coverage::NotObserved => f.write_str("this platform does not report denials yet"),
         }
@@ -198,6 +229,13 @@ impl<'a> IntoIterator for &'a Violations {
     }
 }
 
+/// A run's record, shared by its handle and whatever collects it.
+pub(crate) type Sink = Arc<Mutex<Record>>;
+
+pub(crate) fn lock(sink: &Sink) -> MutexGuard<'_, Record> {
+    sink.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// A run's record while it is collected: the violations so far and the
 /// optional live receiver's sender.
 #[derive(Debug)]
@@ -242,7 +280,10 @@ impl Record {
     /// The record is complete: every report up to now was delivered. A
     /// record whose reporting stopped stays incomplete.
     pub(crate) fn finish(&mut self) {
-        if self.violations.coverage == Coverage::Observed {
+        if matches!(
+            self.violations.coverage,
+            Coverage::Observed | Coverage::SystemCalls
+        ) {
             self.violations.complete = true;
         }
     }

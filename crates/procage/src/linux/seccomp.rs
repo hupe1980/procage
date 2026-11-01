@@ -7,7 +7,9 @@
 //! condition on an argument, return the deny's errno. Blocks are independent,
 //! so every jump stays short. Everything else is allowed.
 
-use procage_policy::linux::{Action, Condition, O_ACCMODE, O_TRUNC, SeccompRule, Syscall};
+use procage_policy::linux::{
+    Action, CLONE_NEW_ANY, CLONE_THREAD, Condition, O_ACCMODE, O_TRUNC, SeccompRule, Syscall,
+};
 
 /// One classic BPF instruction (`struct sock_filter`).
 #[repr(C)]
@@ -41,17 +43,6 @@ const fn arg(n: u32) -> u32 {
 
 /// `__X32_SYSCALL_BIT`.
 const X32_BIT: u32 = 0x4000_0000;
-
-/// The `CLONE_NEW*` flags `clone` accepts (`CLONE_NEWTIME` is not one: its
-/// bit is part of the exit signal there).
-const CLONE_NEW_ANY: u32 = 0x0002_0000 // NEWNS
-    | 0x0200_0000 // NEWCGROUP
-    | 0x0400_0000 // NEWUTS
-    | 0x0800_0000 // NEWIPC
-    | 0x1000_0000 // NEWUSER
-    | 0x2000_0000 // NEWPID
-    | 0x4000_0000; // NEWNET
-const CLONE_THREAD: u32 = 0x0001_0000;
 
 /// An architecture: its audit value, whether x32 calls must be killed, and
 /// its syscall numbers.
@@ -160,8 +151,11 @@ const fn ret(k: u32) -> Insn {
     insn(RET_K, 0, 0, k)
 }
 
-fn verdict(action: Action) -> u32 {
+/// The return value of a deny; with `notify`, an `EPERM` deny goes to the
+/// supervisor, which answers `EPERM` and records it.
+fn verdict(action: Action, notify: bool) -> u32 {
     let errno = match action {
+        Action::Eperm if notify => return libc::SECCOMP_RET_USER_NOTIF,
         Action::Eperm => libc::EPERM,
         Action::Enosys => libc::ENOSYS,
     };
@@ -220,9 +214,10 @@ fn body(condition: &Condition, deny: Insn) -> Result<Vec<Insn>, String> {
     })
 }
 
-/// The filter for `rules` on `arch`. Fails with the name of a syscall that
-/// has no number.
-pub(crate) fn build(rules: &[SeccompRule], arch: &Arch) -> Result<Vec<Insn>, String> {
+/// The filter for `rules` on `arch`; with `notify`, `EPERM` denies are
+/// reported to a supervisor (see [`verdict`]). Fails with the name of a
+/// syscall that has no number.
+pub(crate) fn build(rules: &[SeccompRule], arch: &Arch, notify: bool) -> Result<Vec<Insn>, String> {
     let mut prog = vec![
         ld(ARCH),
         insn(JEQ_K, 1, 0, arch.audit),
@@ -235,7 +230,7 @@ pub(crate) fn build(rules: &[SeccompRule], arch: &Arch) -> Result<Vec<Insn>, Str
         let Some(nr) = (arch.number)(&rule.syscall).map_err(|()| rule.syscall.to_string())? else {
             continue;
         };
-        let body = body(&rule.condition, ret(verdict(rule.action)))?;
+        let body = body(&rule.condition, ret(verdict(rule.action, notify)))?;
         prog.push(ld(NR));
         prog.push(insn(JEQ_K, 0, offset(body.len())?, nr));
         prog.extend(body);
@@ -308,6 +303,7 @@ mod tests {
             syscall,
             condition,
             action: Action::Eperm,
+            reason: None,
         }
     }
 
@@ -330,9 +326,10 @@ mod tests {
                 syscall: Syscall::Clone3,
                 condition: Condition::Always,
                 action: Action::Enosys,
+                reason: None,
             },
         ];
-        let prog = build(&rules, &NATIVE).unwrap();
+        let prog = build(&rules, &NATIVE, false).unwrap();
         let v = |s: Syscall, args: [u64; 6]| run(&prog, &call(s, args));
         assert_eq!(v(Syscall::Ptrace, [0; 6]), EPERM);
         assert_eq!(
@@ -363,7 +360,7 @@ mod tests {
             Syscall::Openat,
             Condition::TruncWithoutWrite { flags_arg: 2 },
         )];
-        let prog = build(&rules, &NATIVE).unwrap();
+        let prog = build(&rules, &NATIVE, false).unwrap();
         let v = |flags: i32| {
             let flags = u64::from(flags as u32);
             run(&prog, &call(Syscall::Openat, [0, 0, flags, 0, 0, 0]))
@@ -389,7 +386,7 @@ mod tests {
                 Condition::SocketFamilyExcept(vec![AF_UNIX]),
             ),
         ];
-        let prog = build(&rules, &NATIVE).unwrap();
+        let prog = build(&rules, &NATIVE, false).unwrap();
         let v = |s: Syscall, args: [u64; 6]| run(&prog, &call(s, args));
         assert_eq!(v(Syscall::Clone, [0x11, 0, 0, 0, 0, 0]), EPERM);
         assert_eq!(
@@ -405,7 +402,7 @@ mod tests {
 
     #[test]
     fn a_foreign_architecture_is_killed() {
-        let prog = build(&[], &NATIVE).unwrap();
+        let prog = build(&[], &NATIVE, false).unwrap();
         let mut data = call(Syscall::Kill, [0; 6]);
         assert_eq!(run(&prog, &data), RET_ALLOW);
         data.arch = 0x4000_0003; // i386
@@ -414,7 +411,7 @@ mod tests {
 
     #[test]
     fn x32_calls_are_killed_where_they_exist() {
-        let prog = build(&[], &NATIVE).unwrap();
+        let prog = build(&[], &NATIVE, false).unwrap();
         let data = Data {
             nr: X32_BIT | 39,
             arch: NATIVE.audit,
@@ -437,7 +434,7 @@ mod tests {
 
     #[test]
     fn an_x86_64_filter_kills_x32_and_i386_calls() {
-        let prog = build(&[], &X86_64).unwrap();
+        let prog = build(&[], &X86_64, false).unwrap();
         let x32 = Data {
             nr: X32_BIT | 39,
             arch: X86_64.audit,
@@ -461,6 +458,121 @@ mod tests {
     /// The filter of every policy denies the hard-deny syscalls, including
     /// the mount family, whose kernel errno cannot be told apart from a
     /// missing privilege.
+    /// Policies that together use every rule origin and condition.
+    fn varied_plans() -> Vec<Vec<SeccompRule>> {
+        use procage_policy::{
+            Lifetime, LowerOptions, Network, Plan, Policy, Signals, Target, Tier, lower,
+        };
+        let mut policies = vec![Policy::default()];
+        let mut p = Policy::default();
+        p.process.fork = true;
+        p.process.lifetime = Lifetime::Run;
+        p.process.signals = Signals::None;
+        p.net = Network::None;
+        p.ipc
+            .unix_sockets
+            .push(procage_policy::AbsPath::new("/run/x.sock").unwrap());
+        policies.push(p);
+        let mut out = Vec::new();
+        for policy in &policies {
+            for tier in [Tier::T1, Tier::T2] {
+                for abi in [1, 2, 6, 8] {
+                    let target = Target::Linux {
+                        tier,
+                        landlock_abi: abi,
+                    };
+                    let options = LowerOptions::default().accept_spawn_snapshot();
+                    if let Ok(Plan::Linux(plan)) = lower(policy, target, &options) {
+                        out.push(plan.seccomp);
+                    }
+                }
+            }
+        }
+        assert!(out.len() >= 8, "{}", out.len());
+        out
+    }
+
+    /// The notifying filter is the plain one with every `EPERM` verdict
+    /// replaced, and nothing else.
+    #[test]
+    fn notifying_changes_only_eperm_verdicts() {
+        let mut replaced = 0;
+        for rules in varied_plans() {
+            let plain = build(&rules, &NATIVE, false).unwrap();
+            let notify = build(&rules, &NATIVE, true).unwrap();
+            assert_eq!(plain.len(), notify.len());
+            for (p, n) in plain.iter().zip(&notify) {
+                if p != n {
+                    assert_eq!((p.code, p.k), (RET_K, EPERM));
+                    assert_eq!((n.code, n.k), (RET_K, libc::SECCOMP_RET_USER_NOTIF));
+                    replaced += 1;
+                }
+            }
+            assert!(
+                notify
+                    .iter()
+                    .all(|i| i.k != RET_ERRNO | libc::EPERM as u32 || i.code != RET_K)
+            );
+        }
+        assert!(replaced > 0);
+    }
+
+    /// `Condition::matches`, which names the rule behind a notification,
+    /// decides exactly as the filter on edge and pseudo-random arguments.
+    #[test]
+    fn matches_agrees_with_the_filter() {
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let edges = [
+            0u64,
+            1,
+            2,
+            3,
+            TIOCSTI,
+            u64::from(O_TRUNC),
+            u64::from(O_TRUNC | 1),
+            u64::from(O_TRUNC | 2),
+            u64::from(O_TRUNC | 3),
+            u64::from(CLONE_THREAD),
+            u64::from(CLONE_NEW_ANY),
+            0x1000_0000,
+            1 << 32,
+            u64::MAX,
+        ];
+        let mut checked = 0;
+        for rules in varied_plans() {
+            for rule in rules.iter().filter(|r| r.action == Action::Eperm) {
+                let Ok(Some(_)) = (NATIVE.number)(&rule.syscall) else {
+                    continue;
+                };
+                let prog = build(std::slice::from_ref(rule), &NATIVE, false).unwrap();
+                for i in 0..200 {
+                    let mut args = [0u64; 6];
+                    for a in &mut args {
+                        *a = if i < edges.len() * 2 {
+                            edges[(i + checked) % edges.len()]
+                        } else {
+                            next()
+                        };
+                    }
+                    let filtered = run(&prog, &call(rule.syscall.clone(), args)) == EPERM;
+                    assert_eq!(
+                        rule.condition.matches(&args),
+                        filtered,
+                        "{rule:?} {args:x?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 1000, "{checked}");
+    }
+
     #[test]
     fn every_policy_denies_the_hard_deny_syscalls() {
         use procage_policy::{LowerOptions, Plan, Policy, Target, Tier, lower};
@@ -474,7 +586,7 @@ mod tests {
             else {
                 panic!("a Linux plan");
             };
-            let prog = build(&plan.seccomp, &NATIVE).unwrap();
+            let prog = build(&plan.seccomp, &NATIVE, false).unwrap();
             for name in [
                 "mount",
                 "umount2",
@@ -525,7 +637,7 @@ mod tests {
     fn an_unknown_syscall_is_named() {
         let other = Syscall::from_name("acct").unwrap();
         assert_eq!(
-            build(&[rule(other, Condition::Always)], &NATIVE),
+            build(&[rule(other, Condition::Always)], &NATIVE, false),
             Err("acct".to_string())
         );
     }

@@ -105,3 +105,7 @@ The Linux tests run in containers on tier T1 (seccomp unconfined) and tier T2 (D
 | `with_landlock_abi(u8)` | Behave as on an older kernel |
 | `with_home(path)` | One more home directory for the data-driven classes |
 | `with_walk_limit(usize)` | Entries one spawn may visit looking for class paths under writable trees |
+
+## Violation reports
+
+With `CageOptions::with_violations`, every system call the seccomp filter refuses is reported to the harness, exactly, with the process, the call and why (a hard-deny class, not granted, the lifetime lock, the older-kernel truncation guard). It needs no privileges and works on both tiers. Landlock's file, network and signal denials are not reported. See [Violations](@/docs/violations.md).

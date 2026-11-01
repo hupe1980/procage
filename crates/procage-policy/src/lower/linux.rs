@@ -17,12 +17,14 @@ use crate::path::AbsPath;
 use crate::policy::{
     Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Signals,
 };
+use crate::sbpl::DenyReason;
 
 fn deny(syscall: Syscall) -> SeccompRule {
     SeccompRule {
         syscall,
         condition: Condition::Always,
         action: Action::Eperm,
+        reason: None,
     }
 }
 
@@ -31,6 +33,7 @@ fn deny_if(syscall: Syscall, condition: Condition) -> SeccompRule {
         syscall,
         condition,
         action: Action::Eperm,
+        reason: None,
     }
 }
 
@@ -39,7 +42,14 @@ fn enosys(syscall: Syscall) -> SeccompRule {
         syscall,
         condition: Condition::Always,
         action: Action::Enosys,
+        reason: None,
     }
+}
+
+/// `rule`, refused for `reason`.
+fn because(mut rule: SeccompRule, reason: DenyReason) -> SeccompRule {
+    rule.reason = Some(reason);
+    rule
 }
 
 fn class_rules(class: HardDenyClass) -> Vec<SeccompRule> {
@@ -368,8 +378,8 @@ pub(super) fn lower(
             // child's own session or group is started before the filter.
             Lifetime::Run => {
                 ledger.outcome(Construct::LifetimeRun, Outcome::Exact, None, "");
-                seccomp.push(deny(Syscall::Setsid));
-                seccomp.push(deny(Syscall::Setpgid));
+                seccomp.push(because(deny(Syscall::Setsid), DenyReason::Lifetime));
+                seccomp.push(because(deny(Syscall::Setpgid), DenyReason::Lifetime));
             }
             Lifetime::Tree => {
                 ledger.outcome(Construct::LifetimeTree, Outcome::Exact, None, "");
@@ -412,14 +422,18 @@ pub(super) fn lower(
         // Landlock cannot deny truncation below ABI 3: `truncate` and an
         // `open` with `O_TRUNC` but no write access would empty any readable
         // file. This refuses them everywhere, inside writable paths too.
-        seccomp.push(deny(Syscall::Truncate));
-        seccomp.push(deny_if(
-            Syscall::Open,
-            Condition::TruncWithoutWrite { flags_arg: 1 },
+        let guard = DenyReason::OlderKernel;
+        seccomp.push(because(deny(Syscall::Truncate), guard));
+        seccomp.push(because(
+            deny_if(Syscall::Open, Condition::TruncWithoutWrite { flags_arg: 1 }),
+            guard,
         ));
-        seccomp.push(deny_if(
-            Syscall::Openat,
-            Condition::TruncWithoutWrite { flags_arg: 2 },
+        seccomp.push(because(
+            deny_if(
+                Syscall::Openat,
+                Condition::TruncWithoutWrite { flags_arg: 2 },
+            ),
+            guard,
         ));
         // Its flags sit in a structure seccomp cannot read.
         seccomp.push(enosys(Syscall::Openat2));
@@ -505,7 +519,7 @@ pub(super) fn lower(
     if let Some(layer) = &policy.linux {
         ledger.outcome(Construct::LinuxLayer, Outcome::Exact, None, "");
         for syscall in &layer.syscalls_deny {
-            seccomp.push(deny(syscall.clone()));
+            seccomp.push(because(deny(syscall.clone()), DenyReason::Layer));
         }
         for (path, access) in &layer.landlock_extra {
             landlock.rules.push(LandlockRule {
@@ -550,7 +564,11 @@ pub(super) fn lower(
             Some(class.to_string()),
             "",
         ) {
-            seccomp.extend(class_rules(class));
+            seccomp.extend(
+                class_rules(class)
+                    .into_iter()
+                    .map(|r| because(r, DenyReason::HardDeny(class))),
+            );
         }
     }
 
@@ -563,7 +581,17 @@ pub(super) fn lower(
     landlock.net_rules.sort();
     landlock.net_rules.dedup();
     seccomp.sort();
-    seccomp.dedup();
+    // One rule per call and condition, as before reasons existed (the filter
+    // stays the same); a specific reason wins over "not granted".
+    seccomp.dedup_by(|next, kept| {
+        let same = next.syscall == kept.syscall
+            && next.condition == kept.condition
+            && next.action == kept.action;
+        if same && kept.reason.is_none() {
+            kept.reason = next.reason;
+        }
+        same
+    });
     hide_by_siblings.sort();
     hide_by_siblings.dedup();
     unix_socket_paths.sort();

@@ -220,6 +220,27 @@ fn op(spec: &str) -> String {
         "syscall" => {
             return testing::syscall_errno(arg).unwrap().to_string();
         }
+        "median" => {
+            // `median:<syscall>:<n>`: the median time of n calls, in µs.
+            let (name, n) = arg.split_once(':').unwrap();
+            let mut times: Vec<u128> = (0..n.parse::<usize>().unwrap())
+                .map(|_| {
+                    let start = Instant::now();
+                    testing::syscall_errno(name).unwrap();
+                    start.elapsed().as_micros()
+                })
+                .collect();
+            times.sort_unstable();
+            return format!("median={}", times[times.len() / 2]);
+        }
+        "flood" => {
+            // `flood:<syscall>:<n>`: how many of n calls failed with EPERM.
+            let (name, n) = arg.split_once(':').unwrap();
+            let refused = (0..n.parse::<usize>().unwrap())
+                .filter(|_| testing::syscall_errno(name) == Some(EPERM))
+                .count();
+            return format!("refused={refused}");
+        }
         "kill" => {
             return match testing::kill_errno(arg.parse().unwrap(), 0) {
                 0 => "ok".into(),
@@ -1431,4 +1452,251 @@ fn a_fitted_cage_gives_up_only_what_was_named() {
     let (cage, relaxed) = Cage::fit(&child_policy(base()), &options(host_tier()), &relax).unwrap();
     assert!(relaxed.is_empty());
     assert_eq!(cage.tier(), host_tier());
+}
+
+// ---- Violations: the system calls the filter refused ----
+
+fn reporting(policy: Policy, tier: Tier) -> Cage {
+    Cage::with_options(&child_policy(policy), &options(tier).with_violations())
+        .unwrap_or_else(|e| panic!("cage: {e}"))
+}
+
+/// A policy that forks under `Lifetime::Run` and has no network.
+fn refusing() -> Policy {
+    let mut p = base();
+    p.process.fork = true;
+    p.process.lifetime = procage::policy::Lifetime::Run;
+    p.net = Network::None;
+    p
+}
+
+/// Spawns `action`, waits for the exit and returns the result line and
+/// the record read right after it.
+fn reported(cage: &Cage, action: &str) -> (String, procage::Violations) {
+    let mut child = cage
+        .spawn(&mut child_command(action), &Grants::new())
+        .unwrap();
+    let start = Instant::now();
+    while child.try_wait().unwrap().is_none() {
+        assert!(start.elapsed() < Duration::from_secs(20), "child hung");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut out = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
+    let line = out
+        .lines()
+        .find_map(|l| l.split_once("procage-result: ").map(|(_, r)| r.to_string()))
+        .unwrap_or_else(|| panic!("no result: {out}"));
+    (line, child.violations())
+}
+
+fn by_op<'a>(record: &'a procage::Violations, op: &str) -> Vec<&'a procage::Violation> {
+    record.iter().filter(|v| v.operation == op).collect()
+}
+
+/// US1: each refused call is listed with its reason, and the call still
+/// failed with EPERM.
+#[test]
+fn refused_calls_are_reported_with_their_reason() {
+    use procage::DeniedBy;
+    for tier in tiers() {
+        let cage = reporting(refusing(), tier);
+        let (line, record) = reported(&cage, "syscall:ptrace;socket;syscall:setsid");
+        assert_eq!(line, format!("{EPERM} {EPERM} {EPERM}"), "{tier:?}");
+        assert_eq!(record.coverage(), &procage::Coverage::SystemCalls);
+        assert!(record.complete(), "{tier:?} {record:#?}");
+        let one = |op: &str| {
+            let found = by_op(&record, op);
+            assert_eq!(found.len(), 1, "{tier:?} {op}: {record:#?}");
+            found[0].clone()
+        };
+        let ptrace = one("ptrace");
+        assert_eq!(
+            ptrace.denied_by,
+            DeniedBy::HardDeny(HardDenyClass::ProcessAccess)
+        );
+        // The process, not the libtest thread that made the call.
+        assert!(ptrace.process.starts_with("spawn_linux"), "{ptrace:?}");
+        let socket = one("socket");
+        assert_eq!(socket.denied_by, DeniedBy::NotGranted);
+        assert_eq!(socket.target.as_deref(), Some("family AF_INET"));
+        assert_eq!(one("setsid").denied_by, DeniedBy::Lifetime);
+        assert!(
+            socket
+                .to_string()
+                .contains("was denied socket family AF_INET: not granted")
+        );
+    }
+}
+
+#[test]
+fn reporting_is_off_by_default_on_linux() {
+    let cage = Cage::with_options(&child_policy(refusing()), &options(host_tier())).unwrap();
+    let mut child = cage
+        .spawn(&mut child_command("syscall:ptrace"), &Grants::new())
+        .unwrap();
+    child.wait().unwrap();
+    let record = child.violations();
+    assert_eq!(record.coverage(), &procage::Coverage::Off);
+    assert!(record.is_empty());
+    assert!(child.violation_receiver().is_none());
+}
+
+/// US3: the receiver yields while the child runs, the record stays open
+/// while a process of the run is left, and kill_all completes it.
+#[test]
+fn a_record_completes_when_the_run_ends() {
+    let cage = reporting(refusing(), host_tier());
+    let mut child = cage
+        .spawn(
+            &mut child_command("syscall:ptrace;sleep:5000"),
+            &Grants::new(),
+        )
+        .unwrap();
+    let rx = child.violation_receiver().expect("SystemCalls");
+    let v = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("a live violation");
+    assert_eq!(v.operation, "ptrace");
+    assert!(!child.violations().complete());
+    child.kill_all().unwrap();
+    let record = child.violations();
+    assert!(record.complete(), "{record:#?}");
+    assert_eq!(by_op(&record, "ptrace").len(), 1);
+}
+
+/// A descendant that outlives the child keeps the record open.
+#[test]
+fn a_surviving_descendant_keeps_the_record_open() {
+    let mut policy = refusing();
+    policy
+        .fs
+        .push(FsRule::new(Access::Exec, FsTarget::Subpath(abs("/bin"))));
+    policy
+        .fs
+        .push(FsRule::new(Access::Exec, FsTarget::Subpath(abs("/usr"))));
+    policy
+        .fs
+        .push(FsRule::new(Access::Exec, FsTarget::Subpath(abs("/lib"))));
+    let cage = reporting(policy, host_tier());
+    let mut cmd = Command::new("/bin/sh");
+    cmd.args(["-c", "sleep 5 & exit 0"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    child.wait().unwrap();
+    assert!(!child.violations().complete());
+    child.kill_all().unwrap();
+    assert!(child.violations().complete());
+}
+
+#[test]
+fn concurrent_runs_keep_their_own_calls() {
+    let cage = reporting(refusing(), host_tier());
+    let spawn = |action: &str| {
+        cage.spawn(&mut child_command(action), &Grants::new())
+            .unwrap()
+    };
+    let (mut a, mut b) = (
+        spawn("syscall:ptrace;sleep:300"),
+        spawn("syscall:setsid;sleep:300"),
+    );
+    a.wait().unwrap();
+    b.wait().unwrap();
+    let (ra, rb) = (a.violations(), b.violations());
+    assert!(
+        by_op(&ra, "ptrace").len() == 1 && by_op(&ra, "setsid").is_empty(),
+        "{ra:#?}"
+    );
+    assert!(
+        by_op(&rb, "setsid").len() == 1 && by_op(&rb, "ptrace").is_empty(),
+        "{rb:#?}"
+    );
+}
+
+/// SR-002: a detached run is still answered: its refused calls return
+/// EPERM instead of blocking.
+#[test]
+fn a_detached_run_is_still_answered() {
+    let cage = reporting(refusing(), host_tier());
+    let child = cage
+        .spawn(
+            &mut child_command("sleep:200;syscall:ptrace;syscall:setsid"),
+            &Grants::new(),
+        )
+        .unwrap()
+        .detach();
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(&format!("procage-result: ok {EPERM} {EPERM}")),
+        "{stdout}"
+    );
+}
+
+/// SC-003: the supervisor answers at once.
+#[test]
+fn refused_calls_are_answered_quickly() {
+    let cage = reporting(refusing(), host_tier());
+    let (line, record) = reported(&cage, "median:ptrace:20");
+    let median: u128 = line.strip_prefix("median=").unwrap().parse().unwrap();
+    assert!(median < 10_000, "median {median} µs");
+    assert_eq!(by_op(&record, "ptrace").len(), 20);
+}
+
+/// SR-006: a flood is answered in full; the record keeps 10,000 and counts
+/// the rest. (`ptrace`: Docker's own profile refuses `bpf` first, and a call
+/// an outer filter refuses never reaches procage's.)
+#[test]
+fn a_flood_is_answered_and_capped() {
+    let cage = reporting(refusing(), host_tier());
+    let (line, record) = reported(&cage, "flood:ptrace:20000");
+    assert_eq!(line, "refused=20000");
+    assert_eq!(record.len(), 10_000);
+    assert_eq!(record.dropped(), 10_000);
+    assert!(record.complete());
+}
+
+/// SR-004: inside a sandbox whose filter already has a listener, the run is
+/// confined as without reporting and the record says why.
+#[test]
+fn without_a_listener_the_run_is_still_confined() {
+    // The outer filter stays on this test's thread only.
+    let _outer = testing::install_outer_listener().unwrap();
+    let cage = reporting(refusing(), host_tier());
+    let (line, record) = reported(&cage, "syscall:ptrace");
+    assert_eq!(line, EPERM.to_string());
+    match record.coverage() {
+        procage::Coverage::Unavailable(reason) => {
+            assert!(reason.contains("busy"), "{reason}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Constitution IV: reporting spawns from many threads at once.
+#[test]
+fn reporting_spawns_from_many_threads() {
+    let cage = std::sync::Arc::new(reporting(refusing(), host_tier()));
+    let threads: Vec<_> = (0..4)
+        .map(|_| {
+            let cage = cage.clone();
+            std::thread::spawn(move || {
+                for _ in 0..5 {
+                    let (line, record) = reported(&cage, "syscall:ptrace");
+                    assert_eq!(line, EPERM.to_string());
+                    assert_eq!(by_op(&record, "ptrace").len(), 1, "{record:#?}");
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
 }

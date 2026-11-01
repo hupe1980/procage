@@ -1,6 +1,6 @@
 +++
 title = "Violations: what the sandbox denied, and why"
-description = "CageOptions::with_violations: after a caged command fails, list every operation the sandbox denied it, with the process, the target and the kind of rule behind each."
+description = "CageOptions::with_violations: list what the sandbox denied a caged command, with the process, the target and the rule behind each: every denial on macOS, every refused system call on Linux."
 weight = 75
 
 [extra]
@@ -50,13 +50,14 @@ sandbox: sh (pid 816) was denied file-write-create /Users/me/project/.git/hooks/
 | `Hide` | A `Hide` rule makes the path unreadable | Usually intended; remove the rule only on purpose |
 | `Protect` | A `Protect` rule makes the path read-only | Usually intended (`.git`, configuration) |
 | `HardDeny(class)` | A hard-deny class: secrets, trust handoff, persistence, privilege, … | Waive the class only if you accept the risk it names |
-| `Layer` | A deny rule of your raw Seatbelt layer | Your own rule |
+| `Layer` | A deny rule of your raw layer | Your own rule |
+| `Lifetime`, `OlderKernel` | Linux only, see below | |
 
 ## Live, complete and honest
 
 - **While it runs.** `Child::violation_receiver` yields violations as they arrive, so a harness can show them before the command ends. It buffers 1,024; when it lags, later violations are still in the record.
 - **Complete.** `Violations::complete` is true once the child has exited and every denial reported before that has arrived. `Child::violations` waits up to a second for this after the exit; on a loaded host it may return an incomplete record, which you can read again.
-- **Coverage.** `Violations::coverage` says what the record can show: `Observed`, `Off` (the cage was built without the option), `Unavailable(reason)` (reporting could not start or stopped), or `NotObserved` (the platform does not report denials yet).
+- **Coverage.** `Violations::coverage` says what the record can show: `Observed` (macOS: every denial), `SystemCalls` (Linux: every refused system call), `Off` (the cage was built without the option), `Unavailable(reason)` (reporting could not start or stopped), or `NotObserved` (a platform that reports nothing).
 - **Bounded.** A record keeps 10,000 violations and counts the rest (`Violations::dropped`).
 
 An empty record proves nothing unless it is complete and its coverage is `Observed`.
@@ -76,9 +77,29 @@ Notes:
 - Caged code chooses the paths it is denied, so a target is untrusted text. It cannot change which run a violation belongs to: the run's marker is the last line of the kernel's message.
 - `Cage::exec` has no handle, so it has no record.
 
-## Linux
+## How it works on Linux
 
-Linux does not report denials yet: Landlock reports them only to the audit subsystem, which needs privileges. The API is the same on both systems (`procage::native`), and on Linux every record's coverage is `NotObserved`. Exact reports of the system calls procage's seccomp filter refuses are planned.
+Every system call procage's seccomp filter refuses is reported, exactly: `ptrace`, `io_uring_setup`, `bpf` and the rest of the hard-deny classes, an IP socket when the policy has no network, `fork` when it does not allow forking, `setsid` under `Lifetime::Run`, and truncation on kernels below Landlock ABI 3. The record's coverage is `SystemCalls`.
+
+With reporting on, the filter hands each refused call to a *listener* instead of failing it at once (seccomp user notification). The child passes the listener to your process before it starts the command and keeps no copy. A supervisor thread answers every call with `EPERM` (exactly what the call returns without reporting), then records the process, the call, a target where the arguments name one (`family AF_INET`, `command TIOCSTI`) and the reason:
+
+| `DeniedBy` on Linux | Meaning |
+|---|---|
+| `HardDeny(class)` | A hard-deny class: process access, kernel surface, namespaces, socket families, terminal injection |
+| `NotGranted` | The policy does not grant it: no network, no forking, `Signals::None`, SysV IPC |
+| `Lifetime` | `setsid`/`setpgid` under `Lifetime::Run`, so that ending the run reaches every descendant |
+| `OlderKernel` | Below Landlock ABI 3, truncation is refused everywhere |
+| `Layer` | Your raw Linux layer's `syscalls_deny` |
+
+A refused call waits for the answer, so the record is **exact and complete** once no process of the run is left: no log, no timing assumption, no privileges. A descendant that outlives the child keeps the record open until it exits or `kill_all` ends it.
+
+Notes:
+
+- File, network and signal denials come from Landlock, which reports them only to the privileged audit subsystem; they are not in the record.
+- A call an outer sandbox refuses first (for example `bpf` under Docker's default seccomp profile) fails before procage's filter sees it, so it is not reported.
+- Inside a sandbox whose own seccomp filter already uses a listener, the kernel refuses a second one: the run is confined exactly as without reporting, and the record's coverage is `Unavailable` with the reason.
+- If your process dies, the kernel answers refused calls with `ENOSYS`: they still fail.
+- `Cage::exec` has no supervisor; there the kernel answers with `EPERM` as without reporting.
 
 ## Diagnostic, not enforcement
 

@@ -172,14 +172,21 @@
 //! # }
 //! ```
 //!
-//! On macOS the kernel logs every Seatbelt denial; the cage's profile tags
-//! each with the run and the rule kind, and one helper per process
-//! (`/usr/bin/log stream`, which needs an administrator account) collects
-//! them. A record says whether it is complete and what it can show
-//! ([`Coverage`]); identical denials by one process are reported once.
-//! Linux does not report denials yet: Landlock reports them only to the
-//! privileged audit subsystem. Reporting is diagnostic and best-effort.
-//! Enforcement never depends on it.
+//! A record says whether it is complete and what it can show ([`Coverage`]):
+//!
+//! - **macOS** ([`Coverage::Observed`]): the kernel logs every Seatbelt
+//!   denial; the cage's profile tags each with the run and the rule kind,
+//!   and one helper per process (`/usr/bin/log stream`, which needs an
+//!   administrator account) collects them. Identical denials by one process
+//!   are reported once.
+//! - **Linux** ([`Coverage::SystemCalls`]): every system call the seccomp
+//!   filter refuses (`ptrace`, `io_uring_setup`, an IP socket without
+//!   network, `setsid` under `Lifetime::Run`, …) is reported exactly, by a
+//!   supervisor thread that answers it with `EPERM` (what it returns without
+//!   reporting). File, network and signal denials by Landlock are not: it
+//!   reports them only to the privileged audit subsystem.
+//!
+//! Reporting is diagnostic. Enforcement never depends on it.
 //!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.

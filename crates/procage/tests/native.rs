@@ -122,7 +122,7 @@ fn fitting_has_the_same_shape() {
 }
 
 /// Violation reporting has the same shape: macOS observes denials, Linux
-/// says it does not yet, and neither leaves reporting silently off.
+/// refused system calls, and neither leaves reporting silently off.
 #[test]
 fn violation_records_have_the_same_shape() {
     use procage::Coverage;
@@ -141,7 +141,7 @@ fn violation_records_have_the_same_shape() {
     assert!(
         matches!(
             record.coverage(),
-            Coverage::Observed | Coverage::NotObserved
+            Coverage::Observed | Coverage::SystemCalls
         ),
         "{:?}",
         record.coverage()

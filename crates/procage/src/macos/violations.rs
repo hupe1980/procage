@@ -32,6 +32,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use super::{lifetime, sys};
 use crate::violation::{Coverage, Record, parse};
+pub(crate) use crate::violation::{Sink, lock};
 
 /// The shell that runs the watchdog.
 const SH: &str = "/bin/sh";
@@ -52,13 +53,6 @@ L=$!
 (read _ <&3; kill $L) >/dev/null 2>&1 &
 exec 3<&-
 wait $L";
-
-/// A run's record, shared by its handle and the monitor.
-pub(crate) type Sink = Arc<Mutex<Record>>;
-
-pub(crate) fn lock(sink: &Sink) -> MutexGuard<'_, Record> {
-    sink.lock().unwrap_or_else(|e| e.into_inner())
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Status {

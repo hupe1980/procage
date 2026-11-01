@@ -266,3 +266,207 @@ pub fn interface_up(name: &str) -> Result<bool, i32> {
         Ok(c_int::from(req.ifr_ifru.ifru_flags) & libc::IFF_UP != 0)
     }
 }
+
+/// What one round of seccomp user notification showed (KF-L15).
+pub struct NotifyRound {
+    /// The errno of installing a second filter with a listener (0: allowed).
+    pub second_listener_errno: i32,
+    /// The errno the notified call returned in the child.
+    pub child_errno: i32,
+    /// Notifications the parent received.
+    pub notified: u32,
+    /// Whether the listener reported POLLHUP after the child exited.
+    pub hung_up: bool,
+}
+
+/// Forks a child that installs a filter notifying `getppid` with a listener,
+/// tries a second listener, hands the first to this process and calls
+/// `getppid`; this process answers EPERM and waits for the hang-up.
+pub fn seccomp_notify_round() -> Result<NotifyRound, String> {
+    let mut sv = [0 as c_int; 2];
+    // SAFETY: socketpair writes two descriptors.
+    if unsafe {
+        libc::socketpair(
+            libc::AF_UNIX,
+            libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC,
+            0,
+            sv.as_mut_ptr(),
+        )
+    } != 0
+    {
+        return Err(format!("socketpair errno {}", errno()));
+    }
+    let mut report = [0 as c_int; 2];
+    // SAFETY: pipe2 writes two descriptors.
+    if unsafe { libc::pipe2(report.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        return Err(format!("pipe errno {}", errno()));
+    }
+    // SAFETY: the probe is single-threaded; the child below only makes
+    // system calls and exits.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(format!("fork errno {}", errno()));
+    }
+    if pid == 0 {
+        // SAFETY: system calls on descriptors and buffers of this frame.
+        unsafe {
+            let mut filter = [
+                libc::sock_filter {
+                    code: (libc::BPF_LD | libc::BPF_W | libc::BPF_ABS) as u16,
+                    jt: 0,
+                    jf: 0,
+                    k: 0,
+                },
+                libc::sock_filter {
+                    code: (libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K) as u16,
+                    jt: 0,
+                    jf: 1,
+                    k: libc::SYS_getppid as u32,
+                },
+                libc::sock_filter {
+                    code: (libc::BPF_RET | libc::BPF_K) as u16,
+                    jt: 0,
+                    jf: 0,
+                    k: libc::SECCOMP_RET_USER_NOTIF,
+                },
+                libc::sock_filter {
+                    code: (libc::BPF_RET | libc::BPF_K) as u16,
+                    jt: 0,
+                    jf: 0,
+                    k: libc::SECCOMP_RET_ALLOW,
+                },
+            ];
+            let prog = libc::sock_fprog {
+                len: 4,
+                filter: filter.as_mut_ptr(),
+            };
+            libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+            let flags = libc::SECCOMP_FILTER_FLAG_NEW_LISTENER;
+            let l = libc::syscall(
+                libc::SYS_seccomp,
+                libc::SECCOMP_SET_MODE_FILTER,
+                flags,
+                &raw const prog,
+            );
+            if l < 0 {
+                libc::_exit(10);
+            }
+            let l2 = libc::syscall(
+                libc::SYS_seccomp,
+                libc::SECCOMP_SET_MODE_FILTER,
+                flags,
+                &raw const prog,
+            );
+            let second = if l2 < 0 { errno() } else { 0 };
+            // Hand the listener over.
+            let byte = 1u8;
+            let mut iov = libc::iovec {
+                iov_base: (&raw const byte).cast_mut().cast(),
+                iov_len: 1,
+            };
+            let mut control = [0u8; 64];
+            let mut msg: libc::msghdr = std::mem::zeroed();
+            msg.msg_iov = &raw mut iov;
+            msg.msg_iovlen = 1;
+            msg.msg_control = control.as_mut_ptr().cast();
+            msg.msg_controllen = libc::CMSG_SPACE(4) as _;
+            let h = libc::CMSG_FIRSTHDR(&raw const msg);
+            (*h).cmsg_level = libc::SOL_SOCKET;
+            (*h).cmsg_type = libc::SCM_RIGHTS;
+            (*h).cmsg_len = libc::CMSG_LEN(4) as _;
+            std::ptr::write_unaligned(libc::CMSG_DATA(h).cast::<c_int>(), l as c_int);
+            if libc::sendmsg(sv[1], &raw const msg, 0) < 0 {
+                libc::_exit(11);
+            }
+            libc::close(l as c_int);
+            let rc = libc::syscall(libc::SYS_getppid);
+            let e = if rc < 0 { errno() } else { 0 };
+            let out = [second, e];
+            libc::write(report[1], out.as_ptr().cast(), 8);
+            libc::_exit(0);
+        }
+    }
+    // SAFETY: closing the child's ends in the parent.
+    unsafe {
+        libc::close(sv[1]);
+        libc::close(report[1]);
+    }
+    // SAFETY: the parent's ends are owned here from now on.
+    let (sock, report) = unsafe { (OwnedFd::from_raw_fd(sv[0]), OwnedFd::from_raw_fd(report[0])) };
+    let mut byte = 0u8;
+    let mut iov = libc::iovec {
+        iov_base: (&raw mut byte).cast(),
+        iov_len: 1,
+    };
+    let mut control = [0u8; 64];
+    // SAFETY: a zeroed msghdr pointing to buffers of this frame.
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_iov = &raw mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.as_mut_ptr().cast();
+    msg.msg_controllen = control.len() as _;
+    // SAFETY: recvmsg into the buffers above.
+    if unsafe { libc::recvmsg(sock.as_raw_fd(), &raw mut msg, libc::MSG_CMSG_CLOEXEC) } < 1 {
+        let mut status = 0;
+        // SAFETY: reaping our child.
+        unsafe { libc::waitpid(pid, &raw mut status, 0) };
+        return Err(format!("no listener (child status {status:#x})"));
+    }
+    // SAFETY: an SCM_RIGHTS message with one descriptor arrived.
+    let listener = unsafe {
+        OwnedFd::from_raw_fd(std::ptr::read_unaligned(
+            libc::CMSG_DATA(libc::CMSG_FIRSTHDR(&raw const msg)).cast::<c_int>(),
+        ))
+    };
+    let mut notified = 0;
+    let mut hung_up = false;
+    for _ in 0..50 {
+        let mut pfd = libc::pollfd {
+            fd: listener.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: poll on one descriptor.
+        let n = unsafe { libc::poll(&raw mut pfd, 1, 100) };
+        if n > 0 && pfd.revents & libc::POLLIN != 0 {
+            // SAFETY: zeroed as the kernel requires; the ioctls use this frame.
+            unsafe {
+                let mut req: libc::seccomp_notif = std::mem::zeroed();
+                if libc::ioctl(
+                    listener.as_raw_fd(),
+                    libc::SECCOMP_IOCTL_NOTIF_RECV,
+                    &raw mut req,
+                ) == 0
+                {
+                    notified += 1;
+                    let mut resp = libc::seccomp_notif_resp {
+                        id: req.id,
+                        val: 0,
+                        error: -libc::EPERM,
+                        flags: 0,
+                    };
+                    libc::ioctl(
+                        listener.as_raw_fd(),
+                        libc::SECCOMP_IOCTL_NOTIF_SEND,
+                        &raw mut resp,
+                    );
+                }
+            }
+        } else if n > 0 && pfd.revents & libc::POLLHUP != 0 {
+            hung_up = true;
+            break;
+        }
+    }
+    let mut out = [0 as c_int; 2];
+    // SAFETY: reading 8 bytes into the array.
+    unsafe { libc::read(report.as_raw_fd(), out.as_mut_ptr().cast(), 8) };
+    let mut status = 0;
+    // SAFETY: reaping our child.
+    unsafe { libc::waitpid(pid, &raw mut status, 0) };
+    Ok(NotifyRound {
+        second_listener_errno: out[0],
+        child_errno: out[1],
+        notified,
+        hung_up,
+    })
+}

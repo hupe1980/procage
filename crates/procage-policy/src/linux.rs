@@ -16,6 +16,7 @@ use crate::lower::{Degradation, Hygiene, Tier};
 use crate::name::{GrantName, Port, SyscallName};
 use crate::path::AbsPath;
 use crate::policy::{Access, HardDenyClass, Ports};
+use crate::sbpl::DenyReason;
 
 /// The newest Landlock ABI this crate knows. A higher ABI is treated as this
 /// one: no later right is assumed.
@@ -324,6 +325,17 @@ pub const AF_VSOCK: u32 = 40;
 pub const O_ACCMODE: u32 = 0o3;
 /// `O_TRUNC`.
 pub const O_TRUNC: u32 = 0o1000;
+/// The `CLONE_NEW*` flags `clone` accepts (`CLONE_NEWTIME` is not one: its
+/// bit is part of the exit signal there).
+pub const CLONE_NEW_ANY: u32 = 0x0002_0000 // NEWNS
+    | 0x0200_0000 // NEWCGROUP
+    | 0x0400_0000 // NEWUTS
+    | 0x0800_0000 // NEWIPC
+    | 0x1000_0000 // NEWUSER
+    | 0x2000_0000 // NEWPID
+    | 0x4000_0000; // NEWNET
+/// `CLONE_THREAD`.
+pub const CLONE_THREAD: u32 = 0x0001_0000;
 /// `TIOCSTI`.
 pub const TIOCSTI: u64 = 0x5412;
 /// `TIOCLINUX`.
@@ -353,6 +365,27 @@ pub enum Condition {
     },
 }
 
+impl Condition {
+    /// Whether a call with `args` meets the condition, decided exactly as the
+    /// filter decides it: on the low 32 bits of each argument, which is all
+    /// the filter loads.
+    pub fn matches(&self, args: &[u64; 6]) -> bool {
+        let low = |n: usize| args[n] as u32;
+        match self {
+            Condition::Always => true,
+            Condition::SocketFamily(families) => families.contains(&low(0)),
+            Condition::SocketFamilyExcept(families) => !families.contains(&low(0)),
+            Condition::IoctlCommand(commands) => commands.iter().any(|&c| c as u32 == low(1)),
+            Condition::CloneWithoutThread => low(0) & CLONE_THREAD == 0,
+            Condition::CloneNewNamespace => low(0) & CLONE_NEW_ANY != 0,
+            Condition::TruncWithoutWrite { flags_arg } => {
+                let flags = low(usize::from(*flags_arg)) & (O_TRUNC | O_ACCMODE);
+                flags == O_TRUNC || flags == O_TRUNC | O_ACCMODE
+            }
+        }
+    }
+}
+
 /// What a seccomp deny returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Action {
@@ -372,6 +405,8 @@ pub struct SeccompRule {
     pub condition: Condition,
     /// What the call returns.
     pub action: Action,
+    /// Why the call is refused; `None`: the policy does not grant it.
+    pub reason: Option<DenyReason>,
 }
 
 /// A mount the T1 backend sets up in the child's mount namespace.

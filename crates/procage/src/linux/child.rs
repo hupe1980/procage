@@ -5,9 +5,25 @@ use std::io;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
-use crate::violation::{Coverage, Violation, Violations};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
+use crate::violation::{Coverage, Sink, Violation, Violations, lock};
 
 use super::sys;
+
+/// A spawn's violation reporting.
+#[derive(Debug)]
+pub(super) enum Reporting {
+    /// The cage was built without it.
+    Off,
+    /// No listener (the reason); the kernel answers refused calls.
+    Unavailable(String),
+    /// The supervisor records into `record` and sets `done` when no process
+    /// of the run is left.
+    On { record: Sink, done: Arc<AtomicBool> },
+}
 
 /// A running caged child.
 ///
@@ -28,7 +44,7 @@ pub struct Child {
     inner: Option<std::process::Child>,
     dropped_env: Vec<String>,
     tmpdir: Option<PathBuf>,
-    coverage: Coverage,
+    reporting: Reporting,
 }
 
 impl Child {
@@ -36,13 +52,37 @@ impl Child {
         inner: std::process::Child,
         dropped_env: Vec<String>,
         tmpdir: Option<PathBuf>,
-        coverage: Coverage,
+        reporting: Reporting,
     ) -> Self {
         Self {
             inner: Some(inner),
             dropped_env,
             tmpdir,
-            coverage,
+            reporting,
+        }
+    }
+
+    /// Marks the record complete once the supervisor is done and the child
+    /// reaped: every refused call of the run has then been recorded.
+    fn settle(&mut self) {
+        let Reporting::On { record, done } = &self.reporting else {
+            return;
+        };
+        let reaped = self
+            .inner
+            .as_mut()
+            .is_some_and(|c| matches!(c.try_wait(), Ok(Some(_))));
+        if !reaped {
+            return;
+        }
+        // The listener hangs up as soon as the last process of the run is
+        // gone; a descendant that outlives the child keeps it open.
+        let start = Instant::now();
+        while !done.load(Ordering::Acquire) && start.elapsed() < Duration::from_secs(1) {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        if done.load(Ordering::Acquire) {
+            lock(record).finish();
         }
     }
 
@@ -72,7 +112,16 @@ impl Child {
         // The group outlives a reaped leader while members remain, and its
         // id cannot be handed to another process while it exists.
         sys::killpg(pid);
-        child.wait().map(drop)
+        let waited = child.wait().map(drop);
+        // No process of the run is left: the listener hangs up at once.
+        if let Reporting::On { done, .. } = &self.reporting {
+            let start = Instant::now();
+            while !done.load(Ordering::Acquire) && start.elapsed() < Duration::from_secs(2) {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+        self.settle();
+        waited
     }
 
     /// Gives up lifetime control: the child keeps running after this handle
@@ -95,18 +144,36 @@ impl Child {
         self.tmpdir.as_deref()
     }
 
-    /// The operations the sandbox denied this run. Linux does not report
-    /// denials yet, so the record is empty and its coverage says so:
-    /// [`Coverage::NotObserved`] with
-    /// [`CageOptions::with_violations`](super::CageOptions::with_violations),
-    /// [`Coverage::Off`] without.
+    /// The system calls the seccomp filter refused this run so far, with the
+    /// kind of rule behind each (see [`crate::violation`]).
+    ///
+    /// The record is [`complete`](Violations::complete) once the child has
+    /// exited and no process of the run is left; a descendant that outlives
+    /// the child keeps it open until it exits or [`Child::kill_all`] ends
+    /// it. Its coverage is [`Coverage::SystemCalls`]: file, network and
+    /// signal denials by Landlock are not in it. Without
+    /// [`CageOptions::with_violations`](super::CageOptions::with_violations)
+    /// the coverage is [`Coverage::Off`].
     pub fn violations(&mut self) -> Violations {
-        Violations::empty(self.coverage.clone())
+        self.settle();
+        match &self.reporting {
+            Reporting::Off => Violations::empty(Coverage::Off),
+            Reporting::Unavailable(reason) => {
+                Violations::empty(Coverage::Unavailable(reason.clone()))
+            }
+            Reporting::On { record, .. } => lock(record).snapshot(),
+        }
     }
 
-    /// Live violations; always `None` on Linux, which reports none yet.
+    /// The run's refused calls as they happen, once (later calls return
+    /// `None`); `None` as well when reporting is off or unavailable. The
+    /// receiver buffers 1,024; when it lags, later ones are only in
+    /// [`Child::violations`].
     pub fn violation_receiver(&mut self) -> Option<std::sync::mpsc::Receiver<Violation>> {
-        None
+        match &self.reporting {
+            Reporting::On { record, .. } => lock(record).take_receiver(),
+            _ => None,
+        }
     }
 }
 

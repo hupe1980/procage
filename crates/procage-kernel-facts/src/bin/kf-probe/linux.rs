@@ -47,6 +47,7 @@ pub(crate) fn run(step: &str, args: &[String]) -> StepResult {
         "nested-uidmap" => nested_uidmap(scratch_arg(args, 0)?),
         "mount-after-landlock" => mount_after_landlock(scratch_arg(args, 0)?),
         "proc-mount" => proc_mount(),
+        "seccomp-notify" => seccomp_notify(),
         other => Err(Fail::Usage(format!("unknown step {other}"))),
     }
 }
@@ -406,5 +407,14 @@ fn proc_mount() -> StepResult {
     let obs = procage_kernel_facts::Observation::parse(&String::from_utf8_lossy(&out));
     emit("ok", u8::from(obs.int("errno") == Some(0)));
     forward("inner_", &out);
+    Ok(())
+}
+
+fn seccomp_notify() -> StepResult {
+    let round = sys::seccomp_notify_round().map_err(setup)?;
+    emit("second_listener_errno", round.second_listener_errno);
+    emit("child_errno", round.child_errno);
+    emit("notified", round.notified);
+    emit("hung_up", u8::from(round.hung_up));
     Ok(())
 }

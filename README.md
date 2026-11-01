@@ -39,14 +39,15 @@ What it does today:
 - inherited descriptors are closed, secret-looking variables dropped, and
   every process a run started is killed when the run ends, double-forked
   daemons included;
-- on macOS, a cage can report what the sandbox denied and which kind of rule
-  denied it (`CageOptions::with_violations`);
+- a cage can report what the sandbox denied and which kind of rule denied
+  it (`CageOptions::with_violations`): every denial on macOS, every refused
+  system call on Linux;
 - four frozen presets, opt-in base profiles that let ordinary programs and
   developer tools start, and `Cage::exec` for helper programs that become the
   caged command.
 
 Not yet: pseudo-terminals, a Linux PID namespace, loopback and proxy
-networking on Linux, and violation reports on Linux. Open escape variants: a
+networking on Linux, and reports of Landlock's file and network denials. Open escape variants: a
 hard link made before the run (R-08), and on macOS the arguments and
 environment of your other processes, which a caged child can read (R-25).
 

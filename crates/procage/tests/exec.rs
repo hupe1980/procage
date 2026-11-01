@@ -183,7 +183,11 @@ fn as_helper(role: &str) -> ! {
     }
     // A directory the command may read, as a real helper would choose.
     cmd.current_dir(&dir);
-    let cage = Cage::with_options(&p, &options(&tier)).unwrap_or_else(|e| panic!("{e}"));
+    let mut options = options(&tier);
+    if var("REPORT") == "1" {
+        options = options.with_violations();
+    }
+    let cage = Cage::with_options(&p, &options).unwrap_or_else(|e| panic!("{e}"));
     let err = cage.exec(&mut cmd, &Grants::new());
     eprintln!("helper: {err}");
     std::process::exit(126);
@@ -298,6 +302,34 @@ fn descendants_cannot_leave_the_group(tier: &str) {
     assert_eq!(out, ["setsid=1"], "{tier}");
 }
 
+/// Linux: an exec'd command has no supervisor, so a reporting cage still
+/// has the kernel answer refused calls with EPERM (not ENOSYS, which a
+/// listener nobody holds would give).
+#[cfg(target_os = "linux")]
+fn a_reporting_exec_still_gets_eperm(tier: &str) {
+    if !Path::new("/usr/bin/setsid").exists() {
+        println!("  (no /usr/bin/setsid: skipped)");
+        return;
+    }
+    let dir = scratch(&format!("report-{tier}"));
+    let script = "/usr/bin/setsid /bin/true 2>&1 | head -1";
+    let mut h = helper(
+        "shell",
+        tier,
+        &[
+            ("IN", dir.to_str().unwrap()),
+            ("SCRIPT", script),
+            ("REPORT", "1"),
+        ],
+    );
+    let out: Vec<String> = lines(&mut h).collect();
+    h.wait().unwrap();
+    assert!(
+        out.len() == 1 && out[0].contains("Operation not permitted"),
+        "{tier}: {out:?}"
+    );
+}
+
 /// Linux: the command dies when the helper's parent exits.
 #[cfg(target_os = "linux")]
 fn the_command_dies_with_the_helpers_parent(tier: &str) {
@@ -401,6 +433,10 @@ fn cases() -> Vec<Case> {
         (
             "the_command_dies_with_the_helpers_parent",
             the_command_dies_with_the_helpers_parent,
+        ),
+        (
+            "a_reporting_exec_still_gets_eperm",
+            a_reporting_exec_still_gets_eperm,
         ),
         (
             "a_threaded_caller_is_refused_on_t1",

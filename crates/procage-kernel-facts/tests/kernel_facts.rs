@@ -1029,6 +1029,14 @@ mod linux {
             run: l14,
         },
         Fact {
+            id: "KF-L15",
+            statement: "seccomp user notification works unprivileged: the listener reaches the parent, the call returns the parent's EPERM, the listener hangs up once the child exits, and a second listener in one chain fails with EBUSY",
+            kind: Kind::Enforcement,
+            tiers: ALL,
+            slow: false,
+            run: l15,
+        },
+        Fact {
             id: "KF-L13",
             statement: "with /proc masked, a fresh /proc cannot be mounted in a PID namespace",
             kind: Kind::Enforcement,
@@ -1100,6 +1108,20 @@ mod linux {
             )));
         }
         expect(&s, &[("errno", "0"), ("has_lo", "1"), ("up", "0")])?;
+        Ok(s.summary())
+    }
+
+    fn l15(c: &Ctx) -> Check {
+        let s = ran(c.step(&["seccomp-notify"]))?;
+        expect(
+            &s,
+            &[
+                ("second_listener_errno", "16"),
+                ("child_errno", "1"),
+                ("notified", "1"),
+                ("hung_up", "1"),
+            ],
+        )?;
         Ok(s.summary())
     }
 

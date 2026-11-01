@@ -141,19 +141,28 @@ pub enum DenyReason {
     Protect,
     /// A `Hide` rule: the path is unreadable.
     Hide,
-    /// A deny rule of the raw Seatbelt layer.
+    /// A deny rule of the raw Seatbelt layer (or the Linux layer's
+    /// `syscalls_deny`).
     Layer,
+    /// Linux `Lifetime::Run`: `setsid` and `setpgid` are refused so that
+    /// descendants stay in the run.
+    Lifetime,
+    /// Linux below Landlock ABI 3: truncation is refused everywhere, because
+    /// Landlock cannot confine it.
+    OlderKernel,
 }
 
 impl DenyReason {
-    /// The code in denial messages: `hd:<class>`, `protect`, `hide` or
-    /// `layer`. Codes contain no space and no newline.
+    /// The code in denial messages: `hd:<class>`, `protect`, `hide`,
+    /// `layer`, `lifetime` or `kernel`. Codes contain no space and no newline.
     pub fn code(&self) -> String {
         match self {
             DenyReason::HardDeny(class) => format!("hd:{}", class.as_str()),
             DenyReason::Protect => "protect".into(),
             DenyReason::Hide => "hide".into(),
             DenyReason::Layer => "layer".into(),
+            DenyReason::Lifetime => "lifetime".into(),
+            DenyReason::OlderKernel => "kernel".into(),
         }
     }
 
@@ -163,6 +172,8 @@ impl DenyReason {
             "protect" => Some(DenyReason::Protect),
             "hide" => Some(DenyReason::Hide),
             "layer" => Some(DenyReason::Layer),
+            "lifetime" => Some(DenyReason::Lifetime),
+            "kernel" => Some(DenyReason::OlderKernel),
             _ => {
                 let name = code.strip_prefix("hd:")?;
                 HardDenyClass::ALL
