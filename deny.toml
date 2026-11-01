@@ -15,8 +15,8 @@ confidence-threshold = 0.8
 unused-allowed-license = "allow"
 
 [licenses.private]
-# Unpublished workspace members (the policy placeholder, the kernel facts)
-# inherit the workspace licence and are checked like any other crate.
+# Unpublished workspace members (the kernel facts) inherit the workspace
+# licence and are checked like any other crate.
 ignore = false
 
 [bans]

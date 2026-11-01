@@ -135,7 +135,7 @@ pub enum Filter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum DenyReason {
-    /// A rule of the hard-deny class (data classes included).
+    /// A rule of the hard-deny tier (data-driven classes included).
     HardDeny(HardDenyClass),
     /// A `Protect` rule: the path is read-only.
     Protect,

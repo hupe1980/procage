@@ -29,29 +29,26 @@
 //! approximation: paths created later are not covered) and tier T2 cannot
 //! enforce the class; the lowering table gives the details.
 //!
-//! **Presets** (frozen; version 2 is the one to start with). Each returns an
-//! ordinary [`Policy`] with a base profile (V1 for version 1, V2 for version
-//! 2, which runs developer tools such as `git`, `clang` and Homebrew's), the
-//! full hard-deny tier, an environment allowlist of [`PRESET_ENV`], and a
-//! [`PresetTag`]:
+//! **Presets** (frozen; use version 3). Each returns an ordinary [`Policy`]
+//! with the base profile of its version, the full hard-deny tier, an
+//! environment allowlist of [`PRESET_ENV`], and a [`PresetTag`]:
 //!
 //! | Preset | Adds |
 //! |---|---|
-//! | [`minimal::v1`], [`minimal::v2`] | nothing |
-//! | [`agent_readonly::v1`], [`agent_readonly::v2`] | read of the workspace, the `tmpdir` grant, fork, signals to self and children |
-//! | [`agent_workspace::v1`], [`agent_workspace::v2`] | as `agent_readonly`, plus write and exec on the workspace |
+//! | [`minimal::v1`], [`minimal::v2`], [`minimal::v3`] | nothing |
+//! | [`agent_readonly::v1`], [`agent_readonly::v2`], [`agent_readonly::v3`] | read of the workspace, the `tmpdir` grant, fork, signals to self and children |
+//! | [`agent_workspace::v1`], [`agent_workspace::v2`], [`agent_workspace::v3`] | as `agent_readonly`, plus write and exec on the workspace |
 //! | [`build::v1`] | as `agent_workspace`, plus loopback network |
-//! | [`build::v2`] | as `build::v1`, plus Unix sockets in the workspace |
+//! | [`build::v2`], [`build::v3`] | as `build::v1`, plus Unix sockets in the workspace |
 //!
 //! Every preset keeps the default [`Lifetime::Run`](crate::Lifetime::Run):
-//! the processes a forking preset's child starts end with the run. This was
-//! added to the frozen V1 presets as a tightening: on Linux, `setsid` and
-//! `setpgid` fail inside them, and their macOS profiles end with the
-//! run-marker block.
+//! the processes a forking preset's child starts end with the run. On Linux
+//! `setsid` and `setpgid` fail inside them; their macOS profiles end with
+//! the run-marker block.
 //!
-//! On Linux, `build` is a capability gap until loopback networking is
-//! relayed into the network namespace, and the write rules of
-//! `agent_workspace` and `build` reach trust-handoff names (see above).
+//! On Linux, `build` is a capability gap (Linux cages have no loopback
+//! networking), and the write rules of `agent_workspace` and `build` reach
+//! trust-handoff names (see above).
 
 use alloc::format;
 use alloc::string::ToString;
@@ -292,7 +289,7 @@ fn workspace(p: &mut Policy, root: &AbsPath, access: &[Access]) {
     p.process.signals = Signals::SelfAndChildren;
 }
 
-/// `minimal`: base profile V1 and nothing else.
+/// `minimal`: a base profile and nothing else.
 pub mod minimal {
     use super::*;
 

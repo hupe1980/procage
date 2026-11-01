@@ -59,7 +59,7 @@ jobs:
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
       - name: Caged children (spawn tests)
-        run: cargo test --locked -p procage --test spawn_macos
+        run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec
       - name: Escape suite
         run: cargo test --locked -p procage --test escape_macos
       - name: Escape suite with violation reporting
@@ -105,7 +105,11 @@ jobs:
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
       - name: Caged children and escape suite
-        run: cargo test --locked -p procage --test spawn_linux --test escape_linux
+        run: cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec
+      - name: Escape suite with violation reporting
+        run: cargo test --locked -p procage --test escape_linux
+        env:
+          PROCAGE_ESCAPE_VIOLATIONS: "1"
 
   fuzz:
     name: fuzz (policy crate, 60 s per target)

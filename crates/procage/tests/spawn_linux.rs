@@ -307,7 +307,7 @@ fn child_entry() {
     println!("procage-result: {result}");
 }
 
-// ---- US1: a Linux harness spawns a caged child ----
+// ---- A Linux harness spawns a caged child ----
 
 #[test]
 fn the_probe_reports_the_expected_tier() {
@@ -456,7 +456,7 @@ fn hard_deny_syscalls_are_refused() {
     }
 }
 
-// ---- US2: never silently weaker ----
+// ---- Never silently weaker ----
 
 #[test]
 fn t2_cannot_protect_inside_a_writable_tree() {
@@ -558,7 +558,7 @@ fn a_failed_step_is_named_and_the_target_does_not_run() {
     }
 }
 
-// ---- US3: data-driven hard-deny classes ----
+// ---- Data-driven hard-deny classes ----
 
 /// A home with secrets and a persistence directory.
 fn fake_home(name: &str) -> Scratch {
@@ -749,7 +749,7 @@ fn an_oversized_writable_tree_fails_the_spawn() {
     assert!(matches!(err, SpawnError::Walk { limit: 10, .. }), "{err}");
 }
 
-// ---- US4: hygiene ----
+// ---- Hygiene ----
 
 #[test]
 fn base_v1_runs_ordinary_programs() {
@@ -1004,7 +1004,7 @@ fn many_spawns_from_many_threads_are_all_caged() {
     }
 }
 
-// ---- US5: T1 isolation ----
+// ---- T1 isolation ----
 
 #[test]
 fn t1_protect_is_read_only_and_cannot_be_undone() {
@@ -1501,7 +1501,7 @@ fn by_op<'a>(record: &'a procage::Violations, op: &str) -> Vec<&'a procage::Viol
     record.iter().filter(|v| v.operation == op).collect()
 }
 
-/// US1: each refused call is listed with its reason, and the call still
+/// Each refused call is listed with its reason, and the call still
 /// failed with EPERM.
 #[test]
 fn refused_calls_are_reported_with_their_reason() {
@@ -1549,7 +1549,7 @@ fn reporting_is_off_by_default_on_linux() {
     assert!(child.violation_receiver().is_none());
 }
 
-/// US3: the receiver yields while the child runs, the record stays open
+/// The receiver yields while the child runs, the record stays open
 /// while a process of the run is left, and kill_all completes it.
 #[test]
 fn a_record_completes_when_the_run_ends() {
@@ -1622,7 +1622,7 @@ fn concurrent_runs_keep_their_own_calls() {
     );
 }
 
-/// SR-002: a detached run is still answered: its refused calls return
+/// A detached run is still answered: its refused calls return
 /// EPERM instead of blocking.
 #[test]
 fn a_detached_run_is_still_answered() {
@@ -1642,7 +1642,7 @@ fn a_detached_run_is_still_answered() {
     );
 }
 
-/// SC-003: the supervisor answers at once.
+/// The supervisor answers at once.
 #[test]
 fn refused_calls_are_answered_quickly() {
     let cage = reporting(refusing(), host_tier());
@@ -1653,7 +1653,7 @@ fn refused_calls_are_answered_quickly() {
     assert!(ptrace.len() == 1 && ptrace[0].repeats == 20, "{record:#?}");
 }
 
-/// SR-006: a flood is answered in full, and identical refusals merge into
+/// A flood is answered in full, and identical refusals merge into
 /// one entry with their count (036). (`ptrace`: Docker's own profile refuses
 /// `bpf` first, and a call an outer filter refuses never reaches procage's.)
 #[test]
@@ -1668,7 +1668,7 @@ fn a_flood_is_answered_and_merged() {
     assert!(record.complete());
 }
 
-/// SR-004: inside a sandbox whose filter already has a listener, the run is
+/// Inside a sandbox whose filter already has a listener, the run is
 /// confined as without reporting and the record says why.
 #[test]
 fn without_a_listener_the_run_is_still_confined() {

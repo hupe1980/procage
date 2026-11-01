@@ -25,8 +25,8 @@ pub const NEWEST_KNOWN_ABI: u8 = 12;
 /// Landlock filesystem rights.
 ///
 /// Bit positions follow the kernel's uapi for the rights of ABI 1 to 5.
-/// `RESOLVE_UNIX` (ABI 9) uses this crate's own position until the Linux
-/// backend maps it.
+/// `RESOLVE_UNIX` (ABI 9) uses this crate's own position; the backend uses
+/// rights up to ABI 8.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AccessFs(pub u64);
 
@@ -49,7 +49,7 @@ impl AccessFs {
     pub const MAKE_DIR: AccessFs = AccessFs(1 << 7);
     /// Create a regular file.
     pub const MAKE_REG: AccessFs = AccessFs(1 << 8);
-    /// Create a unix socket file.
+    /// Create a Unix socket file.
     pub const MAKE_SOCK: AccessFs = AccessFs(1 << 9);
     /// Create a FIFO.
     pub const MAKE_FIFO: AccessFs = AccessFs(1 << 10);
@@ -63,7 +63,7 @@ impl AccessFs {
     pub const TRUNCATE: AccessFs = AccessFs(1 << 14);
     /// ioctl on a device (ABI 5).
     pub const IOCTL_DEV: AccessFs = AccessFs(1 << 15);
-    /// Connect to a pathname unix socket (ABI 9).
+    /// Connect to a pathname Unix socket (ABI 9).
     pub const RESOLVE_UNIX: AccessFs = AccessFs(1 << 16);
 
     /// Rights that apply to a file (rather than a directory).
@@ -121,7 +121,7 @@ impl AccessNet {
 pub struct Scopes(pub u64);
 
 impl Scopes {
-    /// Abstract unix sockets outside the domain.
+    /// Abstract Unix sockets outside the domain.
     pub const ABSTRACT_UNIX_SOCKET: Scopes = Scopes(1 << 0);
     /// Signals to processes outside the domain.
     pub const SIGNAL: Scopes = Scopes(1 << 1);
@@ -589,7 +589,7 @@ pub struct LinuxPlan {
     pub network: LinuxNetwork,
     /// Set `no_new_privs` before applying (always true).
     pub no_new_privs: bool,
-    /// Mask the listening unix sockets outside `unix_socket_paths` at spawn
+    /// Mask the listening Unix sockets outside `unix_socket_paths` at spawn
     /// (tier T1 below ABI 9).
     pub mask_unix_sockets: bool,
     /// The paths of `ipc.unix_sockets`, for the masks.

@@ -247,7 +247,7 @@ fn duplicate_rules_collapse() {
     assert_eq!(a.profile, b.profile);
 }
 
-/// FR-018: no allow appears without a source in the policy.
+/// No allow appears without a source in the policy.
 #[test]
 fn every_allow_has_a_source() {
     let allows = |p: &Policy| -> BTreeSet<String> {

@@ -1,6 +1,6 @@
-//! Base profile V1: its content is pinned (it is frozen), it lands in the
-//! allow block, it names a terminal only when asked, and it grants nothing
-//! personal.
+//! The base profiles: their content is pinned (each is frozen), they land in
+//! the allow block, they name a terminal only when asked, and they grant
+//! nothing personal.
 
 mod common;
 
@@ -306,7 +306,7 @@ fn macos_profile(p: &Policy) -> String {
     }
 }
 
-/// SR-001: V3 allows nothing V2 does not: removing its quiet lines gives the
+/// V3 allows nothing V2 does not: removing its quiet lines gives the
 /// V2 profile of the same policy, for every reference policy.
 #[test]
 fn v3_is_v2_plus_quiet_denies() {
@@ -325,7 +325,7 @@ fn v3_is_v2_plus_quiet_denies() {
     }
 }
 
-/// SR-002: no quiet target is the target of a hard-deny or data-class rule,
+/// No quiet target is the target of a hard-deny or data-class rule,
 /// so silencing never hides an attempt on them.
 #[test]
 fn quiet_targets_are_not_hard_deny_targets() {

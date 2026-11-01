@@ -219,7 +219,7 @@ pub fn run_step(probe: &Path, args: &[&str], timeout: Duration, stdin: Option<&[
 pub enum Tier {
     /// Neither T1 nor T2: procage reports `Unsupported`.
     T3,
-    /// Landlock (ABI ≥ 4) and seccomp, without user namespaces.
+    /// Landlock (ABI ≥ 1) and seccomp, without user namespaces.
     T2,
     /// User namespaces, mounts, Landlock and seccomp.
     T1,
@@ -255,7 +255,7 @@ pub fn derive_tier(c: &Capabilities) -> Tier {
     let abi = c.landlock_abi.unwrap_or(0);
     if c.userns && c.uid_map && c.tmpfs && c.ro_bind && abi >= 1 && c.seccomp_filter {
         Tier::T1
-    } else if abi >= 4 && c.seccomp_filter {
+    } else if abi >= 1 && c.seccomp_filter {
         Tier::T2
     } else {
         Tier::T3
@@ -432,7 +432,7 @@ mod tests {
         }
     }
 
-    /// SR-002: a failed control run is a setup failure, never a pass or a
+    /// A failed control run is a setup failure, never a pass or a
     /// plain failure; a wrong errno fails with expected and observed values.
     #[test]
     fn controls_and_expectations() {
@@ -456,7 +456,7 @@ mod tests {
         assert!(matches!(ran(crashed), Err(Outcome::SetupFailed(_))));
     }
 
-    /// SR-016: a crashed, killed or timed-out measurement counts as absent
+    /// A crashed, killed or timed-out measurement counts as absent
     /// and never raises the tier.
     #[test]
     fn broken_measurements_are_absent() {
@@ -489,7 +489,15 @@ mod tests {
         assert_eq!(
             derive_tier(&Capabilities {
                 userns: false,
-                landlock_abi: Some(3),
+                landlock_abi: Some(1),
+                ..t1
+            }),
+            Tier::T2
+        );
+        assert_eq!(
+            derive_tier(&Capabilities {
+                userns: false,
+                landlock_abi: None,
                 ..t1
             }),
             Tier::T3
@@ -504,7 +512,7 @@ mod tests {
         assert_eq!(derive_tier(&Capabilities::default()), Tier::T3);
     }
 
-    /// SR-007: a child that outlives its timeout is killed and reported as a
+    /// A child that outlives its timeout is killed and reported as a
     /// timeout, promptly.
     #[test]
     fn hanging_child_is_killed() {
@@ -519,7 +527,7 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(5));
     }
 
-    /// SR-005: the primitives facts create files and directories with never
+    /// The primitives facts create files and directories with never
     /// follow a pre-planted symlink: exclusive directory and file creation
     /// fail on it and leave its target untouched.
     #[test]

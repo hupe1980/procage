@@ -86,9 +86,8 @@ pub(super) fn rule_paths(plan: &LinuxPlan) -> Vec<(PathBuf, bool)> {
         .collect()
 }
 
-/// The Landlock ruleset for one spawn: the plan's rules on descriptors
-/// opened now, with grants bound to their paths.
-/// The Landlock ruleset for `plan` with `grants` bound.
+/// The Landlock ruleset for `plan`, on descriptors opened for this spawn,
+/// with `grants` bound.
 ///
 /// `hidden` (tier T2) are paths kept out piecewise: a rule at or under one
 /// is dropped, and a rule above one is replaced by rules for every entry on

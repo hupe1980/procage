@@ -95,9 +95,9 @@ mod macos {
 
     use super::*;
 
-    /// Q-09 answer, measured 2026-10-29 on macOS 26.6.2 (25G83) by bisection
-    /// in isolated children (`just bisect`). The abort depends on rule shape.
-    /// With the deny-default, one-allow-per-directory shape, this many rules
+    /// Measured on macOS 26.6.2 (25G83) by bisection in isolated children
+    /// (`just bisect`). The abort depends on rule shape. With the
+    /// deny-default, one-allow-per-directory shape, this many rules
     /// still return from the compiler (with the clean 64 KiB bytecode-cap
     /// error) …
     pub(super) const ABORT_FREE_RULES: &str = "15625";
@@ -106,7 +106,7 @@ mod macos {
     /// and 35,000 rules; that bracket is recorded, not asserted (a compile of
     /// that size exceeds the step timeout).
     pub(super) const ABORTING_RULES: &str = "16250";
-    /// The rule count of KF-M17, the original measurement.
+    /// The rule count of KF-M17.
     pub(super) const ORIGINAL_ABORT_RULES: &str = "20000";
 
     pub(super) const FACTS: &[Fact] = &[
@@ -587,8 +587,8 @@ mod macos {
         Ok(s.summary())
     }
 
-    /// Q-01, answered 2026-10-29 on macOS 26.6.2 (25G83): yes, 200 of 200
-    /// children forked under dyld contention were enforced, none hung.
+    /// 200 of 200 children forked under dyld contention are enforced; none
+    /// hangs (macOS 26.6.2, 25G83).
     fn m23(c: &Ctx) -> Check {
         patha(c)
     }
@@ -614,11 +614,9 @@ mod macos {
         Ok(format!("ok<={ABORT_FREE_RULES} abort>={ABORTING_RULES}"))
     }
 
-    /// Q-10, answered 2026-10-29 on macOS 26.6.2 (25G83), measured: a token
-    /// consumed *before* apply returns a valid handle but grants nothing once
-    /// the profile is applied, so a child must consume its tokens after
-    /// apply (as KF-M20 does). Whether consume is free of user-space locks is
-    /// recorded separately as an inference, not asserted here.
+    /// A token consumed *before* apply returns a valid handle but grants
+    /// nothing once the profile is applied, so a child must consume its
+    /// tokens after apply (as KF-M20 does).
     fn m25(c: &Ctx) -> Check {
         let dir = scratch()?;
         let s = ran(c.step(&["ext-parent", dir.as_str(), "consume-first"]))?;
@@ -635,7 +633,7 @@ mod macos {
         Ok(s.summary())
     }
 
-    /// Q-13, answered 2026-10-29 on macOS 26.6.2 (25G83): yes. TIOCSTI
+    /// TIOCSTI
     /// pushes input into the caller's own controlling terminal, also under an
     /// allow-default profile, so a caged child must not share the caller's
     /// terminal unless the profile denies the ioctl.
@@ -867,7 +865,7 @@ mod macos {
     }
 }
 
-/// Q-09 bisection (opt-in): finds, per rule shape, the largest rule count
+/// Opt-in bisection: finds, per rule shape, the largest rule count
 /// that compiles without aborting and the smallest that aborts.
 #[cfg(target_os = "macos")]
 fn bisect(c: &Ctx) {

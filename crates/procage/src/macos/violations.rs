@@ -353,7 +353,7 @@ pub(crate) fn stop() {
 mod tests {
     use super::*;
 
-    /// SR-007: a helper that never delivers the fence makes the wait time
+    /// A helper that never delivers the fence makes the wait time
     /// out after its limit instead of blocking.
     #[test]
     fn a_silent_helper_times_out() {

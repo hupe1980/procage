@@ -1,4 +1,4 @@
-//! Raw system interfaces: the only module in the workspace allowed to use
+//! Raw system interfaces: the only module of this crate allowed to use
 //! `unsafe`. Every unsafe block states why it is sound in a `SAFETY:` comment.
 //!
 //! Everything here is a thin, typed wrapper; policy and assertions live in the

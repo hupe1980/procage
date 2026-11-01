@@ -101,8 +101,8 @@ fn class_rules(class: HardDenyClass) -> Vec<SeccompRule> {
         // never granted and T1 protect/hide targets are mountpoints.
         HardDenyClass::Privilege | HardDenyClass::RenameAnchors => vec![],
         HardDenyClass::FcntlModify | HardDenyClass::ServiceHandoff => vec![],
-        // Masked at spawn or enforced by Landlock's default deny (see
-        // `data_class`).
+        // Masked at spawn (T1) or enforced by Landlock's default deny where
+        // no rule reaches them (see `covered`).
         HardDenyClass::Secrets | HardDenyClass::TrustHandoff | HardDenyClass::Persistence => vec![],
     }
 }
@@ -197,7 +197,7 @@ pub(super) fn lower(
         user: true,
         mount: true,
         net: true,
-        // No PID namespace yet: it needs a reaper and a fresh /proc.
+        // No PID namespace: it would need a reaper and a fresh /proc.
         pid: false,
         ipc: true,
         uts: true,
@@ -387,7 +387,7 @@ pub(super) fn lower(
         }
     }
     match policy.process.signals {
-        // Landlock's signal scope (ABI 6); there is no PID namespace yet.
+        // Landlock's signal scope (ABI 6); there is no PID namespace.
         Signals::SelfAndChildren => {
             let outcome = if abi >= 6 {
                 Outcome::Exact

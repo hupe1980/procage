@@ -1,27 +1,16 @@
 //! # procage
 //!
-//! Process sandboxing for Rust, in development. procage runs a child process
+//! Process sandboxing for Rust. procage runs a child process
 //! in a cage on macOS (Seatbelt, applied through libsandbox rather than the
 //! deprecated `/usr/bin/sandbox-exec`) and on Linux (Landlock, seccomp and
 //! namespaces), without helper binaries. It is meant for commands that run
 //! untrusted, adaptive code as your user: an LLM agent's tool calls, a
 //! project's build scripts.
 //!
-//! **Status.** The published 0.0.1 only reserves the name. This development
-//! version (0.0.2, unreleased) can spawn a caged child on macOS (module
-//! `macos`) and on Linux (module `linux`, tiers T1 and T2). Each module's
-//! documentation lists what its tests observe on a real kernel and what is
-//! not done yet, among them:
-//!
-//! - on macOS a caged child can read other same-user processes' arguments
-//!   and environment (the sandbox does not mediate that query);
-//! - there are no pseudo-terminals, and the macOS base profiles were
-//!   measured on macOS 26.6.2;
-//! - on Linux there is no PID namespace yet, loopback and proxy networks
-//!   and glob rules are capability gaps, and the Linux tests have run on
-//!   one kernel (7.0, aarch64, in Docker).
-//!
-//! Do not rely on any release before 0.1.0 to contain a process.
+//! **Status.** Pre-release: do not rely on any version before 0.1.0 to
+//! contain a process. The backends are `macos` and `linux` (tiers T1 and
+//! T2); each module states its limits, and the [threat model](threat_model)
+//! lists every known escape class and its status.
 //!
 //! Policies are written with [`policy`] (the `procage-policy` crate): a
 //! portable intent layer, lowered for each backend.
@@ -173,21 +162,7 @@
 //! ```
 //!
 //! A record says whether it is complete and what it can show ([`Coverage`]):
-//!
-//! - **macOS** ([`Coverage::Observed`]): the kernel logs every Seatbelt
-//!   denial; the cage's profile tags each with the run and the rule kind,
-//!   and one helper per process (`/usr/bin/log stream`, which needs an
-//!   administrator account) collects them. Identical denials by one process
-//!   are reported once. Base V3 refuses the probes every program makes
-//!   (logging, the DTrace helper, `/dev/tty`, …) without reporting them.
-//! - **Linux** ([`Coverage::SystemCalls`]): every system call the seccomp
-//!   filter refuses (`ptrace`, `io_uring_setup`, an IP socket without
-//!   network, `setsid` under `Lifetime::Run`, …) is reported exactly, by a
-//!   supervisor thread that answers it with `EPERM` (what it returns without
-//!   reporting). File, network and signal denials by Landlock are not: it
-//!   reports them only to the privileged audit subsystem.
-//!
-//! Identical denials are merged into one entry with a count
+//! every denial on macOS, every refused system call on Linux. Identical denials are merged into one entry with a count
 //! ([`Violation::repeats`]). Reporting is diagnostic. Enforcement never
 //! depends on it.
 //!

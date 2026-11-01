@@ -1,0 +1,58 @@
+name: release
+
+# Publishes the crates to crates.io and creates the GitHub release when a tag
+# `vX.Y.Z` matching procage's version is pushed. The crates.io token is the
+# `CARGO_REGISTRY_TOKEN` secret of the `release` environment.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.99.1"
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      - name: The tag names procage's version
+        run: |
+          version=$(cargo pkgid -p procage | sed 's/.*[#@]//')
+          test "$GITHUB_REF_NAME" = "v$version" \
+            || { echo "tag $GITHUB_REF_NAME does not match procage $version" >&2; exit 1; }
+      - name: Publish (dependencies first; versions already on crates.io are skipped)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          for crate in procage-policy procage; do
+            version=$(cargo pkgid -p "$crate" | sed 's/.*[#@]//')
+            status=$(curl -s -o /dev/null -w '%{http_code}' -A 'procage-release (github.com/hupe1980/procage)' \
+              "https://crates.io/api/v1/crates/$crate/$version")
+            if [ "$status" = 200 ]; then
+              echo "$crate $version is already published"
+            else
+              cargo publish --locked -p "$crate"
+            fi
+          done
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "procage $GITHUB_REF_NAME"

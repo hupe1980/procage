@@ -1,6 +1,6 @@
 +++
 title = "Linux backend and tiers"
-description = "How procage combines Landlock, seccomp and namespaces on Linux into tiers T1 and T2, what each Landlock ABI changes, how to test against older kernels, and what is not done yet."
+description = "How procage combines Landlock, seccomp and namespaces on Linux into tiers T1 and T2, what each Landlock ABI changes, how to test against older kernels, and its limits."
 weight = 60
 
 [extra]
@@ -47,7 +47,7 @@ Both tiers accept Landlock ABI 1 (Linux 5.13) and later. Each newer ABI makes mo
 | 6 | 6.12 | Debian 13, RHEL 10 | No signal scope: `Signals::SelfAndChildren` is a gap. Abstract Unix sockets are not scoped |
 | 9 | | | Unix-socket rules on T2 |
 
-RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 8 for now (`procage::linux::BACKEND_MAX_ABI`); later rights have not been verified on a kernel.
+RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 8 (`procage::linux::BACKEND_MAX_ABI`), the newest verified on a kernel.
 
 ### Testing against older kernels
 
@@ -87,13 +87,13 @@ The Linux tests run in containers on tier T1 (seccomp unconfined) and tier T2 (D
 - under `Lifetime::Run`, `setsid` and `setpgid` fail with `EPERM`, and descendants die with the child's process group;
 - with the Landlock ABI capped at 1, 2, 3 and 5, on both tiers, writes stay in the workspace, the network is off, `ptrace` is refused and no file outside the writable paths can be truncated.
 
-## Not done yet
+## Limits
 
-- No PID namespace or fresh `/proc`, so keeping signals within the run needs Landlock ABI 6. A policy that grants `/proc` exposes other processes' arguments (R-25); their environment stays out of reach.
+- No PID namespace or private `/proc`, so keeping signals within the run needs Landlock ABI 6. A policy that grants `/proc` exposes other processes' arguments (R-25); their environment stays out of reach.
 - With `Lifetime::Tree`, a descendant that double-forks into a session of its own outlives the run.
-- Loopback and proxy networks need a relay into the network namespace: a gap on both tiers.
+- No loopback or proxy networking: a gap on both tiers.
 - Protect, and hide inside a writable tree, are gaps on T2; glob rules are gaps on both tiers.
-- The tests have run on one kernel (7.0.14, aarch64, Docker Desktop), older ABIs through the cap; other kernels and x86_64 run in CI.
+- The evidence was recorded on one kernel (7.0.14, aarch64), older ABIs through the cap.
 - The probe is cached per process, not per boot.
 
 ## Options

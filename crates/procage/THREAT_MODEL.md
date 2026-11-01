@@ -7,82 +7,49 @@ and in the crate documentation.
 
 ## Release status
 
-This is procage 0.0.2, an unreleased development version. The published
-0.0.1 only reserves the crate name.
+This is procage 0.0.2, an unreleased development version; the published
+0.0.1 only reserves the crate name. Do not rely on any release before 0.1.0
+to contain a process.
 
-Background: Seatbelt is the macOS kernel sandbox. Landlock is Linux's
-unprivileged access control for files and network ports; seccomp filters
-system calls. procage's Linux *tiers* are T1 (Landlock and seccomp plus user
-namespaces and mounts) and T2 (Landlock and seccomp only, where user
-namespaces are unavailable).
+Seatbelt is the macOS kernel sandbox. On Linux, Landlock controls files and
+network ports and seccomp filters system calls; tier T1 adds user namespaces
+and mounts, tier T2 (where user namespaces are unavailable) has Landlock and
+seccomp only. Both tiers need Landlock ABI 1 or later.
 
-On macOS this version spawns a caged child: it resolves policy paths to the
-spelling the kernel matches, compiles the policy once, and applies it in the
-child with system calls only. If any step fails, the target never runs. Its
-integration tests observe the kernel refusing access outside the policy.
+This release cages a child on both systems, applying the sandbox in the
+child with system calls only; if any step fails, the target never runs. A
+construct the host cannot enforce is an error unless the caller accepts it
+by name, as an approximation or through `Cage::fit`. On both systems procage
+also closes inherited descriptors, drops secret-looking variables, can give
+each run a private temporary directory, and kills every process a run
+started when it ends. `Cage::exec` lets a helper become the caged command;
+the lifetime then belongs to whoever started the helper.
 
-On Linux it spawns a caged child on tier T1 (user, mount, IPC, UTS and
-network namespaces, mounts, Landlock and seccomp) or tier T2 (Landlock and
-seccomp), whichever the host allows, and refuses to spawn without Landlock
-(both tiers accept ABI 1 and later). Below ABI 3, where Landlock cannot deny
-truncation, it refuses truncating a file by path and opening one with
-`O_TRUNC` without write access everywhere.
-A construct the tier cannot enforce is an error unless the caller accepts
-it by name: as an approximation, or with `Cage::fit`, which relaxes only
-what the caller names and returns each relaxation with what would lift it. Its integration tests run in containers for both tiers on one
-kernel (7.0, aarch64).
-
-On both systems it also closes every inherited descriptor the caller did not
-hand over, kills every process the run started when the run ends (also
-descendants that double-forked into a session of their own, and those of a
-child that already exited), drops secret-looking variables from a
-passed-through environment, and can give each run a private temporary
-directory. To keep descendants in the run, `setsid` and `setpgid` fail inside
-a Linux cage unless the policy opts out with `Lifetime::Tree`; this also
-applies to the frozen presets.
-
-A helper program can also become the caged command (`Cage::exec`) instead
-of spawning it, for callers whose own code starts and kills the process.
-The confinement is the same; the lifetime then belongs to whoever started
-the helper. On Linux the command's descendants stay in its process group
-and the command dies with the helper's parent; on macOS a descendant that
-starts its own session is not reached when that group is killed.
-
-It does **not** yet:
+It does **not**:
 
 - keep a caged child on macOS from reading the arguments and environment of
-  other processes of the same user (R-25): the sandbox does not mediate
-  that query, so do not pass secrets to the calling program through its
-  arguments or environment;
-- report or refuse a hard link made before the run that gives a protected
-  file a second name (R-08);
-- protect a helper program procage itself installs from replacement (R-26):
-  this release installs none. A `Cage::exec` helper is the caller's own
-  binary; keep it outside every path the policy makes writable;
+  other processes of the same user (R-25), so do not pass secrets to the
+  calling program through its arguments or environment;
+- report or refuse a hard link made before the run (R-08);
+- protect a helper program from replacement (R-26): procage installs none,
+  and a `Cage::exec` helper is the caller's own binary, to be kept outside
+  every writable path;
 - provide pseudo-terminals (`Tty::NewPty` is refused);
-- support macOS releases other than 26.6.2 with certainty: the base
-  profiles V1 and V2 were measured there;
-- deny secrets, trust-handoff files and persistence locations on Linux
-  where a rule reaches them, except by approximations the caller must
-  accept: on tier T1 the paths that exist at spawn are masked; on tier T2
-  secrets that only read rules reach are hidden by granting the trees
-  around them entry by entry, and any class a write rule reaches is
-  refused unless waived;
+- support macOS releases other than 26.6.2 with certainty, where the base
+  profiles were measured;
+- deny the `secrets`, `trust-handoff` and `persistence` paths on Linux where
+  a rule reaches them, except through approximations the caller accepts
+  (masks taken at spawn on T1; entry-by-entry grants for read-only reach on
+  T2, where a write rule reaching them is refused unless waived);
 - hide or protect a path inside a writable tree on Linux tier T2;
-- keep Linux signals within the run below Landlock ABI 6 (a policy that
-  needs signals there must choose to let them reach every process of the
-  user), or stop an IP socket the caller hands over from connecting on
-  tier T2 below ABI 4;
-- give Linux children a PID namespace or loopback or proxy networking, or
-  restrict which Unix sockets they reach on tier T2 below Landlock ABI 9
-  (on tier T1, listening sockets outside the allowed paths are masked at
-  spawn, which does not cover sockets bound later).
+- keep Linux signals within the run below Landlock ABI 6, or stop an IP
+  socket the caller hands over from connecting on tier T2 below ABI 4;
+- give Linux children a PID namespace, loopback or proxy networking, or
+  Unix-socket rules on tier T2 below Landlock ABI 9 (tier T1 masks the
+  listening sockets outside the allowed paths at spawn).
 
-Do not rely on any release before 0.1.0 to contain a process.
-
-The sections below describe the design. The escape-class catalog states, per
-class, whether this release has escape-suite tests that prove the class is
-handled, and which variants remain open.
+The escape-class catalog below states, per class, whether this release has
+escape-suite evidence and which variants remain open.
 
 ## Adversary
 
@@ -122,7 +89,7 @@ policy grants.
 - Bugs in the kernel, XPC services, TCC or Linux security modules.
 - Side channels.
 - Denial of service beyond the resource limits a policy sets.
-- **Trust handoff beyond the shipped presets**: a program *outside* the
+- **Trust handoff beyond the shipped lists**: a program *outside* the
   sandbox later runs or trusts something the sandbox wrote. Every policy
   carries the `trust-handoff` hard-deny class for the known locations. Every
   other such location is the responsibility of the calling harness (see R-07
@@ -147,7 +114,8 @@ procage inside it for finer-grained policy.
   libsandbox functions that Apple does not document or support. It
   resolves them at run time, before starting a child. If they are missing or
   behave differently, the result is an "unsupported" error, never a
-  silent fallback to running without a sandbox. A future macOS release may remove them.
+  silent fallback to running without a sandbox. Any macOS release may
+  remove them.
 - **Linux.** procage measures what the running kernel offers (Landlock
   ABI, seccomp, unprivileged user namespaces) and assigns a tier. A policy the
   tier cannot enforce is an error that names the missing capability. It
@@ -266,10 +234,10 @@ why the numbering has gaps.
   sandbox does not mediate (observed on macOS 26.6.2). Signals to other
   processes and task ports are refused. On Linux the base profile does not
   grant `/proc`; a policy that grants it exposes other processes'
-  arguments, because Linux children have no PID namespace yet, while their
+  arguments, because Linux children have no PID namespace, while their
   environment stays out of reach.
-- **R-26** procage installs no helper program of its own in this release;
-  the class applies once it does.
+- **R-26** procage installs no helper program of its own; the class applies
+  only to one it would install.
 
 Report a suspected escape privately as described in the security policy:
 <https://github.com/hupe1980/procage/blob/main/SECURITY.md>.

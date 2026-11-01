@@ -1,6 +1,6 @@
 +++
 title = "macOS backend"
-description = "How procage applies Seatbelt on macOS through libsandbox's private interface, without sandbox-exec: path resolution, compiling once, the in-child sequence, what the tests observe and what is not done yet."
+description = "How procage applies Seatbelt on macOS through libsandbox's private interface, without sandbox-exec: path resolution, compiling once, the in-child sequence, what the tests observe and its limits."
 weight = 50
 
 [extra]
@@ -55,7 +55,7 @@ The backend's tests cage real children on the kernel (macOS 26.6.2). Among what 
 
 Seatbelt cannot filter `setsid`, so a descendant can leave the child's session and process group. For a forking policy, procage gives each run's profile a marker, and when the run ends it asks libsandbox, for every process of the user, whether that process carries the marker. This query form is undocumented. Between finding a process and killing it, the process could exit and its id be reused: macOS offers no process handle that would close that window.
 
-## Not done yet
+## Limits
 
 - **Process introspection (R-25, partial).** Any process of the same user can read another's arguments and environment through the `KERN_PROCARGS2` query, which the sandbox does not mediate, even under `(deny sysctl-read)`. Do not pass secrets to the calling program through its arguments or environment. Signals to other processes and task ports are refused.
 - No pseudo-terminals (`Tty::NewPty` is refused).

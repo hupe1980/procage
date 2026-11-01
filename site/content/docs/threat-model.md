@@ -42,7 +42,7 @@ When a kernel or service escape is unacceptable, for example for code from unkno
 
 ## Undocumented interfaces
 
-- **macOS:** procage compiles and applies Seatbelt profiles through libsandbox functions Apple does not document or support, resolved at run time. If they are missing or behave differently, the result is an `Unsupported` error, never a silent fallback. A future macOS release may remove them. Finding a run's processes also uses an undocumented query, checked before the first forking spawn.
+- **macOS:** procage compiles and applies Seatbelt profiles through libsandbox functions Apple does not document or support, resolved at run time. If they are missing or behave differently, the result is an `Unsupported` error, never a silent fallback. Any macOS release may remove them. Finding a run's processes also uses an undocumented query, checked before the first forking spawn.
 - **Linux:** procage measures the kernel (Landlock ABI, seccomp, unprivileged user namespaces) and assigns a tier. A policy the tier cannot enforce is an error that names the missing capability, never applied best-effort.
 - **Nesting:** inside another Seatbelt sandbox, a second profile fails or has no effect; procage reports this up front instead of running uncaged.
 
@@ -54,8 +54,8 @@ As of the development version 0.0.2:
 
 - **Mitigated**, with canaries on each applicable platform: non-canonical path rules (R-02), pattern characters in paths (R-03), ancestor rename (R-04), writes through read-only descriptors (R-05), work handed to unsandboxed services (R-06), local daemons (R-09), a shared temporary directory (R-10), the unsandboxed exec modifier (R-11), firmlink spelling (R-12), inherited file descriptors (R-21), terminal input injection (R-22), outliving the run (R-23), secrets in the environment (R-24), filter-bypassing kernel interfaces (R-28), nested user namespaces (R-29), Landlock rule loss (R-30) and truncation without write access (R-31).
 - **Documented, harness responsibility:** trust handoff (R-07). procage denies writes to the known locations; anything else the sandbox wrote must be treated as untrusted.
-- **Partial:** process introspection (R-25). On macOS a caged child can read other same-user processes' arguments and environment through `KERN_PROCARGS2`, which the sandbox does not mediate. On Linux, a policy that grants `/proc` exposes other processes' arguments, because there is no PID namespace yet.
-- **Planned:** pre-existing hard links (R-08): a hard link made before the run gives a protected file a second name that a path rule does not cover, and is neither reported nor refused. Helper replacement (R-26) applies once procage runs a helper program.
+- **Partial:** process introspection (R-25). On macOS a caged child can read other same-user processes' arguments and environment through `KERN_PROCARGS2`, which the sandbox does not mediate. On Linux, a policy that grants `/proc` exposes other processes' arguments, because there is no PID namespace.
+- **Planned:** pre-existing hard links (R-08): a hard link made before the run gives a protected file a second name that a path rule does not cover, and is neither reported nor refused. Helper replacement (R-26) applies only to a helper procage installs itself, and it installs none.
 
 The [catalog in THREAT_MODEL.md](https://github.com/hupe1980/procage/blob/main/crates/procage/THREAT_MODEL.md#escape-classes) lists the evidence (test names) and the kernel facts observed for each class. How that evidence is produced is described in [Kernel facts and testing](@/docs/testing.md).
 

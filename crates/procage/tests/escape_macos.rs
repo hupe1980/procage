@@ -891,10 +891,10 @@ fn r25_other_processes_arguments_are_unreadable() {
 
 // ---- R-26 Helper replacement ----
 
-/// procage runs no helper program in this release; this canary attacks the
-/// helper once it does.
+/// procage installs no helper program; this canary attacks one once it
+/// does.
 #[test]
-#[ignore = "open: R-26 no helper exists in this release"]
+#[ignore = "open: R-26 procage installs no helper"]
 fn r26_the_helper_cannot_be_replaced() {
-    panic!("open: R-26: procage runs no helper in this release");
+    panic!("open: R-26: procage installs no helper");
 }

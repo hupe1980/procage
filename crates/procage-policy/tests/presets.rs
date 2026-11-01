@@ -1,4 +1,4 @@
-//! Presets V1 and the data-driven class lists are frozen: their lowered
+//! The presets (every version) and the data-driven class lists are frozen: their lowered
 //! macOS profiles (workspace `/work`) are pinned as fixtures.
 
 mod common;

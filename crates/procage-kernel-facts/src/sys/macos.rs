@@ -590,7 +590,7 @@ pub fn tiocsti(fd: &OwnedFd, byte: u8) -> Result<(), i32> {
 mod tests {
     use super::*;
 
-    /// SR-009: an unavailable symbol is reported by its name, not as a crash.
+    /// An unavailable symbol is reported by its name, not as a crash.
     #[test]
     fn missing_symbol_is_named() {
         load_libsandbox();

@@ -14,7 +14,7 @@ Some things a caged child should never do, whatever the rest of the policy says:
 use procage::policy::{presets, AbsPath, HardDenyClass};
 
 let workspace = AbsPath::new("/path/to/repo")?;
-let mut policy = presets::agent_workspace::v2(&workspace);
+let mut policy = presets::agent_workspace::v3(&workspace);
 // `git init` and `git clone` write hooks and config: allow exactly that class.
 policy.waive.insert(HardDenyClass::TrustHandoff);
 ```

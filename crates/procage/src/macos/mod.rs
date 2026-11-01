@@ -18,56 +18,18 @@
 //! grant tokens, and only then executes its target. If any step fails, the
 //! target never runs and the error names the step.
 //!
-//! What the tests (`tests/spawn_macos.rs`) observe on a real kernel:
+//! `tests/spawn_macos.rs` and `tests/escape_macos.rs` check this on a real
+//! kernel; the [threat model](crate::threat_model) lists every escape class
+//! and its evidence.
 //!
-//! - the child can use the files its policy grants and is refused every
-//!   other file access with "operation not permitted";
-//! - a protected subtree inside a writable one cannot be written;
-//! - without network access in the policy, connecting to a loopback listener
-//!   fails; with loopback access for that port it succeeds;
-//! - paths written with `/tmp` work as written;
-//! - a grant bound for one spawn gives nothing to another;
-//! - a caged process that tries to spawn gets [`SpawnError::AlreadySandboxed`];
-//! - with [`Tty::None`] the child leads its own
-//!   session; its environment and resource limits are the policy's;
-//! - 100 children spawned while other threads load libraries are all caged;
-//! - a descriptor the caller left open without close-on-exec does not exist
-//!   in the child; one handed over with [`Cage::spawn_with_fds`] does; with
-//!   1,000 extra descriptors open, none reaches the child;
-//! - dropping the [`Child`] handle kills the child, a grandchild in its
-//!   process group and a grandchild that started its own session; with a
-//!   forking policy it also kills a descendant that double-forked into a
-//!   session of its own and was reparented to `launchd`, and the
-//!   descendants of a child that already exited (found by the run's
-//!   marker); two concurrent runs of one cage end separately; a detached
-//!   handle leaves the child and its processes running;
-//! - with environment passthrough, `GITHUB_TOKEN`, `SSH_AUTH_SOCK` and
-//!   `DYLD_*` variables do not reach the child unless set explicitly on the
-//!   command, and the handle lists them as dropped;
-//! - a policy with the grant `tmpdir` gives each run its own `TMPDIR`, which
-//!   is removed when the handle is dropped;
-//! - with base profile V1, `id`, `date`, `uname`, `sh`/`zsh`/`bash`, `cat`,
-//!   `sed`, `awk`, `perl`, `tar`, `gzip` and Rust programs run with correct
-//!   output (user name, local time), and children with `/dev/null` stdio
-//!   work; the base alone still refuses the home directory, temporary files,
-//!   writes to `/tmp` and the network;
-//! - with read access to the whole home directory, `~/.ssh`, `~/.aws` and
-//!   `~/.gnupg` (also spelled `~/.SSH`) stay unreadable; with write access
-//!   to a workspace, git hooks and config, shell rc files and `.vscode`
-//!   cannot be written and `.git` cannot be renamed, while ordinary files
-//!   and `.git/objects` can; launch agents cannot be planted even with a
-//!   write grant; waiving a class by name lifts exactly that class;
-//! - the presets `minimal`, `agent_readonly`, `agent_workspace` and `build`
-//!   behave as documented in `procage_policy::presets`.
-//!
-//! **Not yet done** (later features):
+//! **Limits:**
 //!
 //! - there are no pseudo-terminals (`Tty::NewPty`);
 //! - the base profiles are curated for macOS 26.6.2;
 //!   [`Base::V1`](procage_policy::Base::V1) does not run Xcode's tool shims
 //!   (`/usr/bin/git`, `/usr/bin/python3`): use
-//!   [`Base::V2`](procage_policy::Base::V2), see `procage_policy::base`;
-//! - procage installs no helper program of its own (R-26 does not apply yet);
+//!   [`Base::V3`](procage_policy::Base::V3), see `procage_policy::base`;
+//! - procage installs no helper program of its own (so R-26 does not apply);
 //! - the `KERN_PROCARGS2` query gives a caged child the arguments and
 //!   environment of any process of the same user: the sandbox does not
 //!   mediate it, even under `(deny sysctl-read)` (macOS 26.6.2).
@@ -164,7 +126,7 @@ pub enum Unsupported {
         /// What the probe observed.
         detail: String,
     },
-    /// A policy setting this version cannot apply yet.
+    /// A policy setting this backend cannot apply.
     Setting {
         /// The setting.
         setting: &'static str,

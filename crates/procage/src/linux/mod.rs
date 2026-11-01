@@ -1,7 +1,7 @@
 //! Spawning a caged child on Linux (Landlock, seccomp, namespaces).
 //!
 //! Linux has no single sandbox call. procage combines kernel features into
-//! a **tier**, chosen by what the host allows ([`probe`]):
+//! a **tier**, chosen by what the host allows ([`probe()`]):
 //!
 //! - **T1**: user, mount, IPC, UTS and (unless the policy allows all
 //!   networking) network namespaces, mounts, Landlock and seccomp. Needs
@@ -18,7 +18,8 @@
 //! maps) and forks a child that applies it with system calls only, in this
 //! order: session, parent-death signal, namespaces and mounts (T1),
 //! capabilities dropped, resource limits, inherited descriptors marked
-//! close-on-exec, `no_new_privs`, Landlock, seccomp, and a check that both
+//! close-on-exec, `no_new_privs`, Landlock, seccomp (handing its listener to
+//! the parent when reporting), and a check that seccomp and `no_new_privs`
 //! hold. If any step fails, the target never runs and the error names the
 //! step.
 //!
@@ -29,58 +30,9 @@
 //! enforce them (a gap; only a waiver lets the policy through). On T2, a
 //! grant bound to a path that reaches a class path is refused.
 //!
-//! What the tests (`tests/spawn_linux.rs`) observe on a real kernel, in a
-//! container on tier T1 (seccomp unconfined) and on tier T2 (Docker's
-//! defaults), with T2 also forced on the T1 host:
-//!
-//! - the child can use the files its policy grants and is refused every
-//!   other file access with "permission denied"; a grant bound for one
-//!   spawn gives nothing to another;
-//! - `ptrace`, `io_uring_setup`, `bpf`, `keyctl`, `unshare`, `setns`,
-//!   `perf_event_open` and `userfaultfd` fail with "operation not
-//!   permitted";
-//! - without network access in the policy, connecting to a listener on the
-//!   host's loopback fails (T1: a network namespace; T2: no sockets);
-//! - on T2, protecting a subtree inside a writable one is a capability gap;
-//!   on a host without user namespaces, asking for T1 is [`Unsupported`];
-//! - a missing policy path fails the spawn before any child runs; a failing
-//!   step names itself and the target does not run; a child without the
-//!   seccomp filter is stopped by the verify step;
-//! - on T1, a protected subtree is read-only ("read-only file system") and
-//!   neither `umount` nor a read-write remount undoes it; a hidden path is
-//!   unreadable; the child holds no capabilities, not even in its bounding
-//!   set;
-//! - on T1, with read access to a home, its `.ssh` and `.aws` are
-//!   unreadable; with write access to a workspace, `.git/hooks`,
-//!   `.git/config`, `.vscode` and `.bashrc` cannot be written and `.git`
-//!   cannot be renamed, while `.git/objects`, the index, refs and `src`
-//!   can; a systemd user unit cannot be planted in a writable home; waiving
-//!   a class lifts exactly that class;
-//! - on T2, a policy whose write rule reaches trust-handoff names is a gap,
-//!   and a grant bound to a home holding `.ssh` is refused;
-//! - a writable tree larger than the walk limit fails the spawn;
-//! - with base profile V1, `sh`, `ls`, `cat` and Rust programs run, and
-//!   `/proc` and other users' files stay unreadable;
-//! - a descriptor the caller left open without close-on-exec does not
-//!   exist in the child (with 200 such descriptors open); one handed over
-//!   does; the child leads its own session and has the policy's limits with
-//!   core dumps off;
-//! - dropping the [`Child`] handle kills the child, a grandchild in its
-//!   process group and a grandchild that started its own session; under the
-//!   default [`Lifetime::Run`](procage_policy::Lifetime::Run), `setsid` and
-//!   `setpgid` fail with `EPERM` in the cage, and a descendant whose parent
-//!   exited, or whose child exited before the run ended, dies with the
-//!   child's process group; with `Lifetime::Tree` both calls work;
-//! - with environment passthrough, `GITHUB_TOKEN`, `SSH_AUTH_SOCK` and
-//!   `LD_PRELOAD` do not reach the child, and the handle lists them;
-//! - the `tmpdir` grant gives each run a private `TMPDIR`, removed when the
-//!   handle is dropped;
-//! - 100 children spawned from four threads are all caged;
-//! - with the Landlock ABI capped at 1, 2, 3 and 5 (see below), on both
-//!   tiers, writes stay in the workspace, the network is off, `ptrace` is
-//!   refused, and no file outside the writable paths can be truncated;
-//! - a process outside the cage can be signalled only with
-//!   [`Signals::SameUser`](procage_policy::Signals::SameUser).
+//! `tests/spawn_linux.rs` and `tests/escape_linux.rs` check this on a real
+//! kernel, on both tiers; the [threat model](crate::threat_model) lists
+//! every escape class and its evidence.
 //!
 //! **Kernels.** Both tiers need Landlock, from ABI 1 (Linux 5.13). Each
 //! newer ABI makes more of a policy exact; what an older one cannot express
@@ -92,9 +44,9 @@
 //! | 3 | 6.2 | Ubuntu 22.04 HWE, 23.10 (6.5) | Landlock cannot deny truncation: procage refuses `truncate(2)` by path and `open` with `O_TRUNC` without write access everywhere, also inside writable paths (truncate through a descriptor opened for writing instead), and `openat2` fails with `ENOSYS`. Debian 12 (6.1) is at ABI 2. |
 //! | 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off, seccomp still refuses IP sockets, but an IP socket the caller hands over can connect. |
 //! | 6 | 6.12 | Debian 13, RHEL 10 | No signal scope: `Signals::SelfAndChildren` is a gap. A harness that needs signals may choose `Signals::SameUser` (every process of the same user) and tell its user. Abstract Unix sockets are not scoped. |
-//! | 9 | — | | Unix-socket rules on T2 (procage uses up to ABI 8 for now). |
+//! | 9 | — | | Unix-socket rules on T2 (procage uses rights up to [`BACKEND_MAX_ABI`]). |
 //!
-//! Distributions backport Landlock (RHEL 9.6 has ABI 5), so [`probe`] asks
+//! Distributions backport Landlock (RHEL 9.6 has ABI 5), so [`probe()`] asks
 //! the kernel rather than reading its version.
 //! [`CageOptions::with_landlock_abi`] lowers and enforces a policy as on an
 //! older kernel: to test what your users' kernels give, or to run one plan
@@ -121,20 +73,15 @@
 //! approximation accepted with the same option). Tier T2 cannot restrict
 //! pathname sockets and refuses the setting.
 //!
-//! **Not yet done** (later features):
+//! **Limits:**
 //!
-//! - no PID namespace or fresh `/proc`, so signal scoping needs Landlock
+//! - no PID namespace or private `/proc`, so signal scoping needs Landlock
 //!   ABI 6;
 //! - with `Lifetime::Tree`, a descendant that double-forks and starts its
 //!   own session is reparented away from the child and outlives the run;
-//! - loopback and proxy networks need a relay (a gap on both tiers);
-//!   Unix-socket restrictions on T2 need Landlock ABI 9; protect, and hide
-//!   inside a writable tree, on T2 and glob rules are gaps;
-//! - Landlock rights beyond ABI 8 are not used: they have not been verified
-//!   on a kernel;
-//! - the tests have run on one kernel (7.0.14, aarch64, Docker Desktop),
-//!   older ABIs through the cap; x86_64 and other kernels run in CI after a
-//!   push;
+//! - no loopback or proxy networking (a gap on both tiers); on T2,
+//!   Unix-socket restrictions need Landlock ABI 9, and protect, and hide
+//!   inside a writable tree, are gaps; glob rules are gaps on both tiers;
 //! - the probe is cached per process, not per boot.
 
 mod child;
@@ -264,7 +211,7 @@ pub enum Unsupported {
         /// Its name.
         name: String,
     },
-    /// A policy setting this version cannot apply yet.
+    /// A policy setting this backend cannot apply.
     Setting {
         /// The setting.
         setting: &'static str,

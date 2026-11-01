@@ -1,12 +1,13 @@
 //! The base profile: what ordinary programs need to start, and nothing the
 //! user cares about.
 //!
-//! A policy opts in with [`Base::V1`](crate::Base::V1) or
-//! [`Base::V2`](crate::Base::V2). Each version is frozen; a loosening needs a
-//! new version. Use V2 for developer tools (compilers, `git`, interpreters,
-//! Homebrew); V1 stays as it was.
+//! A policy opts in with [`Base::V1`](crate::Base::V1),
+//! [`Base::V2`](crate::Base::V2) or [`Base::V3`](crate::Base::V3). Each
+//! version is frozen; a loosening needs a new version. Use V3 for developer
+//! tools (compilers, `git`, interpreters, Homebrew): V2's rules, with the
+//! probes every program makes denied quietly.
 //!
-//! **macOS** (measured on macOS 26.6.2, 25G83, on 2026-10-30):
+//! **macOS** (measured on macOS 26.6.2, 25G83):
 //!
 //! | Entry | Why |
 //! |---|---|
@@ -24,16 +25,11 @@
 //! or `/Volumes`, no network, no writes beyond the devices above, and no
 //! process creation or signals beyond the policy's.
 //!
-//! procage's tests run these programs with base V1 on the kernel: `id -un`,
-//! `whoami`, `date`, `uname -a`, `sh`, `zsh` and `bash` with a command,
-//! `cat`, `sort`, `sed`, `awk`, `xxd` on `/dev/urandom`, `perl -e 1`,
-//! `tar --version`, `gzip -V`, and a Rust program. Tools that are Xcode
-//! shims (`/usr/bin/git`, `/usr/bin/python3`) need developer-tool paths and
-//! are not covered.
+//! Xcode shims (`/usr/bin/git`, `/usr/bin/python3`) need V2 or V3.
 //!
-//! **macOS V2** (measured on macOS 26.6.2 with Xcode 27.2 and Homebrew, on
-//! 2026-10-31, by running developer tools in a cage and reading every
-//! sandbox denial): V1 plus
+//! **macOS V2** (measured on macOS 26.6.2 with Xcode 27.2 and Homebrew, by
+//! running developer tools in a cage and reading every sandbox denial): V1
+//! plus
 //!
 //! | Entry | Why |
 //! |---|---|
@@ -82,9 +78,8 @@
 //! **Linux**: read and exec for `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`,
 //! `/lib32`; read for `/etc`; read/write `/dev/null`, `/dev/zero`; read
 //! `/dev/random`, `/dev/urandom`; with `Tty::Inherit`, read/write `/dev/tty`
-//! and `/dev/pts`. Paths a host lacks are skipped. This content is
-//! expressed in the plan now and verified with Linux spawning. Version 2 is
-//! the same on Linux: `git`, `python3`, `cc`, `make`, `perl`, `curl`,
+//! and `/dev/pts`. Paths a host lacks are skipped. Versions 2 and 3
+//! are the same on Linux: `git`, `python3`, `cc`, `make`, `perl`, `curl`,
 //! `cargo` and `rustc` run with it when `TMPDIR` (the `tmpdir` grant) and the
 //! toolchain's variables (`RUSTUP_HOME`, `CARGO_HOME`) are set.
 

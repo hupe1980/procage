@@ -13,8 +13,8 @@ default:
 # Every local quality gate, in order; stops at the first failure.
 ci: fmt-check lint test doc package-docs deny msrv no-std semver planning-paths
 
-# `ci` plus the Linux facts in containers and the macOS facts under Rosetta.
-ci-all: ci kf-linux kf-linux-t1 kf-rosetta linux linux-t1
+# `ci` plus the Linux facts and tests in containers.
+ci-all: ci kf-linux kf-linux-t1 linux linux-t1
 
 fmt:
     cargo fmt --all
@@ -159,11 +159,6 @@ kf-linux-t1 tier="T1":
         -e PROCAGE_KF_EXPECT_TIER={{tier}} \
         -v "$PWD":/src:ro -w /src {{rust_image}} \
         cargo test --locked -p procage-kernel-facts --test kernel_facts
-
-# macOS facts as x86_64 under Rosetta.
-kf-rosetta:
-    @echo "==> gate: kf-rosetta"
-    cargo test -p procage-kernel-facts --test kernel_facts --target x86_64-apple-darwin
 
 # The Linux backend's tests in a container under Docker's default seccomp profile (tier T2).
 linux tier="T2":

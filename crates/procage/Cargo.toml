@@ -4,16 +4,16 @@ version = "0.0.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Process sandboxing for Rust on macOS (Seatbelt, without sandbox-exec) and Linux (Landlock, seccomp, namespaces). Under development: pre-1.0, API unstable"
+description = "Process sandboxing for Rust on macOS (Seatbelt, without sandbox-exec) and Linux (Landlock, seccomp, namespaces)"
 repository.workspace = true
 readme = "../../README.md"
 authors.workspace = true
-keywords = ["sandbox", "seatbelt", "macos", "security", "isolation"]
+keywords = ["sandbox", "seatbelt", "landlock", "seccomp", "security"]
 categories = ["os::macos-apis", "os::linux-apis", "api-bindings"]
 include = ["/src", "/THREAT_MODEL.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 
 [package.metadata.docs.rs]
-# The spawn API is macOS-only; render it, and the Linux view as well.
+# Each backend is built for its own OS: render both.
 default-target = "aarch64-apple-darwin"
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 

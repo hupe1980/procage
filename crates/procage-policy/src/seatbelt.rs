@@ -3,7 +3,8 @@
 //! A rule has an effect, one or more operations from a closed list, and typed
 //! filters. There is no modifier field, so no value of this layer can produce
 //! `(with no-sandbox)`, `(with no-profile)` or any other `(with …)` form;
-//! the only modifier procage emits is the run tag on `(deny default)`.
+//! the only modifiers procage emits are `(with message …)` (the run marker and
+//! rule kind) and `(with no-report)` (the quiet denies of base V3).
 //!
 //! When lowered, raw allows land before every deny-within-allow rule and
 //! before the hard-deny tier, so a raw allow can never override them.

@@ -32,7 +32,7 @@ Facts that apply a sandbox **fail rather than skip** when the suite itself runs 
 The repository uses [just](https://just.systems) as its task runner:
 
 ```sh
-just ci            # every local gate: fmt, clippy, tests, docs, cargo-deny, MSRV, no_std, semver, packaging
+just ci            # every local gate: fmt, clippy, tests, docs, cargo-deny, MSRV, no_std, semver
 just test-outside  # the kernel facts, from a terminal outside any sandbox
 just escape        # the macOS escape suite
 just linux         # the Linux backend's tests in Docker, tier T2 (Docker's defaults)
@@ -43,7 +43,7 @@ just fuzz-all      # fuzz the policy crate (nightly, cargo-fuzz)
 
 ## Where they have run
 
-The escape suite's evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2. Older Landlock ABIs are exercised through `CageOptions::with_landlock_abi`. That is a narrow base: more kernels, x86_64 hosts and later macOS releases are what moves procage toward 0.1.0. Reports from other systems are welcome.
+The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; older Landlock ABIs are exercised through `CageOptions::with_landlock_abi`. CI runs the kernel facts and the escape suites on every push, on GitHub's macOS 26 and Ubuntu 24.04 (x86_64, tiers T1 and T2) runners.
 
 ## Design records
 

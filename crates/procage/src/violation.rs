@@ -155,7 +155,7 @@ pub enum Coverage {
     SystemCalls,
     /// Reporting could not start or stopped; the reason.
     Unavailable(String),
-    /// This platform does not report denials yet.
+    /// This platform does not report denials.
     NotObserved,
 }
 
@@ -168,7 +168,7 @@ impl fmt::Display for Coverage {
                 f.write_str("refused system calls are reported; file and network denials are not")
             }
             Coverage::Unavailable(reason) => write!(f, "reporting is unavailable: {reason}"),
-            Coverage::NotObserved => f.write_str("this platform does not report denials yet"),
+            Coverage::NotObserved => f.write_str("this platform does not report denials"),
         }
     }
 }
@@ -544,7 +544,7 @@ mod tests {
         record.push(at(0));
     }
 
-    /// SR-004: only equal denials merge, and the count saturates.
+    /// Only equal denials merge, and the count saturates.
     #[test]
     fn only_equal_denials_merge() {
         let mut record = Record::new(Coverage::Observed);

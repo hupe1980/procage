@@ -559,7 +559,7 @@ fn mark_fds(keep: &[c_int]) -> Result<(), i32> {
 }
 
 impl ChildPlan {
-    /// The child sequence (plan.md): system calls only.
+    /// The child sequence: system calls only.
     fn run(&mut self) -> std::io::Result<()> {
         let fail =
             |step: u32, errno: i32| std::io::Error::from_raw_os_error(step_code(step, errno));

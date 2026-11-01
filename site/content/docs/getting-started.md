@@ -63,7 +63,7 @@ The frozen presets cover common shapes and carry the full hard-deny tier:
 use procage::policy::{presets, AbsPath};
 
 let workspace = AbsPath::new("/path/to/project")?;
-let policy = presets::agent_workspace::v2(&workspace); // read, write and exec in the workspace
+let policy = presets::agent_workspace::v3(&workspace); // read, write and exec in the workspace
 ```
 
 See [Presets](@/docs/presets.md) for what each adds and how they behave on Linux.
@@ -113,5 +113,5 @@ The rustdoc of the development version is the reference for every type: build it
 ## Next
 
 - [Policies](@/docs/policies.md): every part of the intent layer.
-- [macOS backend](@/docs/macos.md) and [Linux backend and tiers](@/docs/linux.md): what each enforces and what not yet.
+- [macOS backend](@/docs/macos.md) and [Linux backend and tiers](@/docs/linux.md): what each enforces, and its limits.
 - [Threat model](@/docs/threat-model.md): what procage defends against, and where it stops.

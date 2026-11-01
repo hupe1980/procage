@@ -12,7 +12,7 @@ use procage::policy::{presets, AbsPath, LowerOptions};
 // Read the workspace; no writes, no network. Secrets,
 // git hooks and launch agents are denied in any policy.
 let workspace = AbsPath::new("/path/to/project")?;
-let policy = presets::agent_readonly::v2(&workspace);
+let policy = presets::agent_readonly::v3(&workspace);
 
 let options = CageOptions::default()
     .with_lower(LowerOptions::default().accept_spawn_snapshot());

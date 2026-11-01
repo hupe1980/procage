@@ -56,7 +56,7 @@ The pure function behind this is `procage::hygiene::environment`.
 
 - `Tty::None` (default): no controlling terminal; the child leads its own session.
 - `Tty::Inherit`: the child shares the caller's terminal but runs in its own process group, so its reads stop with `SIGTTIN` like a background job, and keystroke injection with `TIOCSTI` (and `TIOCLINUX` on Linux) is denied (escape class R-22).
-- `Tty::NewPty`: not implemented yet; refused.
+- `Tty::NewPty`: refused; procage has no pseudo-terminals.
 
 ## A private temporary directory
 

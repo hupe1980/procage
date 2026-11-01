@@ -1,4 +1,4 @@
-//! The lowering table in the crate docs is the fixture: every construct is
+//! The lowering table in the `lower` module docs is the fixture: every construct is
 //! lowered for every target and ABI, and the outcome must be the one the
 //! table states.
 

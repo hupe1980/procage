@@ -314,7 +314,7 @@ pub enum Base {
 /// A member of the hard-deny tier, emitted last in every plan.
 ///
 /// A class can be removed only by naming it in [`Policy::waive`], and every
-/// waiver is listed in the plan. Later features add data-driven classes.
+/// waiver is listed in the plan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(
     feature = "serde",
