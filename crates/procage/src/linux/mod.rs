@@ -479,6 +479,9 @@ pub struct CageOptions {
     /// `$XDG_RUNTIME_DIR`, whose bus, service-manager and engine sockets
     /// the cage keeps out of reach.
     pub runtime_dirs: Vec<PathBuf>,
+    /// Whether receipts hold the policy (see
+    /// [`CageOptions::with_policy_in_receipt`]).
+    pub policy_in_receipt: bool,
 }
 
 impl Default for CageOptions {
@@ -491,6 +494,7 @@ impl Default for CageOptions {
             landlock_abi: None,
             violations: false,
             runtime_dirs: Vec::new(),
+            policy_in_receipt: false,
         }
     }
 }
@@ -517,6 +521,14 @@ impl CageOptions {
     /// These options with `home` as one more home directory.
     pub fn with_home(mut self, home: impl AsRef<Path>) -> Self {
         self.homes.push(home.as_ref().to_path_buf());
+        self
+    }
+
+    /// These options with receipts that hold the policy itself and the
+    /// subjects (often paths) of `fit`'s relaxations. Without it a receipt
+    /// names the policy by digest only.
+    pub fn with_policy_in_receipt(mut self) -> Self {
+        self.policy_in_receipt = true;
         self
     }
 
@@ -604,6 +616,8 @@ pub struct Cage {
     runtime: Vec<PathBuf>,
     /// The approximations the caller accepts, for sockets found at spawn.
     allowed: BTreeSet<Construct>,
+    /// What every run's receipt starts from.
+    facts: Arc<crate::receipt::CageFacts>,
 }
 
 impl Cage {
@@ -627,7 +641,7 @@ impl Cage {
         // Each round relaxes at least one construct; a few always suffice.
         for _ in 0..4 {
             let gaps = match Cage::with_options(&fitted, options) {
-                Ok(cage) => return Ok((cage, relaxed)),
+                Ok(cage) => return Ok(cage.relaxed(&fitted, options, relaxed)),
                 Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
                 Err(e) => return Err(e),
             };
@@ -643,7 +657,18 @@ impl Cage {
                 }
             }));
         }
-        Cage::with_options(&fitted, options).map(|cage| (cage, relaxed))
+        Cage::with_options(&fitted, options).map(|cage| cage.relaxed(&fitted, options, relaxed))
+    }
+
+    /// This cage with its receipts listing `relaxed`.
+    fn relaxed(
+        mut self,
+        fitted: &Policy,
+        options: &CageOptions,
+        relaxed: Vec<Relaxed>,
+    ) -> (Cage, Vec<Relaxed>) {
+        self.facts = Arc::new(facts(fitted, options, &self.plan, &relaxed));
+        (self, relaxed)
     }
 
     /// Prepares `policy` for the strongest tier the host allows, or for
@@ -716,6 +741,7 @@ impl Cage {
             }
             plan.degradations.sort();
         }
+        let facts = Arc::new(facts(policy, options, &plan, &[]));
         Ok(Cage {
             plan,
             filter,
@@ -724,6 +750,7 @@ impl Cage {
             notifying,
             runtime,
             allowed: options.lower.allow_degrade.clone(),
+            facts,
         })
     }
 
@@ -803,7 +830,18 @@ impl Cage {
             None => child::Reporting::Off,
             Some(socket) => self.supervise(&socket),
         };
-        Ok(Child::new(inner, dropped, removal.disarm(), reporting))
+        let tmpdir = removal.disarm();
+        let mut names: Vec<String> = grants.bindings.iter().map(|(n, _)| n.clone()).collect();
+        if tmpdir.is_some() {
+            names.push(TMPDIR_GRANT.into());
+        }
+        Ok(Child::new(
+            inner,
+            dropped,
+            tmpdir,
+            reporting,
+            crate::receipt::RunFacts::new(self.facts.clone(), names),
+        ))
     }
 
     /// Takes the listener the child sent and starts the run's supervisor;
@@ -1353,5 +1391,29 @@ fn socket_lift(gap: &procage_policy::CapabilityGap) -> Option<procage_policy::Li
             tier1: true,
             landlock_abi: None,
         },
+    )
+}
+
+/// What the receipts of a cage made for `policy` start from.
+fn facts(
+    policy: &Policy,
+    options: &CageOptions,
+    plan: &LinuxPlan,
+    relaxed: &[Relaxed],
+) -> crate::receipt::CageFacts {
+    let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease")
+        .map(|k| k.trim().to_string())
+        .unwrap_or_else(|_| "unknown".into());
+    crate::receipt::CageFacts::new(
+        policy,
+        options.policy_in_receipt,
+        crate::ReceiptBackend::Linux {
+            tier: plan.tier.to_string(),
+            landlock_abi: plan.landlock_abi,
+            errata: probe().errata,
+            kernel,
+        },
+        crate::receipt::approximations(&plan.degradations),
+        relaxed,
     )
 }

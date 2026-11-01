@@ -1,0 +1,104 @@
+{
+  "feature": "011-receipts",
+  "commit": "917721e",
+  "timestamp": "2026-11-01T22:47:32Z",
+  "status": "NOT CONVERGED",
+  "threats": {
+    "total": 16,
+    "open_blocking": []
+  },
+  "requirements": {
+    "total": 11,
+    "verified": [
+      "SR-001",
+      "SR-002",
+      "SR-004",
+      "SR-005",
+      "SR-006",
+      "SR-007",
+      "SR-008",
+      "SR-009",
+      "SR-010",
+      "SR-011"
+    ],
+    "implemented_unverified": [
+      "SR-003"
+    ],
+    "partial": [],
+    "missing": []
+  },
+  "expired_decisions": [],
+  "drift": [],
+  "appended_tasks": [
+    "T022"
+  ],
+  "already_open_tasks_for": [],
+  "verdicts": {
+    "SR-001": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/receipts.rs::every_part_of_the_policy_is_in_the_digest; crates/procage/tests/receipts.rs::the_digest_is_canonical",
+      "justification": "Reordered fs rules, grants and environment names give equal digests, a serde round trip keeps the digest, a waiver, an access, the base, the preset tag, an added rule and a changed path each change it, and the default policy matches the pinned fixture; the policy form has a fixed version field and no skipped defaults (crates/procage-policy/src/format.rs:84); 12 passed on macOS, 13 recorded on Linux T1 and T2."
+    },
+    "SR-002": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/receipts.rs::anything_accepted_short_of_the_policy_is_listed; crates/procage/tests/receipts.rs::a_fit_relaxation_is_listed_with_its_lift; crates/procage/tests/receipts.rs::a_receipt_names_the_cage_and_the_exit",
+      "justification": "A waiver gives exactly [persistence], an accepted approximation exactly one entry with the allowed construct and empty other lists, a Linux T2 fit relaxation is listed with construct fs-protect and lift tier1, each with enforced_as_written false, and a plain cage is enforced as written; relaxations map one to one from the fit result (crates/procage/src/receipt.rs:304) and both backends rebuild the facts after fit (macos/mod.rs:541, linux/mod.rs:663), so the macOS fit path shares the tested code."
+    },
+    "SR-003": {
+      "verdict": "implemented-unverified",
+      "method": "review",
+      "evidence": "crates/procage/src/receipt.rs:169",
+      "justification": "Tests refuse version 2 with ReceiptError::UnsupportedVersion, unknown fields at the top level and in backend, violations and exit, an unknown coverage and base value, and round-trip the current version; ReceiptRelaxation has deny_unknown_fields and Construct refuses unknown names (crates/procage-policy/src/lower/mod.rs:196), but no test reads a receipt holding a relaxation with an added field or an unknown construct, although one is easy to build from the JSON on any lane."
+    },
+    "SR-004": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/receipts.rs::a_receipt_names_the_cage_and_the_exit; crates/procage/tests/receipts.rs::an_observed_run_has_a_count_and_no_paths; crates/procage/src/receipt.rs:353",
+      "justification": "Reporting off gives coverage off and no count, an observed run gives a count (or, when unavailable, no count and a reason); unavailable cannot be forced and a dropped macOS report is best effort, so those rely on review of the typed match at receipt.rs:353 (count only for observed or system-calls) and the direct pass-through of complete and dropped from the record (receipt.rs:378-380), which is adequate."
+    },
+    "SR-005": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/receipts.rs::a_receipt_keeps_the_run_private; crates/procage/tests/receipts.rs::an_observed_run_has_a_count_and_no_paths; crates/procage/tests/receipts.rs::requested_paths_stay_in_the_policy; crates/procage/tests/receipts.rs::grant_names_are_listed_sorted_never_their_paths",
+      "justification": "Environment, argument, policy-path, grant-path, denied-path and file-content canaries are absent without the option, the relaxation subject is absent without it on Linux, and with the option the path canary appears only inside policy and relaxation subjects; the receipt has no field that could hold file contents or process names (receipt.rs:96)."
+    },
+    "SR-006": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/receipts.rs::requested_paths_stay_in_the_policy; crates/procage/tests/receipts.rs::a_receipt_names_the_cage_and_the_exit; crates/procage/src/receipt.rs:345",
+      "justification": "A child that prints and names a file with JSON-breaking bytes leaves a receipt that round-trips with none of its strings outside the policy, and a chosen exit code 3 is recorded with digest, preset, base and backend equal to the cage's; RunFacts::receipt takes only the reaped status, the record's coverage, length, completeness and drop count, and the parent's kill flag, so no child string has a path in."
+    },
+    "SR-007": {
+      "verdict": "verified",
+      "method": "review",
+      "evidence": "crates/procage/src/macos/mod.rs:684; crates/procage/src/linux/mod.rs:843; specs/011-receipts/quickstart.md",
+      "justification": "The diff adds receipt facts only at cage construction and after command.spawn returns in the parent on both backends, sys.rs only gains a parent-side sysctl read, and no pre-exec code changed; the recorded spawn suites pass on macOS and Linux T1 and T2, and the latency probes on macOS and Linux are the same with and without receipts within noise."
+    },
+    "SR-008": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/receipts.rs::no_receipt_while_the_run_is_alive; crates/procage/tests/receipts.rs::a_run_the_caller_ended_says_so; crates/procage/tests/receipts.rs::only_the_caller_ending_a_live_run_counts; crates/procage/tests/receipts.rs::a_receipt_names_the_cage_and_the_exit",
+      "justification": "Receipt is None while running and present after wait; a normal exit holds only a code, a self-sent SIGKILL only a signal with ended_by_caller false, kill_all on a live run only a signal with ended_by_caller true, and kill_all after the exit leaves ended_by_caller false; completeness comes from the reaped record."
+    },
+    "SR-009": {
+      "verdict": "verified",
+      "method": "review",
+      "evidence": "crates/procage/src/receipt.rs:10; crates/procage/src/lib.rs:192; site/content/docs/receipts.md:37",
+      "justification": "The crate docs (lib.rs and the receipt module) and the site page each state unsigned caller's record not an attestation, writable-by-whoever-keeps-it so keep it outside later runs' paths, an empty complete record proves nothing, Cage::exec gives none, None until the run exits, the OS release and build or kernel release, and that with_policy_in_receipt adds every policy path and the relaxation subjects; proof and attestation appear only in negations."
+    },
+    "SR-010": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/receipts.rs::grant_names_are_listed_sorted_never_their_paths",
+      "justification": "Two grants bound as zeta then alpha produce grants [\"alpha\",\"zeta\"] with the bound path absent from the JSON, and a_receipt_names_the_cage_and_the_exit asserts procage equals CARGO_PKG_VERSION; both pass locally on macOS."
+    },
+    "SR-011": {
+      "verdict": "verified",
+      "method": "scan",
+      "evidence": "cargo deny check (advisories ok, bans ok, licenses ok, sources ok) on 2026-11-01; Cargo.lock:165; .github/workflows/ci.yml:39",
+      "justification": "sha2 0.11 without default features, serde std+derive and serde_json std are locked from the crates.io registry, deny.toml denies yanked and unknown registries and git, cargo deny passes, and the gates lane runs just deny (just ci green after the remediation)."
+    }
+  }
+}

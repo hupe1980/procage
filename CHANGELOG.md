@@ -29,6 +29,13 @@ All notable changes to procage are listed here. The format follows
   the socket lists in `procage_policy::presets` and
   `procage_policy::linux::SocketPaths`.
 - `linux::CageOptions::with_runtime_dir`.
+- Receipts: `Child::receipt` on both systems gives a `Receipt` for every
+  finished run (policy digest, preset and base, backend and tier, OS build or
+  kernel, approximations, relaxations, waivers, `enforced_as_written`,
+  violation summary, exit); `Receipt::{to_json, from_json}` (version 1,
+  unknown fields refused); `policy_digest`;
+  `CageOptions::with_policy_in_receipt`. procage now depends on `serde`,
+  `serde_json` and `sha2`.
 
 ### Changed
 

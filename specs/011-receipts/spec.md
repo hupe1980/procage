@@ -35,6 +35,21 @@ can attach it to a log, a pull request or an audit trail.
   was killed and the violation record is complete or closed as interrupted);
   a partial view is available while it runs.
 
+### Session 2026-11-01 (design)
+
+- Q: Which digest? → A: SHA-256 over the policy's own canonical serialised
+  form (the versioned policy format), written `sha256:<hex>`; equal policies
+  give equal digests on every platform.
+- Q: How does the caller ask for the policy to be included? → A: With a cage
+  option; without it the receipt names no policy path, and a relaxation's
+  subject (a path) is left out too.
+- Q: Where does a receipt come from? → A: From the child handle once the run
+  has exited (`None` while it runs); the partial view while it runs is the
+  violation record, which already exists.
+- Q: "Ended by the caller"? → A: True when the run ended because the caller
+  killed it (`kill_all` or dropping the handle before exit), so a reader can
+  tell a timeout from the program's own failure.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - A harness attaches proof of caging (Priority: P1)
@@ -129,42 +144,50 @@ Receipts written by one version are readable by the next minor version.
 <!-- threatspec:begin -->
 ### Security Requirements *(managed by ThreatSpec — edit threat-model.yaml)*
 
-- **SR-001** (P1): The policy digest MUST be SHA-256 over one canonical encoding of the policy (fixed field order, sets sorted, order kept only where it changes meaning, every path as its bytes, no omitted defaults) prefixed by a format tag and version; equal policies MUST have equal digests however they were built, and policies that differ in any rule, waiver, base or preset tag MUST have different digests.
-  - Mitigates: `threat.digest-collision` via `mitigation.canonical-digest`
-  - Given two equal policies built with their sets in a different order, when both are digested, then the digests are equal
+- **SR-001** (P1): The policy digest MUST be SHA-256 over one canonical encoding of the policy, its versioned serialised form (fixed field order, order-insensitive lists sorted, order kept only where it changes meaning, every path by its bytes, no omitted defaults), written sha256:<hex>; equal policies MUST have equal digests however they were built, and policies that differ in any rule, waiver, base or preset tag MUST have different digests.
+  - Mitigates: `threat.digest-collision`, `threat.digest-json-unstable` via `mitigation.canonical-digest`
+  - Given two equal policies built with their fs rules, grants and sets in a different order, when both are digested, then the digests are equal
   - Given a policy and a copy that differs in one path byte, one waiver, the base or the preset tag, when both are digested, then the digests differ
   - Given a fixture policy with a pinned digest, when it is digested on every CI lane and after a round trip through the serialised form, then the digest equals the pinned value
 - **SR-002** (P1): The receipt MUST list every accepted approximation by construct, every fit relaxation with its lift and every waived hard-deny class held by the cage's plan, and MUST carry one field that says enforced as written only when all three lists are empty.
   - Mitigates: `threat.relaxation-omitted` via `mitigation.plan-is-the-source`
   - Given a fitted cage with relaxations, a cage with an accepted approximation and a cage with each waivable class waived, when a run of each ends, then the receipt lists exactly the plan's entries and enforced as written is false
   - Given a cage with none of them, when a run ends, then the three lists are empty and enforced as written is true
-- **SR-003** (P1): A receipt reader MUST refuse a receipt of a newer format version with a typed error, and MUST NOT report a run as enforced as written when the receipt holds a field or value it does not know.
+- **SR-003** (P1): A receipt reader MUST refuse, with a typed error, a receipt of any version other than the ones it knows and a receipt holding any field or value it does not know, in any nested map; it MUST NOT present a receipt it only partly understood; older format versions MUST stay readable.
   - Mitigates: `threat.unknown-field-dropped` via `mitigation.fail-closed-reader`
-  - Given a receipt with an added relaxation kind the reader does not know, when it is read, then it is refused, or read with enforced as written false or unknown, never true
+  - Given a receipt with an added field at the top level, and one in each of backend, violations, exit and a relaxation, when it is read, then it is refused with a typed error
+  - Given a receipt with a relaxation kind or coverage value the reader does not know, when it is read, then it is refused with a typed error
   - Given a receipt of the next format version, when it is read, then the reader returns an unsupported-version error
-  - Given a receipt of the previous format version, when it is read, then it parses with every field intact
-- **SR-004** (P1): The violation summary MUST carry the record's coverage, completeness and dropped count; with reporting off or unavailable it MUST say not observed (with the reason) and MUST NOT carry a violation count.
+  - Given a receipt of the current format version, when it is written and read back, then it parses with every field intact
+- **SR-004** (P1): The violation summary MUST carry the record's coverage, completeness and dropped count; with coverage off or unavailable it MUST NOT carry a violation count.
   - Mitigates: `threat.not-observed-as-none` via `mitigation.typed-coverage`
-  - Given a run with reporting off, and a run where reporting was unavailable, when their receipts are serialised, then the summary is not observed (unavailable naming the reason) and holds no count, so no reader can read zero
+  - Given a run with reporting off, and a run where reporting was unavailable, when their receipts are serialised, then the coverage is off or unavailable and the summary holds no count, so no reader can read zero
   - Given a macOS run whose record dropped reports, when its receipt is built, then the summary carries coverage observed, the dropped count and completeness as the record reports them
-- **SR-005** (P2): Without the caller asking for the policy, the receipt MUST NOT contain environment values, command arguments, file contents, policy paths, violation paths or process names; asking for the policy MUST add only the policy.
-  - Mitigates: `threat.receipt-leaks-secrets` via `mitigation.field-allowlist`
-  - Given a canary string in an environment value, an argument, a policy path, a file the child reads and a path the child is denied, when the run's receipt is serialised, then no canary bytes appear in it
-  - Given the same run with the policy requested, when the receipt is serialised, then only the policy-path canary appears
-- **SR-006** (P2): Every receipt field MUST come from the parent's cage and plan, the kernel's reports and the reaped exit status; strings the caged code controls MUST NOT appear in a receipt.
+- **SR-005** (P2): Without with_policy_in_receipt, the receipt MUST NOT contain environment values, command arguments, file contents, policy paths, grant paths, relaxation subjects, violation paths or process names; with it, the receipt MUST add only the policy and the relaxation subjects.
+  - Mitigates: `threat.policy-option-leaks-paths`, `threat.receipt-leaks-secrets` via `mitigation.field-allowlist`
+  - Given a canary string in an environment value, an argument, a policy path, a grant path, a relaxation subject, a file the child reads and a path the child is denied, when the run's receipt is serialised, then no canary bytes appear in it
+  - Given the same cage with with_policy_in_receipt, when the receipt is serialised, then only the policy-path, grant-path and relaxation-subject canaries appear, inside the policy and subject fields
+- **SR-006** (P2): Every receipt field MUST come from the parent's cage and plan, the parent's own host fact reads, the kernel's reports and the reaped exit status; strings the caged code controls MUST NOT appear in a receipt.
   - Mitigates: `threat.child-shaped-fields`, `threat.fork-exec-work` via `mitigation.parent-only-facts`
   - Given a child that names itself and its paths with format-breaking bytes and exits with a chosen code, when its receipt is read back, then the exit code is recorded, none of its strings appear, and every other field equals the cage's own values
 - **SR-007** (P2): The child's call sequence between fork and exec MUST be identical with and without receipts; the receipt MUST be built in the parent only.
   - Mitigates: `threat.child-shaped-fields`, `threat.fork-exec-work` via `mitigation.parent-only-facts`
   - Given the multithreaded spawn tests on every lane, when they run with receipts, then they pass, and the child-side code holds no receipt state
   - Given the spawn benchmark, when it runs with and without receipts, then spawn latency is unchanged within noise
-- **SR-008** (P2): A final receipt MUST be available only after the child was reaped and its violation record is complete or closed as interrupted; the partial view MUST be a distinct type that cannot be serialised as a final receipt; the exit MUST distinguish an exit code, a signal and a kill by the caller, a timeout or the end of the run.
-  - Mitigates: `threat.final-state-misstated` via `mitigation.final-after-reap`
-  - Given a running child, when the receipt is asked for, then only the partial view is returned, and it serialises marked partial
-  - Given runs ended by a normal exit, a signal, a caller kill and a timeout, when their receipts are read, then each exit field names its cause
-- **SR-009** (P1): The receipt docs MUST state that a receipt is the caller's own unsigned record and not an attestation, that whoever can write where it is kept can change it (so keep it outside every path a later run may write), that an empty complete record does not prove nothing was denied, and that `Cage::exec` produces no receipt.
-  - Mitigates: `threat.not-observed-as-none`, `threat.receipt-as-attestation` via `mitigation.honest-docs`
-  - Given the crate docs and the site page on receipts, when they describe what a receipt proves, then each states all four points, and no text calls a receipt proof, attestation or signature
+- **SR-008** (P2): Child::receipt MUST return None until the child was reaped, and a receipt MUST carry the violation record's own completeness (never complete while the record is open); the exit MUST hold exactly one of code and signal, and ended_by_caller MUST be true only when kill_all or dropping the handle signalled the child while it was still running.
+  - Mitigates: `threat.final-state-misstated`, `threat.killed-flag-misattributed` via `mitigation.final-after-reap`
+  - Given a running child, when its receipt is asked for, then None is returned, and after wait the receipt is returned
+  - Given runs ended by a normal exit, a signal and a caller kill_all, when their receipts are read, then each holds exactly one of code and signal, and ended_by_caller is true only for the kill_all run
+  - Given a child that has already exited, when kill_all is called and the receipt is taken, then ended_by_caller is false
+- **SR-009** (P1): The receipt docs MUST state that a receipt is the caller's own unsigned record and not an attestation, that whoever can write where it is kept can change it (so keep it outside every path a later run may write), that an empty complete record does not prove nothing was denied, that Cage::exec produces no receipt, that Child::receipt is None until the run exits, that it names the OS release and build or kernel release, and that with_policy_in_receipt adds every policy path and relaxation subject to each receipt of the cage.
+  - Mitigates: `threat.host-fingerprint`, `threat.not-observed-as-none`, `threat.policy-option-leaks-paths`, `threat.receipt-as-attestation`, `threat.receipt-missing-early` via `mitigation.honest-docs`
+  - Given the crate docs and the site page on receipts, when they describe what a receipt proves, then each states all seven points, and no text calls a receipt proof, attestation or signature
+- **SR-010** (P2): Every receipt MUST name the procage crate version that made it and the per-spawn grant names, sorted, and MUST NOT name a grant path unless the policy is included.
+  - Mitigates: `threat.run-context-omitted` via `mitigation.run-context-fields`
+  - Given a run with two grants activated in either order, when its receipt is read, then procage equals the crate version and grants lists both names sorted, with no path
+- **SR-011** (P2): sha2, serde and serde_json MUST come from crates.io, be locked in Cargo.lock with only the features the receipt needs, and pass cargo-deny (advisories, yanked, licences, sources) in CI.
+  - Mitigates: `threat.dependency-compromise` via `mitigation.pinned-deps`
+  - Given the workspace with the receipt dependencies, when just deny runs in the gates lane, then it passes with no advisory, yanked crate, unlisted licence or non-registry source
 <!-- threatspec:end -->
 
 ## Success Criteria *(mandatory)*

@@ -1,0 +1,801 @@
+{
+  "feature": "011-receipts",
+  "commit": "917721e",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "The policy digest MUST be SHA-256 over one canonical encoding of the policy, its versioned serialised form (fixed field order, order-insensitive lists sorted, order kept only where it changes meaning, every path by its bytes, no omitted defaults), written sha256:<hex>; equal policies MUST have equal digests however they were built, and policies that differ in any rule, waiver, base or preset tag MUST have different digests.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "two equal policies built with their fs rules, grants and sets in a different order",
+          "then": "the digests are equal",
+          "when": "both are digested"
+        },
+        {
+          "given": "a policy and a copy that differs in one path byte, one waiver, the base or the preset tag",
+          "then": "the digests differ",
+          "when": "both are digested"
+        },
+        {
+          "given": "a fixture policy with a pinned digest",
+          "then": "the digest equals the pinned value",
+          "when": "it is digested on every CI lane and after a round trip through the serialised form"
+        }
+      ],
+      "mitigations": [
+        "mitigation.canonical-digest"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] `policy_digest(&Policy) -> String` in crates/procage/src/receipt.rs: a canonical copy (sort `fs`, `grants`, `ipc.unix_sockets`, the environment allowlist and the Linux layer's lists; keep the Seatbelt layer's rule order, which changes meaning), serialised with the policy's own serde form, SHA-256, `sha256:<hex>`"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-008] [SR-010] crates/procage/tests/receipts.rs (new, both systems): fields per backend (and tier on Linux), `None` while running, exit code and signal, `ended_by_caller` after `kill_all`, coverage off/observed, grant names sorted, equal digests for equal policies (rules in another order) and different ones for any change, a fixed digest for a reference policy"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[SR-001] Add a test for SR-001 (The policy digest MUST be SHA-256 over one canonical encoding of the policy, its versioned serialised form (fixed field order, order-insensitive lists sorted, order kept only where it changes meaning, every path by its bytes, no omitted defaults), written sha256:<hex>; equal policies MUST have equal digests however they were built, and policies that differ in any rule, waiver, base or preset tag MUST have different digests) \u2014 touchpoints: crates/procage-policy/src/format.rs, crates/procage/src/receipt.rs, crates/procage/tests/receipts.rs [converge: implemented-unverified; The canonical copy (sorted fs, grants, sockets, env lists, Linux layer; Seatbelt order kept) is hashed over the versioned policy form, and the_digest_is_canonical covers fs-rule order, one waiver, one access and the pinned default digest, but no test reorders grants or sets, changes one path byte, the base or the preset tag, or digests after a round trip through the serialised form.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-001.2026-11-01",
+          "requirement": "SR-001",
+          "method": "review",
+          "evidence": "crates/procage/src/receipt.rs:47",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The canonical copy (sorted fs, grants, sockets, env lists, Linux layer; Seatbelt order kept) is hashed over the versioned policy form, and the_digest_is_canonical covers fs-rule order, one waiver, one access and the pinned default digest, but no test reorders grants or sets, changes one path byte, the base or the preset tag, or digests after a round trip through the serialised form.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/format.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/receipts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The receipt MUST list every accepted approximation by construct, every fit relaxation with its lift and every waived hard-deny class held by the cage's plan, and MUST carry one field that says enforced as written only when all three lists are empty.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a fitted cage with relaxations, a cage with an accepted approximation and a cage with each waivable class waived",
+          "then": "the receipt lists exactly the plan's entries and enforced as written is false",
+          "when": "a run of each ends"
+        },
+        {
+          "given": "a cage with none of them",
+          "then": "the three lists are empty and enforced as written is true",
+          "when": "a run ends"
+        }
+      ],
+      "mitigations": [
+        "mitigation.plan-is-the-source"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-004] [SR-008] [SR-010] `Receipt`, `ReceiptBackend`, `ReceiptExit`, `ReceiptViolations`, `ReceiptRelaxation`, `ReceiptApproximation` (`#[non_exhaustive]`, serde, `deny_unknown_fields` on every map, `\"version\": 1` refused otherwise), `Receipt::{to_json, from_json}`, `ReceiptError`; `CageFacts` (crate-private) with `enforced_as_written` computed from the three lists; re-exports in crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US2] [SR-002] Both `Cage::fit` store the relaxations in the facts; tests in crates/procage/tests/receipts.rs: `enforced_as_written` false with an approximation, a relaxation, a waiver; true for a preset with nothing accepted"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[SR-002] Add a test for SR-002 (The receipt MUST list every accepted approximation by construct, every fit relaxation with its lift and every waived hard-deny class held by the cage's plan, and MUST carry one field that says enforced as written only when all three lists are empty) \u2014 touchpoints: crates/procage/src/linux/mod.rs, crates/procage/src/macos/mod.rs, crates/procage/src/receipt.rs [converge: implemented-unverified; Both Cage::fit rebuild the facts with the relaxations and enforced_as_written is computed from the three lists; tests cover a waiver (exact), an approximation (only \"any\" match, not exactly the plan's entries) and a relaxation on Linux only, so the macOS fit path and exactness of the lists are untested.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-002.2026-11-01",
+          "requirement": "SR-002",
+          "method": "review",
+          "evidence": "crates/procage/src/receipt.rs:342",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "Both Cage::fit rebuild the facts with the relaxations and enforced_as_written is computed from the three lists; tests cover a waiver (exact), an approximation (only \"any\" match, not exactly the plan's entries) and a relaxation on Linux only, so the macOS fit path and exactness of the lists are untested.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "A receipt reader MUST refuse, with a typed error, a receipt of any version other than the ones it knows and a receipt holding any field or value it does not know, in any nested map; it MUST NOT present a receipt it only partly understood; older format versions MUST stay readable.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a receipt with an added field at the top level, and one in each of backend, violations, exit and a relaxation",
+          "then": "it is refused with a typed error",
+          "when": "it is read"
+        },
+        {
+          "given": "a receipt with a relaxation kind or coverage value the reader does not know",
+          "then": "it is refused with a typed error",
+          "when": "it is read"
+        },
+        {
+          "given": "a receipt of the next format version",
+          "then": "the reader returns an unsupported-version error",
+          "when": "it is read"
+        },
+        {
+          "given": "a receipt of the current format version",
+          "then": "it parses with every field intact",
+          "when": "it is written and read back"
+        }
+      ],
+      "mitigations": [
+        "mitigation.fail-closed-reader"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-004] [SR-008] [SR-010] `Receipt`, `ReceiptBackend`, `ReceiptExit`, `ReceiptViolations`, `ReceiptRelaxation`, `ReceiptApproximation` (`#[non_exhaustive]`, serde, `deny_unknown_fields` on every map, `\"version\": 1` refused otherwise), `Receipt::{to_json, from_json}`, `ReceiptError`; `CageFacts` (crate-private) with `enforced_as_written` computed from the three lists; re-exports in crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US3] [SR-003] [SR-005] Round trip; refusal of version 2, of an unknown field at the top and in a nested map; canary strings in the environment, the arguments and the policy paths never appear in the JSON unless the policy is requested"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[SR-003] Complete SR-003 (A receipt reader MUST refuse, with a typed error, a receipt of any version other than the ones it knows and a receipt holding any field or value it does not know, in any nested map; it MUST NOT present a receipt it only partly understood; older format versions MUST stay readable) \u2014 touchpoints: crates/procage/src/receipt.rs, crates/procage/tests/receipts.rs [converge: partial; deny_unknown_fields and the version check exist and tests refuse version 2, a top-level and an exit-level unknown field, but coverage and the relaxation fields are free strings so an unknown coverage value or relaxation kind is accepted, ReceiptError has no distinct unsupported-version variant, and unknown fields in backend, violations and a relaxation are untested.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-003.2026-11-01",
+          "requirement": "SR-003",
+          "method": "review",
+          "evidence": "crates/procage/src/receipt.rs:181",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "deny_unknown_fields and the version check exist and tests refuse version 2, a top-level and an exit-level unknown field, but coverage and the relaxation fields are free strings so an unknown coverage value or relaxation kind is accepted, ReceiptError has no distinct unsupported-version variant, and unknown fields in backend, violations and a relaxation are untested.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/receipts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "The violation summary MUST carry the record's coverage, completeness and dropped count; with coverage off or unavailable it MUST NOT carry a violation count.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a run with reporting off, and a run where reporting was unavailable",
+          "then": "the coverage is off or unavailable and the summary holds no count, so no reader can read zero",
+          "when": "their receipts are serialised"
+        },
+        {
+          "given": "a macOS run whose record dropped reports",
+          "then": "the summary carries coverage observed, the dropped count and completeness as the record reports them",
+          "when": "its receipt is built"
+        }
+      ],
+      "mitigations": [
+        "mitigation.typed-coverage"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-004] [SR-008] [SR-010] `Receipt`, `ReceiptBackend`, `ReceiptExit`, `ReceiptViolations`, `ReceiptRelaxation`, `ReceiptApproximation` (`#[non_exhaustive]`, serde, `deny_unknown_fields` on every map, `\"version\": 1` refused otherwise), `Receipt::{to_json, from_json}`, `ReceiptError`; `CageFacts` (crate-private) with `enforced_as_written` computed from the three lists; re-exports in crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-008] [SR-010] crates/procage/tests/receipts.rs (new, both systems): fields per backend (and tier on Linux), `None` while running, exit code and signal, `ended_by_caller` after `kill_all`, coverage off/observed, grant names sorted, equal digests for equal policies (rules in another order) and different ones for any change, a fixed digest for a reference policy"
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[SR-004] Add a test for SR-004 (The violation summary MUST carry the record's coverage, completeness and dropped count; with coverage off or unavailable it MUST NOT carry a violation count) \u2014 touchpoints: crates/procage/src/receipt.rs, crates/procage/tests/receipts.rs [converge: implemented-unverified; count is set only for observed or system-calls coverage and dropped and complete come from the record; a test covers coverage off with no count, but none covers coverage unavailable or an observed macOS run whose record dropped reports.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-004.2026-11-01",
+          "requirement": "SR-004",
+          "method": "review",
+          "evidence": "crates/procage/src/receipt.rs:323",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "count is set only for observed or system-calls coverage and dropped and complete come from the record; a test covers coverage off with no count, but none covers coverage unavailable or an observed macOS run whose record dropped reports.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/receipts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "Without with_policy_in_receipt, the receipt MUST NOT contain environment values, command arguments, file contents, policy paths, grant paths, relaxation subjects, violation paths or process names; with it, the receipt MUST add only the policy and the relaxation subjects.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a canary string in an environment value, an argument, a policy path, a grant path, a relaxation subject, a file the child reads and a path the child is denied",
+          "then": "no canary bytes appear in it",
+          "when": "the run's receipt is serialised"
+        },
+        {
+          "given": "the same cage with with_policy_in_receipt",
+          "then": "only the policy-path, grant-path and relaxation-subject canaries appear, inside the policy and subject fields",
+          "when": "the receipt is serialised"
+        }
+      ],
+      "mitigations": [
+        "mitigation.field-allowlist"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-005] `CageOptions::with_policy_in_receipt` on both backends: the receipt then holds the policy and the relaxation subjects"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US3] [SR-003] [SR-005] Round trip; refusal of version 2, of an unknown field at the top and in a nested map; canary strings in the environment, the arguments and the policy paths never appear in the JSON unless the policy is requested"
+        },
+        {
+          "id": "T017",
+          "done": true,
+          "text": "[SR-005] Add a test for SR-005 (Without with_policy_in_receipt, the receipt MUST NOT contain environment values, command arguments, file contents, policy paths, grant paths, relaxation subjects, violation paths or process names; with it, the receipt MUST add only the policy and the relaxation subjects) \u2014 touchpoints: crates/procage/src/linux/mod.rs, crates/procage/src/macos/mod.rs, crates/procage/src/receipt.rs, crates/procage/tests/receipts.rs [converge: implemented-unverified; The receipt has no field for environment, arguments, file contents or process names and subjects are gated on the option; tests cover environment, argument, policy-path and grant-path canaries and subject absence on Linux, but not a file the child reads or a denied path, and the with-option run does not assert the canaries appear only inside the policy and subject fields.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-005.2026-11-01",
+          "requirement": "SR-005",
+          "method": "review",
+          "evidence": "crates/procage/tests/receipts.rs::a_receipt_keeps_the_run_private",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The receipt has no field for environment, arguments, file contents or process names and subjects are gated on the option; tests cover environment, argument, policy-path and grant-path canaries and subject absence on Linux, but not a file the child reads or a denied path, and the with-option run does not assert the canaries appear only inside the policy and subject fields.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/receipts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Every receipt field MUST come from the parent's cage and plan, the parent's own host fact reads, the kernel's reports and the reaped exit status; strings the caged code controls MUST NOT appear in a receipt.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a child that names itself and its paths with format-breaking bytes and exits with a chosen code",
+          "then": "the exit code is recorded, none of its strings appear, and every other field equals the cage's own values",
+          "when": "its receipt is read back"
+        }
+      ],
+      "mitigations": [
+        "mitigation.parent-only-facts"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-007] macOS: `kern.osproductversion` next to `os_build` in crates/procage/src/macos/sys.rs; `CageFacts` built in `Cage::with_options` (crates/procage/src/macos/mod.rs); `Child` holds the facts, the bound grant names and a `killed` flag set by `kill_all` (crates/procage/src/macos/child.rs); `Child::receipt`"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-007] Linux: kernel release from `/proc/sys/kernel/osrelease`, tier, ABI and errata from the plan and the probe; the same wiring in crates/procage/src/linux/mod.rs and crates/procage/src/linux/child.rs"
+        },
+        {
+          "id": "T018",
+          "done": true,
+          "text": "[SR-006] Add a test for SR-006 (Every receipt field MUST come from the parent's cage and plan, the parent's own host fact reads, the kernel's reports and the reaped exit status; strings the caged code controls MUST NOT appear in a receipt) \u2014 touchpoints: crates/procage/src/linux/child.rs, crates/procage/src/macos/child.rs, crates/procage/src/macos/sys.rs, crates/procage/src/receipt.rs [converge: implemented-unverified; Facts come from the cage, plan, parent sysctl and /proc reads, the record's counts and the reaped status, so no child string reaches a receipt by inspection; no test runs a child with format-breaking names and paths and compares every field to the cage's values.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-006.2026-11-01",
+          "requirement": "SR-006",
+          "method": "review",
+          "evidence": "crates/procage/src/macos/mod.rs:990",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "Facts come from the cage, plan, parent sysctl and /proc reads, the record's counts and the reaped status, so no child string reaches a receipt by inspection; no test runs a child with format-breaking names and paths and compares every field to the cage's values.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "The child's call sequence between fork and exec MUST be identical with and without receipts; the receipt MUST be built in the parent only.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the multithreaded spawn tests on every lane",
+          "then": "they pass, and the child-side code holds no receipt state",
+          "when": "they run with receipts"
+        },
+        {
+          "given": "the spawn benchmark",
+          "then": "spawn latency is unchanged within noise",
+          "when": "it runs with and without receipts"
+        }
+      ],
+      "mitigations": [
+        "mitigation.parent-only-facts"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-007] macOS: `kern.osproductversion` next to `os_build` in crates/procage/src/macos/sys.rs; `CageFacts` built in `Cage::with_options` (crates/procage/src/macos/mod.rs); `Child` holds the facts, the bound grant names and a `killed` flag set by `kill_all` (crates/procage/src/macos/child.rs); `Child::receipt`"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-007] Linux: kernel release from `/proc/sys/kernel/osrelease`, tier, ABI and errata from the plan and the probe; the same wiring in crates/procage/src/linux/mod.rs and crates/procage/src/linux/child.rs"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[SR-007] Gates: `just ci`, `just linux`, `just linux-t1`; the ignored `latency` probes (spawn_macos, spawn_linux) before and after, within noise (SC-003); results in specs/011-receipts/quickstart.md"
+        },
+        {
+          "id": "T019",
+          "done": true,
+          "text": "[SR-007] Add a test for SR-007 (The child's call sequence between fork and exec MUST be identical with and without receipts; the receipt MUST be built in the parent only) \u2014 touchpoints: crates/procage/src/linux/child.rs, crates/procage/src/macos/child.rs, crates/procage/src/macos/sys.rs, crates/procage/src/receipt.rs [converge: implemented-unverified; The diff adds receipt state only after spawn returns in the parent on both backends and leaves the pre-exec code unchanged; the spawn suites and a macOS latency probe are reported in quickstart.md, but no Linux latency comparison is recorded and no security review record covers the requirement.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-007.2026-11-01",
+          "requirement": "SR-007",
+          "method": "review",
+          "evidence": "crates/procage/src/macos/mod.rs:670",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The diff adds receipt state only after spawn returns in the parent on both backends and leaves the pre-exec code unchanged; the spawn suites and a macOS latency probe are reported in quickstart.md, but no Linux latency comparison is recorded and no security review record covers the requirement.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "Child::receipt MUST return None until the child was reaped, and a receipt MUST carry the violation record's own completeness (never complete while the record is open); the exit MUST hold exactly one of code and signal, and ended_by_caller MUST be true only when kill_all or dropping the handle signalled the child while it was still running.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a running child",
+          "then": "None is returned, and after wait the receipt is returned",
+          "when": "its receipt is asked for"
+        },
+        {
+          "given": "runs ended by a normal exit, a signal and a caller kill_all",
+          "then": "each holds exactly one of code and signal, and ended_by_caller is true only for the kill_all run",
+          "when": "their receipts are read"
+        },
+        {
+          "given": "a child that has already exited",
+          "then": "ended_by_caller is false",
+          "when": "kill_all is called and the receipt is taken"
+        }
+      ],
+      "mitigations": [
+        "mitigation.final-after-reap"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-004] [SR-008] [SR-010] `Receipt`, `ReceiptBackend`, `ReceiptExit`, `ReceiptViolations`, `ReceiptRelaxation`, `ReceiptApproximation` (`#[non_exhaustive]`, serde, `deny_unknown_fields` on every map, `\"version\": 1` refused otherwise), `Receipt::{to_json, from_json}`, `ReceiptError`; `CageFacts` (crate-private) with `enforced_as_written` computed from the three lists; re-exports in crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-008] [SR-010] crates/procage/tests/receipts.rs (new, both systems): fields per backend (and tier on Linux), `None` while running, exit code and signal, `ended_by_caller` after `kill_all`, coverage off/observed, grant names sorted, equal digests for equal policies (rules in another order) and different ones for any change, a fixed digest for a reference policy"
+        },
+        {
+          "id": "T020",
+          "done": true,
+          "text": "[SR-008] Add a test for SR-008 (Child::receipt MUST return None until the child was reaped, and a receipt MUST carry the violation record's own completeness (never complete while the record is open); the exit MUST hold exactly one of code and signal, and ended_by_caller MUST be true only when kill_all or dropping the handle signalled the child while it was still running) \u2014 touchpoints: crates/procage/src/linux/child.rs, crates/procage/src/macos/child.rs, crates/procage/src/receipt.rs [converge: implemented-unverified; receipt returns None until try_wait sees an exit and killed is set only when kill_all found the child running; tests cover None while running, a normal exit and a kill_all run, but not a run ended by a signal the caller did not send, nor kill_all on an already-exited child yielding ended_by_caller false.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-008.2026-11-01",
+          "requirement": "SR-008",
+          "method": "review",
+          "evidence": "crates/procage/src/linux/child.rs:123",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "receipt returns None until try_wait sees an exit and killed is set only when kill_all found the child running; tests cover None while running, a normal exit and a kill_all run, but not a run ended by a signal the caller did not send, nor kill_all on an already-exited child yielding ended_by_caller false.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "The receipt docs MUST state that a receipt is the caller's own unsigned record and not an attestation, that whoever can write where it is kept can change it (so keep it outside every path a later run may write), that an empty complete record does not prove nothing was denied, that Cage::exec produces no receipt, that Child::receipt is None until the run exits, that it names the OS release and build or kernel release, and that with_policy_in_receipt adds every policy path and relaxation subject to each receipt of the cage.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the crate docs and the site page on receipts",
+          "then": "each states all seven points, and no text calls a receipt proof, attestation or signature",
+          "when": "they describe what a receipt proves"
+        }
+      ],
+      "mitigations": [
+        "mitigation.honest-docs"
+      ],
+      "tasks": [
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[SR-009] Docs: \"Receipts\" in crates/procage/src/lib.rs (what a receipt proves and what not: unsigned, the caller's record, keep it outside paths a later run may write; macOS coverage is best effort; `Cage::exec` gives none), site/content/docs/receipts.md (new) and the site index, README feature line, CHANGELOG Added; the `PresetTag` doc line and the presets page now hold"
+        },
+        {
+          "id": "T021",
+          "done": true,
+          "text": "[SR-009] Complete SR-009 (The receipt docs MUST state that a receipt is the caller's own unsigned record and not an attestation, that whoever can write where it is kept can change it (so keep it outside every path a later run may write), that an empty complete record does not prove nothing was denied, that Cage::exec produces no receipt, that Child::receipt is None until the run exits, that it names the OS release and build or kernel release, and that with_policy_in_receipt adds every policy path and relaxation subject to each receipt of the cage) \u2014 touchpoints: crates/procage/src/lib.rs, crates/procage/src/receipt.rs, site/content/docs/receipts.md [converge: partial; Both docs say unsigned, not an attestation, keep it outside writable paths, and Cage::exec gives none, but neither states that an empty complete record does not prove nothing was denied, the crate docs name only the OS build or kernel (not the release), and neither says with_policy_in_receipt adds every policy path to each receipt of the cage.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-009.2026-11-01",
+          "requirement": "SR-009",
+          "method": "review",
+          "evidence": "site/content/docs/receipts.md",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "Both docs say unsigned, not an attestation, keep it outside writable paths, and Cage::exec gives none, but neither states that an empty complete record does not prove nothing was denied, the crate docs name only the OS build or kernel (not the release), and neither says with_policy_in_receipt adds every policy path to each receipt of the cage.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/receipts.md",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "Every receipt MUST name the procage crate version that made it and the per-spawn grant names, sorted, and MUST NOT name a grant path unless the policy is included.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a run with two grants activated in either order",
+          "then": "procage equals the crate version and grants lists both names sorted, with no path",
+          "when": "its receipt is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.run-context-fields"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-004] [SR-008] [SR-010] `Receipt`, `ReceiptBackend`, `ReceiptExit`, `ReceiptViolations`, `ReceiptRelaxation`, `ReceiptApproximation` (`#[non_exhaustive]`, serde, `deny_unknown_fields` on every map, `\"version\": 1` refused otherwise), `Receipt::{to_json, from_json}`, `ReceiptError`; `CageFacts` (crate-private) with `enforced_as_written` computed from the three lists; re-exports in crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-008] [SR-010] crates/procage/tests/receipts.rs (new, both systems): fields per backend (and tier on Linux), `None` while running, exit code and signal, `ended_by_caller` after `kill_all`, coverage off/observed, grant names sorted, equal digests for equal policies (rules in another order) and different ones for any change, a fixed digest for a reference policy"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-010.2026-11-01",
+          "requirement": "SR-010",
+          "method": "test",
+          "evidence": "crates/procage/tests/receipts.rs::grant_names_are_listed_sorted_never_their_paths",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "Two grants bound as zeta then alpha produce grants [\"alpha\",\"zeta\"] with the bound path absent from the JSON, and a_receipt_names_the_cage_and_the_exit asserts procage equals CARGO_PKG_VERSION; both pass locally on macOS.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/receipts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-011",
+      "statement": "sha2, serde and serde_json MUST come from crates.io, be locked in Cargo.lock with only the features the receipt needs, and pass cargo-deny (advisories, yanked, licences, sources) in CI.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the workspace with the receipt dependencies",
+          "then": "it passes with no advisory, yanked crate, unlisted licence or non-registry source",
+          "when": "just deny runs in the gates lane"
+        }
+      ],
+      "mitigations": [
+        "mitigation.pinned-deps"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-011] Dependencies in Cargo.toml (workspace: `serde` 1 with `derive`, `sha2` 0.11 without default features beyond what hashing needs; `serde_json` moved to both systems) and crates/procage/Cargo.toml (`procage-policy` with `serde`); `cargo deny check` passes"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-011.2026-11-01",
+          "requirement": "SR-011",
+          "method": "scan",
+          "evidence": "cargo deny check (advisories ok, bans ok, licenses ok, sources ok) on 2026-11-01; Cargo.lock:165; .github/workflows/ci.yml:39",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "sha2 0.11 without default features, serde std+derive and serde_json std are locked from the crates.io registry, deny.toml denies yanked and unknown registries and git, cargo deny passes, and the gates lane runs just deny.",
+          "verified_at": "2026-11-01T22:38:19Z",
+          "commit": "917721e"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "Cargo.lock",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/Cargo.toml",
+            "exists": true
+          },
+          {
+            "path": "deny.toml",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.child-shaped-fields",
+    "threat.digest-collision",
+    "threat.digest-json-unstable",
+    "threat.final-state-misstated",
+    "threat.fork-exec-work",
+    "threat.host-fingerprint",
+    "threat.killed-flag-misattributed",
+    "threat.not-observed-as-none",
+    "threat.policy-option-leaks-paths",
+    "threat.receipt-as-attestation",
+    "threat.receipt-leaks-secrets",
+    "threat.receipt-missing-early",
+    "threat.relaxation-omitted",
+    "threat.unknown-field-dropped"
+  ],
+  "decisions": [],
+  "check_findings": [],
+  "metrics": {
+    "threats": 16,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 14,
+      "mitigated": 2
+    },
+    "threats_by_severity": {
+      "low": 4,
+      "medium": 7,
+      "high": 5
+    },
+    "mitigations": 10,
+    "requirements": 11,
+    "requirements_with_tasks": 11,
+    "requirements_verified": 2,
+    "decisions": 0,
+    "findings": {}
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

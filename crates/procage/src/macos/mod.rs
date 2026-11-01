@@ -363,6 +363,9 @@ pub struct CageOptions {
     /// Whether spawns report the operations the sandbox denies (see
     /// [`CageOptions::with_violations`]).
     pub violations: bool,
+    /// Whether receipts hold the policy (see
+    /// [`CageOptions::with_policy_in_receipt`]).
+    pub policy_in_receipt: bool,
 }
 
 impl Default for CageOptions {
@@ -371,6 +374,7 @@ impl Default for CageOptions {
             lower: LowerOptions::default(),
             compile_limit: 2000,
             violations: false,
+            policy_in_receipt: false,
         }
     }
 }
@@ -385,6 +389,14 @@ impl CageOptions {
     /// These options with an in-process compile limit of `limit` rules.
     pub fn with_compile_limit(mut self, limit: usize) -> Self {
         self.compile_limit = limit;
+        self
+    }
+
+    /// These options with receipts that hold the policy itself and the
+    /// subjects (often paths) of `fit`'s relaxations. Without it a receipt
+    /// names the policy by digest only.
+    pub fn with_policy_in_receipt(mut self) -> Self {
+        self.policy_in_receipt = true;
         self
     }
 
@@ -484,6 +496,8 @@ pub struct Cage {
     rewrites: Vec<PathRewrite>,
     compiled: bool,
     violations: bool,
+    /// What every run's receipt starts from.
+    facts: Arc<crate::receipt::CageFacts>,
 }
 
 impl Cage {
@@ -507,7 +521,7 @@ impl Cage {
         // Each round relaxes at least one construct; a few always suffice.
         for _ in 0..4 {
             let gaps = match Cage::with_options(&fitted, options) {
-                Ok(cage) => return Ok((cage, relaxed)),
+                Ok(cage) => return Ok(cage.relaxed(&fitted, options, relaxed)),
                 Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
                 Err(e) => return Err(e),
             };
@@ -520,7 +534,18 @@ impl Cage {
                 relaxation,
             }));
         }
-        Cage::with_options(&fitted, options).map(|cage| (cage, relaxed))
+        Cage::with_options(&fitted, options).map(|cage| cage.relaxed(&fitted, options, relaxed))
+    }
+
+    /// This cage with its receipts listing `relaxed`.
+    fn relaxed(
+        mut self,
+        fitted: &Policy,
+        options: &CageOptions,
+        relaxed: Vec<Relaxed>,
+    ) -> (Cage, Vec<Relaxed>) {
+        self.facts = Arc::new(facts(fitted, options, &self.plan, &relaxed));
+        (self, relaxed)
     }
 
     /// Prepares `policy`. Fails with [`SpawnError::AlreadySandboxed`] in a
@@ -560,12 +585,14 @@ impl Cage {
             Vec::new()
         };
         let (bytecode, compiled) = compiled(lib, &plan, &marker)?;
+        let facts = Arc::new(facts(policy, options, &plan, &[]));
         Ok(Cage {
             plan,
             bytecode,
             rewrites,
             compiled,
             violations,
+            facts,
         })
     }
 
@@ -640,15 +667,21 @@ impl Cage {
                 return Err(spawn::decode(e));
             }
         };
+        let tmpdir = prepared.tmpdir.disarm();
+        let mut names: Vec<String> = grants.bindings.iter().map(|(n, _)| n.clone()).collect();
+        if tmpdir.is_some() {
+            names.push(TMPDIR_GRANT.into());
+        }
         Ok(Child::new(
             inner,
             prepared.dropped,
-            prepared.tmpdir.disarm(),
+            tmpdir,
             prepared.run,
             child::Reporting {
                 forking: self.plan.run_marker,
                 record: report,
             },
+            crate::receipt::RunFacts::new(self.facts.clone(), names),
         ))
     }
 
@@ -951,4 +984,24 @@ pub mod testing {
     pub fn tiocsti_errno(fd: i32, byte: u8) -> i32 {
         sys::tiocsti_errno(fd, byte)
     }
+}
+
+/// What the receipts of a cage made for `policy` start from.
+fn facts(
+    policy: &Policy,
+    options: &CageOptions,
+    plan: &SeatbeltPlan,
+    relaxed: &[Relaxed],
+) -> crate::receipt::CageFacts {
+    crate::receipt::CageFacts::new(
+        policy,
+        options.policy_in_receipt,
+        crate::ReceiptBackend::MacOs {
+            apply: "path-a".into(),
+            os_release: sys::os_release(),
+            os_build: sys::os_build(),
+        },
+        crate::receipt::approximations(&plan.degradations),
+        relaxed,
+    )
 }

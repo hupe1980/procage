@@ -66,7 +66,7 @@ jobs:
       - name: Secret directories the hard-deny tests check
         run: mkdir -p ~/.ssh ~/.aws ~/.gnupg
       - name: Caged children (spawn tests)
-        run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec
+        run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec --test receipts
       - name: Escape suite
         run: cargo test --locked -p procage --test escape_macos
       - name: Escape suite with violation reporting
@@ -112,7 +112,7 @@ jobs:
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
       - name: Caged children and escape suite
-        run: cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec
+        run: cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts
       - name: Escape suite with violation reporting
         run: cargo test --locked -p procage --test escape_linux
         env:

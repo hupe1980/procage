@@ -45,6 +45,8 @@ let status = cage
 - 🧹 **Hygiene and lifetime.** Inherited descriptors are closed,
   secret-looking variables dropped, and every process a run started is
   killed when it ends, double-forked daemons included.
+- 🧾 **Receipts.** Every finished run says how it was caged: policy digest,
+  backend and tier, and everything accepted short of the policy.
 - 🔎 **Violation reports.** A cage can say what the sandbox denied and which
   rule denied it: every denial on macOS, every refused system call on Linux.
 - 📦 **Frozen presets and base profiles** that let ordinary programs and

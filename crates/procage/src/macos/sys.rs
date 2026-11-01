@@ -89,9 +89,17 @@ fn load_libsandbox() {
     unsafe { libc::dlopen(LIBSANDBOX.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL) };
 }
 
-/// The value of `kern.osversion`, for error messages.
+/// The value of `kern.osversion` (the build, e.g. `25G83`).
 pub(crate) fn os_build() -> String {
-    let name = c"kern.osversion";
+    string_sysctl(c"kern.osversion")
+}
+
+/// The value of `kern.osproductversion` (the release, e.g. `26.6.2`).
+pub(crate) fn os_release() -> String {
+    string_sysctl(c"kern.osproductversion")
+}
+
+fn string_sysctl(name: &std::ffi::CStr) -> String {
     let mut buf = [0u8; 64];
     let mut len = buf.len();
     // SAFETY: sysctlbyname writes at most `len` bytes into `buf` and updates

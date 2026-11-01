@@ -166,6 +166,37 @@
 //! ([`Violation::repeats`]). Reporting is diagnostic. Enforcement never
 //! depends on it.
 //!
+//! # Receipts: evidence of how a run was caged
+//!
+//! When a run has exited, its child handle gives a [`Receipt`]: the policy's
+//! digest ([`policy_digest`]), the preset and base, the backend and tier, the
+//! OS release and build or the kernel release, everything the cage accepted short of the policy
+//! (approximations, `fit` relaxations, waivers, and one field that says
+//! whether there was any), the violation record's coverage and count, and
+//! how the run ended. Store it with the command's output:
+//!
+//! ```no_run
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use procage::native::{Cage, Grants};
+//! use procage::policy::presets;
+//!
+//! let cage = Cage::new(&presets::minimal::v3())?;
+//! let mut child = cage.spawn(&mut std::process::Command::new("/bin/ls"), &Grants::new())?;
+//! child.wait()?;
+//! let receipt = child.receipt().expect("the child exited");
+//! println!("{}", receipt.to_json());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! A receipt is the caller's own unsigned record, not an attestation: keep
+//! it outside every path a later run may write. An empty, complete violation
+//! record in it does not prove that nothing was denied (macOS reports are
+//! best effort). It holds no environment value, argument or path unless the
+//! cage was built with `CageOptions::with_policy_in_receipt`, which adds
+//! every path of the policy to each receipt. A reader refuses a newer version
+//! or an unknown field. See the [`receipt`] module for the details.
+//!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.
 
@@ -191,8 +222,8 @@ pub mod threat_model;
 /// [`Cage::spawn`](native::Cage::spawn),
 /// [`Cage::spawn_with_fds`](native::Cage::spawn_with_fds),
 /// [`Grants::new`](native::Grants::new)`().bind(…)`, and the
-/// [`Child`](native::Child) methods `kill_all`, `detach`, `dropped_env` and
-/// `tmpdir`. Errors are each backend's own [`SpawnError`](native::SpawnError),
+/// [`Child`](native::Child) methods `kill_all`, `detach`, `dropped_env`,
+/// `tmpdir` and `receipt`. Errors are each backend's own [`SpawnError`](native::SpawnError),
 /// with a `Display` message.
 #[cfg(target_os = "macos")]
 pub use macos as native;
@@ -202,7 +233,14 @@ pub use macos as native;
 #[cfg(target_os = "linux")]
 pub use linux as native;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+pub mod receipt;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use receipt::{
+    Receipt, ReceiptApproximation, ReceiptBackend, ReceiptCoverage, ReceiptError, ReceiptExit,
+    ReceiptLift, ReceiptRelaxation, ReceiptViolations, policy_digest,
+};
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod violation;
 #[cfg(any(target_os = "macos", target_os = "linux"))]

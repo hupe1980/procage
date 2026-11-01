@@ -45,6 +45,10 @@ pub struct Child {
     dropped_env: Vec<String>,
     tmpdir: Option<PathBuf>,
     reporting: Reporting,
+    /// What the run's receipt is made of.
+    receipt: crate::receipt::RunFacts,
+    /// The caller ended the run while it was running.
+    killed: bool,
 }
 
 impl Child {
@@ -53,13 +57,25 @@ impl Child {
         dropped_env: Vec<String>,
         tmpdir: Option<PathBuf>,
         reporting: Reporting,
+        receipt: crate::receipt::RunFacts,
     ) -> Self {
         Self {
             inner: Some(inner),
             dropped_env,
             tmpdir,
             reporting,
+            receipt,
+            killed: false,
         }
+    }
+
+    /// The run's [receipt](crate::Receipt): `None` while the child runs,
+    /// the receipt once it has exited (after [`wait`](std::process::Child::wait),
+    /// or once [`try_wait`](std::process::Child::try_wait) saw it exit).
+    pub fn receipt(&mut self) -> Option<crate::Receipt> {
+        let status = self.inner_mut().try_wait().ok()??;
+        let record = self.violations();
+        Some(self.receipt.receipt(status, &record, self.killed))
     }
 
     /// Marks the record complete once the supervisor is done and the child
@@ -104,7 +120,8 @@ impl Child {
         let child = self.inner_mut();
         let pid =
             libc::pid_t::try_from(child.id()).map_err(|_| io::Error::other("pid out of range"))?;
-        if child.try_wait()?.is_none() {
+        let running = child.try_wait()?.is_none();
+        if running {
             for descendant in descendants(pid) {
                 sys::kill(descendant);
             }
@@ -113,6 +130,7 @@ impl Child {
         // id cannot be handed to another process while it exists.
         sys::killpg(pid);
         let waited = child.wait().map(drop);
+        self.killed |= running;
         // No process of the run is left: the listener hangs up at once.
         if let Reporting::On { done, .. } = &self.reporting {
             let start = Instant::now();

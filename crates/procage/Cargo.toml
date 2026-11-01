@@ -24,14 +24,15 @@ path = "tests/exec.rs"
 harness = false
 
 [dependencies]
-procage-policy.workspace = true
+# The serialised policy is what a receipt's digest is taken over.
+procage-policy = { workspace = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 libc.workspace = true
 
-# The violation monitor reads `log stream --style ndjson`.
-[target.'cfg(target_os = "macos")'.dependencies]
-serde_json.workspace = true
 
 # The workspace set, except that unsafe code is denied rather than forbidden so
 # that `macos::sys` and `linux::sys` alone can allow it.

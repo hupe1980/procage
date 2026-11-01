@@ -40,6 +40,10 @@ pub struct Child {
     reporting: Reporting,
     /// The record as it was when the run ended.
     ended: Option<Violations>,
+    /// What the run's receipt is made of.
+    receipt: crate::receipt::RunFacts,
+    /// The caller ended the run while it was running.
+    killed: bool,
 }
 
 impl Child {
@@ -49,6 +53,7 @@ impl Child {
         tmpdir: Option<PathBuf>,
         run: Option<Run>,
         reporting: Reporting,
+        receipt: crate::receipt::RunFacts,
     ) -> Self {
         Self {
             inner: Some(inner),
@@ -57,7 +62,18 @@ impl Child {
             run,
             reporting,
             ended: None,
+            receipt,
+            killed: false,
         }
+    }
+
+    /// The run's [receipt](crate::Receipt): `None` while the child runs,
+    /// the receipt once it has exited (after [`wait`](std::process::Child::wait),
+    /// or once [`try_wait`](std::process::Child::try_wait) saw it exit).
+    pub fn receipt(&mut self) -> Option<crate::Receipt> {
+        let status = self.inner_mut().try_wait().ok()??;
+        let record = self.violations();
+        Some(self.receipt.receipt(status, &record, self.killed))
     }
 
     fn inner(&self) -> &std::process::Child {
@@ -86,6 +102,7 @@ impl Child {
         let pid =
             libc::pid_t::try_from(child.id()).map_err(|_| io::Error::other("pid out of range"))?;
         if child.try_wait()?.is_none() {
+            self.killed = true;
             for descendant in sys::descendants(pid) {
                 sys::kill(descendant);
             }
