@@ -133,9 +133,9 @@ Checked by the MSRV and `no_std` jobs, the all-features build of
   the change records it, with its reason, in the same commit.
 - **Tests.** Run focused tests after each change, and `just ci` before merging.
 - **Authorization.** Do not create commits, branches, tags or releases without
-  the user's authorization. Releases go through the release workflow only: a
-  pushed version tag publishes with the crates.io token of the protected
-  `release` environment.
+  the user's authorization. Releases go through crates.io Trusted Publishing
+  only: a pushed version tag runs the release workflow in the protected
+  `crates-io` environment; no long-lived registry token is stored.
 
 ## Governance
 
@@ -159,8 +159,9 @@ measurements, verification). Affects every specification (rewritten, spec
 037-public-design-records).
 
 2.3.0 (2026-11-01) aligns the constitution with the shipped repository:
-releases run through the release workflow and its protected token (Trusted
-Publishing was not adopted); the async rule is stated as "behind a feature,
+releases run through crates.io Trusted Publishing (the first release needed
+a token because a trusted publisher can only be configured for a crate that
+exists; from 0.1.1 on, none is stored); the async rule is stated as "behind a feature,
 when it ships"; helper integrity applies when a helper ships, and setup
 never follows a link the child could plant (principle V); the feature check
 is named as it runs. Evidence: the 0.1.0 release and an audit of the
