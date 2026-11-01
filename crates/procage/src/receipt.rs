@@ -124,6 +124,52 @@ pub struct Receipt {
     pub violations: ReceiptViolations,
     /// How the run ended.
     pub exit: ReceiptExit,
+    /// What the audits found.
+    pub audit: ReceiptAudit,
+}
+
+/// What a run's audits found: counts and completeness; paths only with the
+/// policy included.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReceiptAudit {
+    /// The link check's mode: `refuse`, `report` or `off`.
+    pub links_mode: String,
+    /// Protected, hidden or class files with another name (report mode).
+    pub links: usize,
+    /// Whether the link check examined everything.
+    pub links_complete: bool,
+    /// What the run left behind, with the handoff audit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handoff: Option<usize>,
+    /// Whether the handoff audit examined everything.
+    pub handoff_complete: bool,
+    /// Entries the link check and the handoff walks examined.
+    pub visited: usize,
+    /// The findings' paths, only with the policy included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paths: Option<Vec<ReceiptPath>>,
+}
+
+/// A path as the policy format writes it: a string when its bytes are valid
+/// UTF-8, otherwise the bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ReceiptPath {
+    /// Valid UTF-8.
+    Text(String),
+    /// Any other bytes.
+    Bytes(Vec<u8>),
+}
+
+impl From<&std::path::Path> for ReceiptPath {
+    fn from(path: &std::path::Path) -> Self {
+        use std::os::unix::ffi::OsStrExt;
+        match std::str::from_utf8(path.as_os_str().as_bytes()) {
+            Ok(text) => ReceiptPath::Text(text.into()),
+            Err(_) => ReceiptPath::Bytes(path.as_os_str().as_bytes().to_vec()),
+        }
+    }
 }
 
 /// The backend of a run and the host it ran on.
@@ -347,6 +393,7 @@ impl RunFacts {
         status: std::process::ExitStatus,
         record: &Violations,
         ended_by_caller: bool,
+        audit: &crate::Audit,
     ) -> Receipt {
         use std::os::unix::process::ExitStatusExt;
         let c = &self.cage;
@@ -387,6 +434,33 @@ impl RunFacts {
                     status.signal()
                 },
                 ended_by_caller,
+            },
+            audit: ReceiptAudit {
+                links_mode: match audit.mode {
+                    crate::LinkAudit::Refuse => "refuse",
+                    crate::LinkAudit::Report => "report",
+                    _ => "off",
+                }
+                .into(),
+                links: audit.links.len(),
+                links_complete: audit.links_complete,
+                handoff: audit.handoff.as_ref().map(Vec::len),
+                handoff_complete: audit.handoff_complete,
+                visited: audit.links_visited + audit.handoff_visited,
+                paths: c.policy.is_some().then(|| {
+                    audit
+                        .links
+                        .iter()
+                        .map(|f| ReceiptPath::from(f.path.as_path()))
+                        .chain(
+                            audit
+                                .handoff
+                                .iter()
+                                .flatten()
+                                .map(|f| ReceiptPath::from(f.path.as_path())),
+                        )
+                        .collect()
+                }),
             },
         }
     }

@@ -1,0 +1,138 @@
+{
+  "feature": "023-tree-audit",
+  "commit": "10b728b",
+  "timestamp": "2026-11-01T23:30:39Z",
+  "status": "NOT CONVERGED",
+  "threats": {
+    "total": 15,
+    "open_blocking": []
+  },
+  "requirements": {
+    "total": 15,
+    "verified": [
+      "SR-003",
+      "SR-005",
+      "SR-008",
+      "SR-009",
+      "SR-010",
+      "SR-011",
+      "SR-013",
+      "SR-014",
+      "SR-015"
+    ],
+    "implemented_unverified": [
+      "SR-002",
+      "SR-007"
+    ],
+    "partial": [
+      "SR-001",
+      "SR-004",
+      "SR-006",
+      "SR-012"
+    ],
+    "missing": []
+  },
+  "expired_decisions": [],
+  "drift": [],
+  "appended_tasks": [
+    "T022",
+    "T023",
+    "T024",
+    "T025",
+    "T026",
+    "T027"
+  ],
+  "already_open_tasks_for": [],
+  "verdicts": {
+    "SR-001": {
+      "verdict": "partial",
+      "method": "review",
+      "evidence": "crates/procage/src/audit.rs:256",
+      "justification": "links() examines literal, subpath, class and glob targets in the parent (wired as the last step before the fork, macos/mod.rs:693, linux/mod.rs:859), applies the strict name count (src/audit.rs::a_hidden_file_needs_every_name_hidden) and Refuse yields HardLinks; escape_macos.rs and escape_linux.rs r08_* cover a protected alias (macOS, T1) and a hidden file aliased in a readable-only tree (all lanes). Gaps: AC3's second clause (a non-matching aliased file under a glob prefix is not a finding) contradicts the conservative may_overlap matching the updated statement prescribes, so the scenario needs reconciling in the model; and no test covers a secrets class file aliased outside every grant, a glob target, or hard links between unprotected files in a writable tree running without a finding (AC4)."
+    },
+    "SR-002": {
+      "verdict": "implemented-unverified",
+      "method": "review",
+      "evidence": "crates/procage/src/receipt.rs:436",
+      "justification": "Refuse is the default (macos/mod.rs:390, linux/mod.rs:508; default cages refused in the r08 canaries); Report runs and lists the file in Child::audit (r08_a_hard_link_to_a_hidden_file_is_refused); Off gives links_complete false (src/audit.rs::incomplete_is_never_clean_and_never_a_refusal); the receipt maps the mode and count, but no test checks the receipt of a Report or Off run (tests/audit.rs::the_receipt_counts_the_findings uses Refuse only)."
+    },
+    "SR-003": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/src/audit.rs::a_disguised_rewrite_is_modified; crates/procage/tests/audit.rs::what_a_run_left_behind_is_listed_once; crates/procage/tests/audit.rs::a_quiet_run_is_complete_and_empty",
+      "justification": "A same-size rewrite with the modification time set back is Modified (change time in the key); a caged run's created .vscode/settings.json, modified .git/config, link with its target and nested .git are each counted exactly once; a quiet run is empty and complete. Passed locally on macOS; the integration tests are shared with Linux."
+    },
+    "SR-004": {
+      "verdict": "partial",
+      "method": "review",
+      "evidence": "crates/procage/src/audit.rs:112",
+      "justification": "Both walks mark incomplete past the limit and on unreadable entries (src/audit.rs::walks_stay_put_and_say_what_they_could_not_read), an incomplete link check under Refuse lets the spawn run (incomplete_is_never_clean_and_never_a_refusal), and the receipt carries both completeness flags; but AC2 asks for the count the handoff audit reached and Audit has no handoff visited count (only links_visited), the receipt carries no visited count at all, and no test asserts links_visited or the receipt of an incomplete link check."
+    },
+    "SR-005": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/src/audit.rs::walks_stay_put_and_say_what_they_could_not_read; crates/procage/tests/audit.rs::what_a_run_left_behind_is_listed_once",
+      "justification": "A tree holding a link loop and a link to the root is walked completely in under ten entries (the shared walker never follows links); the post-run snapshot lists a created link with its target read, not resolved (build -> /etc/passwd); walks descend only real directories on the root's device (audit.rs:372)."
+    },
+    "SR-006": {
+      "verdict": "partial",
+      "method": "review",
+      "evidence": "crates/procage/src/macos/child.rs:79",
+      "justification": "Child::audit (macOS child.rs:79, Linux child.rs:81) now ends the run with kill_all before the second walk, but ignores a kill_all failure and walks anyway; Child::receipt (macOS child.rs:88, Linux child.rs:90) calls finish, the second walk, without ending the run; the Audit has no incomplete-because-the-run-has-not-ended state, and neither acceptance scenario (a detached descendant still running, a Lifetime::Run descendant writing a hook after the child exits) is tested."
+    },
+    "SR-007": {
+      "verdict": "implemented-unverified",
+      "method": "review",
+      "evidence": "crates/procage/src/receipt.rs:156",
+      "justification": "Findings hold PathBuf; receipt paths are ReceiptPath (text when valid UTF-8, else the bytes, untagged), which can round-trip; Display escapes control characters (newline tested in tests/audit.rs and src/audit.rs); no test serialises and reads back a name with an escape character or invalid UTF-8, or checks the bytes are equal."
+    },
+    "SR-008": {
+      "verdict": "verified",
+      "method": "review",
+      "evidence": "crates/procage/src/macos/mod.rs:693; crates/procage/src/linux/mod.rs:859; crates/procage/tests/spawn_macos.rs::one_cage_spawns_from_several_threads",
+      "justification": "before_spawn runs in the parent before command.spawn in both backends and RunAudit::finish runs from Child methods in the parent; no child-side code references the audit, and the multithreaded spawn test runs with the default link check."
+    },
+    "SR-009": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/threat_model.rs::gate",
+      "justification": "The gate passes (run locally) and enforces non-ignored canaries per platform for R-08 (mitigated, six r08 canaries); R-07 stays harness/documented and says the audit lists findings for the harness to review; audits.md and the crate docs say an incomplete result is never clean and nowhere call an empty audit proof."
+    },
+    "SR-010": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused; crates/procage/tests/escape_linux.rs::r08_a_hard_link_to_a_protected_file_is_refused",
+      "justification": "The same cage spawns cleanly, a second name is then given to a file under its protect subpath, and the next spawn is refused naming it; before_spawn re-walks the Targets on every spawn with no cached result (audit.rs:530)."
+    },
+    "SR-011": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused; crates/procage/tests/escape_linux.rs::r08_a_hard_link_to_a_hidden_file_is_refused; crates/procage/src/audit.rs::a_literal_target_that_became_a_link_is_a_finding",
+      "justification": "On macOS and on every Linux tier a literal hide target that spawned cleanly is replaced by a symbolic link and the next spawn is refused with a symbolic finding; links() reads it with symlink_metadata and never follows it."
+    },
+    "SR-012": {
+      "verdict": "partial",
+      "method": "test",
+      "evidence": "crates/procage/tests/escape_linux.rs::r08_no_hard_link_can_be_made_during_the_run",
+      "justification": "macOS asserts both link calls fail, and Linux now runs every tier with no skip and asserts the hidden-file link fails; but on T2 the protected-file attempt is neither made against a protected target nor asserted (the protect rule is added on T1 only, though T2 can protect a file outside the writable tree), so the T2 lane lacks the protected canary."
+    },
+    "SR-013": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/audit.rs::the_receipt_counts_the_findings",
+      "justification": "Without the policy the receipt JSON (policy and paths removed) holds no finding path and paths is None; with it paths is present; findings enter the summary only as counts (receipt.rs:443) and their paths only under the same gate."
+    },
+    "SR-014": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/audit.rs::without_the_option_nothing_is_walked; specs/023-tree-audit/quickstart.md",
+      "justification": "Without with_handoff_audit no snapshot is taken and handoff is None; walk_limit defaults to 200,000 on both systems; the recorded latency probe puts the default link check within SC-003 on macOS and Linux T1/T2."
+    },
+    "SR-015": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/src/audit.rs::the_refusal_names_every_file_and_the_way_out",
+      "justification": "The refusal text lists two files each with its link count and names LinkAudit::Report and LinkAudit::Off; SpawnError's Display for HardLinks is that text on both systems (macos/mod.rs:326, linux/mod.rs:440) and carries every finding."
+    }
+  }
+}

@@ -197,6 +197,17 @@
 //! every path of the policy to each receipt. A reader refuses a newer version
 //! or an unknown field. See the [`receipt`] module for the details.
 //!
+//! # Audits: what path rules cannot stop
+//!
+//! Before every spawn procage checks that no protected, hidden or credential
+//! file has a second name (a hard link) outside the protected set, which path
+//! rules would not cover; by default such a spawn is refused with
+//! `SpawnError::HardLinks` (choose [`LinkAudit::Report`] or
+//! [`LinkAudit::Off`] by name). With `CageOptions::with_handoff_audit`, a
+//! run also notes what it leaves behind for unsandboxed programs to trust:
+//! after the exit, `Child::audit` lists the trust-handoff files, symbolic
+//! links and repositories it created or changed. See the [`audit`] module.
+//!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.
 
@@ -233,13 +244,17 @@ pub use macos as native;
 #[cfg(target_os = "linux")]
 pub use linux as native;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+pub mod audit;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use audit::{Audit, HandoffFinding, HandoffKind, LinkAudit, LinkFinding};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod receipt;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use receipt::{
-    Receipt, ReceiptApproximation, ReceiptBackend, ReceiptCoverage, ReceiptError, ReceiptExit,
-    ReceiptLift, ReceiptRelaxation, ReceiptViolations, policy_digest,
+    Receipt, ReceiptApproximation, ReceiptAudit, ReceiptBackend, ReceiptCoverage, ReceiptError,
+    ReceiptExit, ReceiptLift, ReceiptPath, ReceiptRelaxation, ReceiptViolations, policy_digest,
 };
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod violation;

@@ -984,15 +984,16 @@ fn ignored_canary_as_evidence_is_caught() {
         |f| {
             f.doc = edit_row(
                 &f.doc,
-                "R-08",
+                "R-26",
                 set(
                     6,
-                    "tests/escape_macos.rs::r08_a_hard_link_to_a_hidden_file_is_refused",
+                    "tests/escape_macos.rs::r26_the_helper_cannot_be_replaced, \
+                     tests/escape_linux.rs::r26_the_helper_cannot_be_replaced",
                 ),
             )
         },
         Rule::EvidenceIgnored,
-        "R-08",
+        "R-26",
     );
 }
 

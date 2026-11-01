@@ -66,9 +66,8 @@ unsandboxed.
 
 **Known limits:** no pseudo-terminals, no Linux PID namespace, no loopback
 or proxy networking on Linux, and Landlock's file and network denials are
-not reported. Open escape variants: a hard link made before the run (R-08),
-and on macOS the arguments and environment of your other processes, which a
-caged child can read (R-25).
+not reported. Open escape variant: on macOS the arguments and environment of
+your other processes, which a caged child can read (R-25).
 
 ## 🎯 Threat model
 

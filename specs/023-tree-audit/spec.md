@@ -41,6 +41,28 @@ Prevention has limits; **detection** does not. An audit of the writable trees:
 - Q: Does the audit undo changes? → A: No. It reports; restoring or
   quarantining is the harness's decision.
 
+### Session 2026-11-01 (after threat modelling)
+
+- Q: How do subpath and glob protect/hide rules become the set of files to
+  check? → A: By their own side, not by walking the workspace: an alias
+  shows on the protected file itself as a link count above one. procage
+  examines the literal targets, the files under protect and hide subpaths
+  and the existing files of the secrets, trust-handoff and persistence
+  classes, up to a walk limit, and refuses (or reports) any regular file
+  with more than one name. Glob rules are expanded by walking their fixed
+  prefix under the same limit. Past the limit the audit is incomplete,
+  which the result and the receipt say; it is not a refusal.
+- Q: Readable trees too? → A: Yes, by the same rule: the check is on the
+  protected or hidden file, so it does not matter where the other name
+  lies, readable or writable.
+- Q: Hard links made during the run? → A: Not possible, so not listed: on
+  macOS Seatbelt refuses to link a file the child cannot write (measured on
+  26.6.2), on Linux Landlock never grants linking across directories and a
+  protected path on tier T1 is a separate mount. The canaries assert it.
+- Q: Cost? → A: The link check examines only the protected, hidden and
+  class files, so it is on by default (refuse). The post-run handoff audit
+  walks the writable trees, so it is opt-in.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - A hard link cannot alias a protected file (Priority: P1)
@@ -56,7 +78,8 @@ systems: the link is refused before the child runs.
 **Acceptance Scenarios**:
 
 1. **Given** a hard link inside a writable tree to a protected file, **When**
-   the cage spawns with refuse, **Then** the spawn fails naming both paths.
+   the cage spawns with refuse, **Then** the spawn fails naming the protected
+   file and its link count (the other name may lie anywhere).
 2. **Given** report mode, **Then** the child runs and the audit lists the link.
 3. **Given** a hard link to a hidden file, **Then** the same.
 
@@ -103,9 +126,11 @@ otherwise deny them); the post-run audit lists each exactly once.
 
 ### Functional Requirements
 
-- **FR-001**: Before spawning, procage MUST find, in every writable tree, files
-  with more than one link whose inode equals that of a protected or hidden
-  file, and MUST refuse the spawn or report them as the caller chose.
+- **FR-001**: Before spawning, procage MUST find every protected, hidden or
+  class file (secrets, trust handoff, persistence) that has more than one
+  name (a regular file with a link count above one), and MUST refuse the
+  spawn naming each such file, or report them, as the caller chose; refuse
+  is the default.
 - **FR-002**: After a run ends, procage MUST be able to list, in the writable
   trees: trust-handoff files created or modified during the run; symbolic
   links created; repository metadata directories created.
@@ -128,29 +153,32 @@ otherwise deny them); the post-run audit lists each exactly once.
 <!-- threatspec:begin -->
 ### Security Requirements *(managed by ThreatSpec — edit threat-model.yaml)*
 
-- **SR-001** (P1): Before spawning, procage MUST find every file in a writable tree whose device and inode equal those of a protected or hidden file, and in refuse mode the spawn MUST fail before the child runs, naming both paths.
+- **SR-001** (P1): Before every spawn, procage MUST examine, in the parent, every literal protect and hide target, every file under protect and hide subpaths and under the fixed prefix of protect and hide globs, and the existing files of the secrets, trust-handoff and persistence classes in every home; a regular file with a link count above one MUST be a link finding unless every one of its names was found among the targets and, for a file found in a hidden target, every name lies in a hidden target. Globs are matched exactly for *, ? and **; a glob with classes or alternatives is matched conservatively and its matches never count as accounted names. Cache directories inside class paths and the large application data and privacy-guarded folders named in the threat model are not examined. In Refuse mode a finding MUST fail the spawn with SpawnError::HardLinks.
   - Mitigates: `threat.alias-missed` via `mitigation.inode-match`
-  - Given a file in a writable tree hard-linked to a protected .git/config, when the cage spawns in refuse mode, on macOS, Linux T1 and T2, then the spawn fails naming the alias and the protected path, and the target never runs
-  - Given a hard link to a hidden file, when the cage spawns in refuse mode, then the spawn fails the same way
-  - Given a writable tree with hard links only between unprotected files, when the cage spawns, then it runs and the audit has no link finding
-- **SR-002** (P1): Refuse MUST be the default whenever the policy protects or hides files; report mode MUST be chosen by the caller by name, and the mode and every link finding MUST be in the audit result and in the receipt when receipts exist.
+  - Given a file in a writable tree hard-linked to a protected .git/config, when the cage spawns with Refuse on macOS, Linux T1 and T2, then the spawn fails with HardLinks naming .git/config and its link count, and the target never runs
+  - Given a hidden file whose second name lies in a readable-only tree, and a secrets class file whose second name lies outside every granted tree, when the cage spawns with Refuse, then the spawn fails naming both files
+  - Given a protect or hide glob, a file it matches with a second name outside the glob, and a multi-link file under the glob's prefix that the glob does not match, when the link check runs, then the matched file is a finding and the unmatched one is not
+  - Given hard links only between unprotected files in a writable tree, when the cage spawns, then it runs and the audit has no link finding
+- **SR-002** (P1): LinkAudit::Refuse MUST be the default for every cage; Report and Off MUST take effect only when the caller names them, and the mode and every link finding MUST be in the audit result and in the receipt when receipts exist.
   - Mitigates: `threat.report-mode-silent` via `mitigation.refuse-default`
-  - Given a policy that protects files and no audit option set, when a cage with an aliasing hard link spawns, then the spawn is refused
-  - Given report mode chosen by the caller, when the same cage spawns, then the child runs, and the audit result and the receipt record report mode and list the link
+  - Given CageOptions with no link audit option, when a cage whose protected file has a second name spawns, then the spawn is refused with HardLinks
+  - Given with_link_audit(Report), when the same cage spawns, then the child runs, and the audit result and the receipt record Report and list the file
+  - Given with_link_audit(Off), when the same cage spawns, then the child runs and the audit result and the receipt record Off, never an empty complete link check
 - **SR-003** (P1): The post-run audit MUST list each trust-handoff file created or modified, each symbolic link created (with its target) and each repository metadata directory created in the writable trees exactly once, and MUST detect a change by inode, size and status-change time, never by modification time alone.
   - Mitigates: `threat.mtime-reset` via `mitigation.ctime-snapshot`
   - Given a waived trust-handoff class and an existing .git/hooks/pre-commit, when the child rewrites it with the same size and resets its modification time, then the audit lists it as modified
   - Given Linux T1 and a .vscode/settings.json that did not exist at spawn, when the child creates it, then the audit lists it as created
   - Given a child that creates a symbolic link build pointing to the home directory and a nested .git directory, when the audit runs, then it lists the link with its target and the repository metadata, each once
   - Given a run that touched nothing of these kinds, when the audit runs, then it is empty and complete
-- **SR-004** (P1): Both audits MUST stop at a walk limit and MUST return a typed incomplete result, with how far they got, past the limit or when any entry cannot be read; an incomplete result MUST NOT be presentable as an empty list.
+- **SR-004** (P1): Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited, past the limit or when any entry cannot be read; an incomplete link check MUST NOT refuse the spawn, and an incomplete result MUST NOT be presentable as an empty complete one, in the audit result or in the receipt.
   - Mitigates: `threat.silent-partial` via `mitigation.typed-incomplete`
-  - Given a child that creates more files than the walk limit, when the post-run audit runs, then it returns incomplete with the count reached, within the time bound of SC-003 scaled to the limit
-  - Given a child that makes a directory in the tree unreadable, when either audit runs, then the result is incomplete and names the directory
+  - Given a protect subpath with more files than a small walk limit, when the cage spawns with Refuse, then the child runs, links_complete is false with the visited count, and the receipt says the audit is incomplete
+  - Given a child that creates more files than the walk limit, when the post-run audit runs, then handoff_complete is false with the count reached, within the time bound of SC-003 scaled to the limit
+  - Given a child that makes a directory in a tree unreadable, when either audit runs, then the result is incomplete
 - **SR-005** (P1): Audit walks MUST NOT follow symbolic links or cross to another device, and MUST read link targets without resolving them.
   - Mitigates: `threat.walk-follows-link` via `mitigation.nofollow-walk`
   - Given a child that creates a link loop pointing to its own directory and a link out pointing to the home directory, when the post-run audit runs, then it terminates, lists both links with their targets, and lists nothing from the home directory
-  - Given a protected file reachable only through a symbolic link in a writable tree, when the pre-run audit runs, then the link is not traversed and no file outside the tree is examined through it
+  - Given a protect subpath containing a symbolic link to a directory outside it, when the pre-run link check runs, then the link is not traversed and no file outside the subpath is examined through it
 - **SR-006** (P2): The post-run audit MUST run only after the run is over (child reaped, every process of the run gone); before that it MUST return incomplete with that reason.
   - Mitigates: `threat.audit-too-early` via `mitigation.after-run-only`
   - Given a detached run whose descendant still runs, when the harness asks for the post-run audit, then it is incomplete because the run has not ended
@@ -164,6 +192,27 @@ otherwise deny them); the post-run audit lists each exactly once.
 - **SR-009** (P2): The threat model MUST change R-08's status only with non-ignored canaries on every lane, MUST record R-07 as detected by the post-run audit and still a harness responsibility, and the docs MUST NOT present an empty audit as proof that the trees are safe.
   - Mitigates: `threat.status-overclaim` via `mitigation.measured-status`
   - Given THREAT_MODEL, the crate docs and the site, when they describe R-07, R-08 and the audit, then R-08 names its canaries per lane, R-07 says the harness still reviews the trees, and no text calls an empty audit proof
+- **SR-010** (P2): The link check MUST run in the parent on every spawn as the last step before the fork, re-examining the Targets each time, and MUST NOT reuse a result from an earlier spawn.
+  - Mitigates: `threat.check-spawn-race` via `mitigation.check-last`
+  - Given a cage that spawned cleanly once, when a second name is given to its protected file and the same cage spawns again, then the second spawn is refused
+  - Given a protect subpath, when an aliased file is created under it after the cage was built and the cage spawns, then the spawn is refused naming that file
+- **SR-011** (P1): A literal protect or hide target that is a symbolic link MUST be a link finding, so that Refuse fails the spawn, without the check following the link.
+  - Mitigates: `threat.target-replaced-by-link` via `mitigation.target-link-finding`
+  - Given a protected .git/config replaced by a symbolic link to a file with a second name, when the cage spawns with Refuse on macOS, Linux T1 and T2, then the spawn fails naming .git/config
+- **SR-012** (P2): Every lane MUST have a non-ignored canary in which a caged child tries to hard link a protected and a hidden file into a writable tree and the kernel refuses it.
+  - Mitigates: `threat.in-run-link` via `mitigation.in-run-canary`
+  - Given the escape suites on macOS, Linux T1 and T2, when the child calls link on a protected and on a hidden file, then both calls fail and no second name exists after the run
+- **SR-013** (P2): The receipt audit summary MUST hold only counts, mode and completeness unless the receipt includes the policy; finding paths MUST NOT appear otherwise.
+  - Mitigates: `threat.receipt-paths-leak` via `mitigation.receipt-counts`
+  - Given a Report run with a link finding and a handoff finding, when the receipt is built without the policy, then it holds the counts, the mode and completeness, and no finding path bytes
+  - Given the same run, when the receipt is built with the policy, then the finding paths are present
+- **SR-014** (P2): Both walks MUST honour the walk limit (default 200,000 on both systems); the handoff audit MUST NOT walk unless with_handoff_audit is set; the link check MUST stay within SC-003.
+  - Mitigates: `threat.audit-cost` via `mitigation.bounded-cost`
+  - Given a cage without with_handoff_audit, when it spawns and the run ends, then no snapshot is taken and the audit has no handoff part
+  - Given the default policy and a 10,000-file workspace on the reference machine, when the link check runs, then it adds under 10 ms to the spawn
+- **SR-015** (P3): SpawnError::HardLinks MUST name every refused file with its link count, and its message MUST say that removing the extra name, or choosing Report or Off by name, lets the spawn proceed.
+  - Mitigates: `threat.benign-links-block` via `mitigation.actionable-refusal`
+  - Given two protected files with second names, when the spawn is refused, then the error lists both files with their link counts and the message names the remedies
 <!-- threatspec:end -->
 
 ## Success Criteria *(mandatory)*
@@ -171,8 +220,10 @@ otherwise deny them); the post-run audit lists each exactly once.
 - **SC-001**: R-08 has non-ignored canaries on every lane.
 - **SC-002**: Every artefact kind of User Story 2 is detected on every
   backend and tier.
-- **SC-003**: Pre-run audit adds under 10 ms for a tree of 10,000 files on the
-  reference machine; the post-run audit under 50 ms.
+- **SC-003**: The default link check adds under 10 ms to a spawn whose protected
+  and hidden trees and class files hold 10,000 entries on the reference
+  machine; the opt-in post-run audit takes under 50 ms for a writable tree of
+  10,000 files.
 
 ## Assumptions
 

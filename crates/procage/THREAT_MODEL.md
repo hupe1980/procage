@@ -32,7 +32,6 @@ It does **not**:
 - keep a caged child on macOS from reading the arguments and environment of
   other processes of the same user (R-25), so do not pass secrets to the
   calling program through its arguments or environment;
-- report or refuse a hard link made before the run (R-08);
 - protect a helper program from replacement (R-26): procage installs none,
   and a `Cage::exec` helper is the caller's own binary, to be kept outside
   every writable path;
@@ -196,8 +195,8 @@ why the numbering has gaps.
 | R-04 | Ancestor rename | Renaming a parent directory moves protected files out from under path-based rules. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r04_a_protected_ancestor_cannot_be_renamed, tests/escape_linux.rs::r04_a_protected_file_stays_protected_when_an_ancestor_is_renamed | — |
 | R-05 | Writes through read-only descriptors | Some file-control operations modify a file through a descriptor that was opened read-only. | macOS | mitigate | mitigated | tests/escape_macos.rs::r05_modifying_fcntl_commands_are_refused | — |
 | R-06 | Work handed to unsandboxed services | Launch Services, Apple events, the pasteboard or XPC services act on the child's behalf outside the sandbox. | macOS | mitigate | mitigated | tests/escape_macos.rs::r06_service_handoff_lookups_are_refused | — |
-| R-07 | Trust handoff | The child writes files that an unsandboxed program later runs or trusts: version-control config and hooks, shell startup files, tool config, programs on the search path. | macOS, Linux | harness | documented | tests/escape_macos.rs::r07_trust_handoff_files_are_refused_in_a_writable_workspace, tests/escape_linux.rs::r07_trust_handoff_files_are_protected_in_a_writable_workspace | — |
-| R-08 | Pre-existing hard links | A hard link created before the run gives a protected file a second name that a literal-path deny does not cover. | macOS, Linux | detect | planned | — | — |
+| R-07 | Trust handoff | The child writes files that an unsandboxed program later runs or trusts: version-control config and hooks, shell startup files, tool config, programs on the search path. procage denies writes to the known locations; with the handoff audit it also lists, after the run, the trust-handoff files, symbolic links and repositories the run created or changed, for the harness to review. | macOS, Linux | harness | documented | tests/escape_macos.rs::r07_trust_handoff_files_are_refused_in_a_writable_workspace, tests/escape_linux.rs::r07_trust_handoff_files_are_protected_in_a_writable_workspace | — |
+| R-08 | Pre-existing hard links | A hard link created before the run gives a protected file a second name that a literal-path deny does not cover. Before every spawn procage examines the protected and hidden targets and the credential files of the classes, and refuses the spawn (by default) when one has a name outside them or a literal target has become a symbolic link; report mode lists them instead. No second name can be made during the run. Large application data and privacy-guarded folders in the homes (browser profiles, Mail, Messages, Safari, Cookies) are not examined. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r08_a_hard_link_to_a_hidden_file_is_refused, tests/escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused, tests/escape_macos.rs::r08_no_hard_link_can_be_made_during_the_run, tests/escape_linux.rs::r08_a_hard_link_to_a_hidden_file_is_refused, tests/escape_linux.rs::r08_a_hard_link_to_a_protected_file_is_refused, tests/escape_linux.rs::r08_no_hard_link_can_be_made_during_the_run | — |
 | R-09 | Local daemons | Loopback ports or Unix-domain sockets reach privileged local daemons, such as a container engine's socket. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r09_other_ports_and_daemon_sockets_are_unreachable, tests/escape_macos.rs::r09_unix_sockets_reach_only_their_paths, tests/escape_linux.rs::r09_daemons_are_unreachable_without_network_access, tests/escape_linux.rs::r09_unix_sockets_reach_only_their_paths | — |
 | R-10 | Shared temporary directory | Runs that share the per-user temporary directory can read or change each other's files. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r10_runs_do_not_share_temporary_files, tests/escape_linux.rs::r10_runs_do_not_share_temporary_files | — |
 | R-11 | Unsandboxed exec modifier | A Seatbelt profile modifier that runs an exec'd program without any sandbox reaches the compiled profile. | macOS | mitigate | mitigated | tests/escape_macos.rs::r11_executed_programs_stay_caged | KF-M12 |
@@ -230,8 +229,6 @@ why the numbering has gaps.
 
 ### Open variants
 
-- **R-08** Neither system reports or refuses a hard link made before the
-  run; a protected or hidden file stays reachable through its second name.
 - **R-25** On macOS any process of the same user can read another's
   arguments and environment through the `KERN_PROCARGS2` query, which the
   sandbox does not mediate (observed on macOS 26.6.2). Signals to other

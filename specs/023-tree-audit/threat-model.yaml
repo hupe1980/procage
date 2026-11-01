@@ -117,14 +117,16 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-01T21:14:20Z'
+  generated: '2026-11-01T23:37:20Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
+  - path: plan.md
+    sha256: 78c04192187a6a64b98879a32477aa668300ed8bc0fb9edb5ea9b0f49c146c36
   - path: spec.md
-    sha256: 191abb9459b29cd36daf4301ac3f1e1eb01e30dcdbd6ba4e854fc1614ee9ccd9
+    sha256: d54c1646b06b626a478ac9225a97e167e130631b8d5151eb2d912e8dd77894b7
   surfaces:
   - external-input
   - audit-relevant
@@ -145,16 +147,21 @@ trustZones:
     build tools)
   risk:
     trustRating: 60
+- id: tz.receipt-readers
+  name: Whoever the harness hands a run receipt to (a reviewer, an archive, another system)
+  risk:
+    trustRating: 40
 assets:
 - id: asset.findings
-  name: 'The audit result the harness reviews before trusting the trees: link and handoff findings, mode and completeness'
+  name: 'The audit result the harness reviews before trusting the trees: each link finding and handoff finding,
+    the link audit mode (refuse, report, off) and completeness'
   risk:
     availability: 40
     confidentiality: 30
     integrity: 90
   attributes:
     type: capability
-    source: spec.md#Key-Entities
+    source: spec.md#Key-Entities; data-model.md
     classification: internal
 - id: asset.harness
   name: 'The harness process: memory, threads and the time the audits take'
@@ -167,15 +174,26 @@ assets:
     source: spec.md#SC-003
     classification: internal
 - id: asset.protected
-  name: Protected and hidden files the policy names (for example .git/config, an SSH key)
+  name: Protected and hidden files the policy names, and the existing secrets, trust-handoff and persistence class
+    files (for example .git/config, an SSH key)
   risk:
     availability: 30
     confidentiality: 100
     integrity: 90
   attributes:
     type: credential
-    source: spec.md#FR-001
+    source: spec.md#FR-001; plan.md#Summary (Targets)
     classification: secret
+- id: asset.receipt-audit
+  name: 'The audit summary in the run receipt: counts and completeness, paths only when the policy is included'
+  risk:
+    availability: 20
+    confidentiality: 50
+    integrity: 70
+  attributes:
+    type: capability
+    source: plan.md#Summary; data-model.md (Receipt audit)
+    classification: internal
 - id: asset.trees
   name: The writable trees, whose trust-handoff files, symbolic links and repository metadata unsandboxed tools
     later run or follow
@@ -189,48 +207,75 @@ assets:
     classification: internal
 components:
 - id: component.docs
-  name: THREAT_MODEL, crate docs and site on R-07 and R-08
+  name: THREAT_MODEL, crate docs (Audits), site page audits.md and CHANGELOG on R-07 and R-08
   type: document
   parent:
     trustZone: tz.harness
   attributes:
     source: spec.md#FR-005
+- id: component.options
+  name: CageOptions::with_link_audit (Refuse default, Report, Off), with_handoff_audit, with_walk_limit (default
+    200,000 on both systems)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: contracts/api.md; plan.md#Summary
 - id: component.postrun
-  name: Post-run handoff audit in the parent (trust-handoff files, symbolic links, repository metadata)
+  name: 'Post-run handoff audit in the parent (audit.rs handoff, Child::audit): trust-handoff files, symbolic links,
+    repository metadata, against the spawn snapshot; opt-in by with_handoff_audit'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-002
+    source: spec.md#FR-002; plan.md#Summary; contracts/api.md
 - id: component.prerun
-  name: Pre-run link audit in the parent (writable trees against the protected and hidden set)
+  name: 'Pre-run link check in the parent (audit.rs links): examines the Targets and finds every regular file with
+    a link count above one, in prepare on each spawn'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-001
+    source: spec.md#FR-001; plan.md#Summary; contracts/api.md
 - id: component.receipt
-  name: Run receipt (spec 011) carrying the audit summary
+  name: Run receipt (spec 011, receipt.rs) carrying the audit summary
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-006
+    source: spec.md#FR-006; plan.md#Summary; data-model.md
 - id: component.snapshot
-  name: Snapshot of the writable trees taken at spawn
+  name: Snapshot of the writable trees taken before the fork (inode, size, ctime, mtime, link targets, .git directories)
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#Assumptions
+    source: spec.md#Assumptions; plan.md#Summary
 - id: component.spawn
-  name: Spawn path (fork, sandbox apply in the child, exec)
+  name: 'Spawn path: prepare in the parent (link check, snapshot), fork, sandbox apply in the child, exec; SpawnError::HardLinks'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-004
+    source: spec.md#FR-004; plan.md#Summary; contracts/api.md
+- id: component.targets
+  name: 'Targets, built from the resolved policy: literal protect and hide targets, their subpath roots, glob fixed
+    prefixes with the glob, and the existing secrets, trust-handoff and persistence class paths'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: plan.md#Summary; spec.md#Clarifications
 dataflows:
+- id: flow.audit-receipt
+  name: Both audit results become the receipt audit summary
+  source: component.postrun
+  destination: component.receipt
+  assets:
+  - asset.findings
+  - asset.receipt-audit
+  attributes:
+    crosses: []
 - id: flow.claims
   name: The docs tell the consumer what the audit proves
   source: component.docs
@@ -267,13 +312,56 @@ dataflows:
     crosses:
     - tz.cage
     - tz.host-tools
+- id: flow.mode
+  name: The caller sets the link audit mode, the handoff audit and the walk limit
+  source: actor.consumer
+  destination: component.options
+  assets:
+  - asset.findings
+  attributes:
+    crosses: []
+- id: flow.options
+  name: The options reach prepare on each spawn
+  source: component.options
+  destination: component.spawn
+  assets:
+  - asset.findings
+  attributes:
+    crosses: []
 - id: flow.prewalk
-  name: The pre-run audit walks the writable trees and refuses or allows the spawn
+  name: The link check examines the protected, hidden and class files and refuses or allows the spawn
   source: component.prerun
   destination: component.spawn
   assets:
   - asset.protected
   - asset.findings
+  attributes:
+    crosses: []
+- id: flow.receipt-out
+  name: The harness hands the receipt, with its audit summary, to readers outside the harness
+  source: component.receipt
+  destination: tz.receipt-readers
+  assets:
+  - asset.receipt-audit
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.receipt-readers
+- id: flow.snapshot
+  name: Before the fork the handoff audit walks the writable trees into the snapshot
+  source: component.snapshot
+  destination: component.postrun
+  assets:
+  - asset.trees
+  - asset.harness
+  attributes:
+    crosses: []
+- id: flow.targets
+  name: The resolved policy becomes the Targets the link check examines
+  source: component.targets
+  destination: component.prerun
+  assets:
+  - asset.protected
   attributes:
     crosses: []
 - id: flow.walk
@@ -289,9 +377,10 @@ dataflows:
     - tz.harness
 threats:
 - id: threat.alias-missed
-  name: A hard link in a writable tree to a protected or hidden file (left by an earlier run or an unpacked archive)
-    escapes the pre-run audit (wrong inode set, other device, unread directory), so the child reads or writes the
-    file through its second name
+  name: 'A protected, hidden or class file with a second name (a hard link left by an earlier run, an unpacked archive
+    or another program, anywhere: writable, readable or unreachable tree) is not examined (a subpath or glob not
+    expanded into the Targets, a class path skipped) or its link count is not checked, so the child reads or writes
+    it through the other name'
   categories:
   - Elevation of Privilege
   - Information Disclosure
@@ -302,19 +391,46 @@ threats:
     impact: 90
     likelihood: 40
   attributes:
-    source: spec.md#FR-001
+    source: spec.md#FR-001; spec.md#Clarifications; plan.md#Complexity-Tracking
     assets:
     - asset.protected
     status: open
     actor: actor.caged-code
     constitution: I. Fail closed, never silently weaker
     elements:
+    - component.targets
     - component.prerun
+    - flow.targets
     - flow.prewalk
     - flow.confine
     profile: stride
     severity: high
     technique: broken-access-control
+- id: threat.audit-cost
+  name: The link check, on by default, walks a large protect or hide subpath (or class paths in every home) on every
+    spawn, and the handoff audit walks the writable trees twice per run, so spawns slow down or the harness stalls
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-400
+  risk:
+    comment: a hide rule on a large directory is a normal policy; the cost lands on every spawn
+    impact: 50
+    likelihood: 40
+  attributes:
+    source: spec.md#SC-003; spec.md#Clarifications (cost); plan.md#Complexity-Tracking
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.prerun
+    - component.postrun
+    - component.snapshot
+    - flow.snapshot
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
 - id: threat.audit-in-child
   name: The audit walk is placed between fork and exec, allocating or locking in the child of a multithreaded parent,
     so spawns deadlock
@@ -325,10 +441,10 @@ threats:
     impact: 60
     likelihood: 15
   attributes:
-    source: spec.md#FR-004
+    source: spec.md#FR-004; plan.md#Summary (prepare)
     assets:
     - asset.harness
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: IV. Syscalls only between fork and exec
     elements:
@@ -346,7 +462,7 @@ threats:
     impact: 80
     likelihood: 30
   attributes:
-    source: spec.md#FR-002
+    source: spec.md#FR-002; contracts/api.md (Child::audit returns None while running)
     assets:
     - asset.findings
     status: open
@@ -356,6 +472,55 @@ threats:
     profile: stride
     severity: medium
     technique: missing-audit-trail
+- id: threat.benign-links-block
+  name: A protected, hidden or class file has a second name for a benign reason (a backup or package tool, a deliberate
+    hard link), so the default refuse blocks every spawn and pushes the caller to Off
+  categories:
+  - Denial of Service
+  risk:
+    comment: hard-linked dotfiles and backups exist; an opaque refusal invites switching the check off
+    impact: 50
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-001 (refuse is the default); contracts/api.md (SpawnError::HardLinks)
+    assets:
+    - asset.harness
+    - asset.protected
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.prerun
+    - component.spawn
+    - component.options
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.check-spawn-race
+  name: Between the link check in prepare and the exec, or between two spawns of the same cage, a process outside
+    the cage gives a protected file a second name, so the child starts with an alias the check did not see
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-367
+  risk:
+    comment: needs an unsandboxed writer of the same user racing the spawn; a stale cached result widens it to every
+      later spawn
+    impact: 80
+    likelihood: 15
+  attributes:
+    source: plan.md#Summary (prepare, each spawn)
+    assets:
+    - asset.protected
+    status: mitigated
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.prerun
+    - component.spawn
+    - flow.prewalk
+    profile: stride
+    severity: medium
+    technique: broken-access-control
 - id: threat.finding-injection
   name: File names and link targets the child chose carry control characters or invalid UTF-8, so a lossy finding
     names the wrong path or the harness display and log are injected
@@ -380,6 +545,28 @@ threats:
     profile: stride
     severity: medium
     technique: injection
+- id: threat.in-run-link
+  name: The claim that a caged child cannot hard link a protected or hidden file during the run fails on one lane
+    (a Seatbelt or Landlock change, a T1 mount gap), and no audit lists links made during the run
+  categories:
+  - Elevation of Privilege
+  risk:
+    comment: measured on one macOS release; the spec relies on it to not list in-run links
+    impact: 80
+    likelihood: 15
+  attributes:
+    source: spec.md#Clarifications (hard links made during the run)
+    assets:
+    - asset.protected
+    status: open
+    actor: actor.caged-code
+    constitution: III. The kernel is the oracle
+    elements:
+    - flow.confine
+    - component.spawn
+    profile: stride
+    severity: medium
+    technique: broken-access-control
 - id: threat.mtime-reset
   name: The child changes a trust-handoff file in place and resets its modification time (or keeps size and inode),
     so the post-run audit compares equal to the snapshot and lists nothing
@@ -397,7 +584,7 @@ threats:
     assets:
     - asset.trees
     - asset.findings
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.snapshot
@@ -418,12 +605,13 @@ threats:
     source: spec.md#FR-002
     assets:
     - asset.protected
-    status: open
+    status: retired
     actor: actor.caged-code
     disposition: needs-clarification
     elements:
     - component.postrun
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: broken-access-control
 - id: threat.nc-protected-set
@@ -438,12 +626,13 @@ threats:
     source: spec.md#FR-001
     assets:
     - asset.protected
-    status: open
+    status: retired
     actor: actor.caged-code
     disposition: needs-clarification
     elements:
     - component.prerun
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: broken-access-control
 - id: threat.nc-readable-trees
@@ -458,17 +647,43 @@ threats:
     source: spec.md#FR-001
     assets:
     - asset.protected
-    status: open
+    status: retired
     actor: actor.caged-code
     disposition: needs-clarification
     elements:
     - component.prerun
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: sensitive-data-exposure
+- id: threat.receipt-paths-leak
+  name: The receipt audit summary carries finding paths (secret file names, home layout, workspace names) to readers
+    who were not given the policy
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    comment: receipts are made to be handed on; paths of secrets and aliases reveal what the host holds
+    impact: 40
+    likelihood: 40
+  attributes:
+    source: plan.md#Summary (paths only with the policy included); data-model.md
+    assets:
+    - asset.receipt-audit
+    - asset.protected
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.receipt
+    - flow.audit-receipt
+    - flow.receipt-out
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
 - id: threat.report-mode-silent
-  name: Report mode (the child runs with the alias reachable) applies by default, or without being recorded, so
-    a cage is silently weaker than its policy
+  name: Report or Off applies by default, or without being recorded in the audit result and the receipt, so a cage
+    is silently weaker than its policy
   categories:
   - Elevation of Privilege
   risk:
@@ -476,7 +691,7 @@ threats:
     impact: 90
     likelihood: 30
   attributes:
-    source: spec.md#Clarifications
+    source: spec.md#Clarifications; contracts/api.md (LinkAudit)
     assets:
     - asset.protected
     - asset.findings
@@ -484,14 +699,17 @@ threats:
     actor: actor.contributor
     constitution: I. Fail closed, never silently weaker
     elements:
+    - component.options
     - component.prerun
     - component.receipt
+    - flow.mode
     profile: stride
     severity: medium
     technique: privilege-escalation-via-config
 - id: threat.silent-partial
-  name: The child floods a tree past the walk limit or makes a directory unreadable, and the audit returns a partial
-    list that reads as complete, or exhausts the harness
+  name: A tree or a protect subpath floods past the walk limit, or a directory is unreadable, and the audit returns
+    a partial result that reads as complete (an incomplete link check lets the spawn proceed by design), or the
+    walk exhausts the harness
   categories:
   - Repudiation
   - Denial of Service
@@ -500,7 +718,7 @@ threats:
     impact: 70
     likelihood: 60
   attributes:
-    source: spec.md#FR-003
+    source: spec.md#FR-003; spec.md#Clarifications; data-model.md (links_complete, handoff_complete)
     assets:
     - asset.findings
     - asset.harness
@@ -510,6 +728,7 @@ threats:
     elements:
     - component.prerun
     - component.postrun
+    - component.receipt
     - flow.walk
     profile: stride
     severity: high
@@ -527,7 +746,7 @@ threats:
     source: spec.md#FR-005
     assets:
     - asset.findings
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     elements:
@@ -536,6 +755,34 @@ threats:
     profile: stride
     severity: medium
     technique: missing-audit-trail
+- id: threat.target-replaced-by-link
+  name: A protected or hidden target is replaced by a symbolic link (where its directory is writable, as on Linux
+    T2) to a file with a second name; the check uses lstat, sees a link with one name and no finding, while the
+    rule or the child follows the link
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  cwes:
+  - CWE-59
+  - CWE-62
+  risk:
+    comment: lstat is right for the walk but blind to what a link target aliases; T2 cannot deny inside an allowed
+      tree
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: plan.md#Summary (a regular file with st_nlink > 1 is a finding); spec.md#Context
+    assets:
+    - asset.protected
+    status: mitigated
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.targets
+    - component.prerun
+    profile: stride
+    severity: medium
+    technique: broken-access-control
 - id: threat.walk-follows-link
   name: A symbolic link the child planted makes an audit walk leave the tree (into the home directory) or loop,
     so the parent reads outside the trees, reports foreign files or never finishes
@@ -553,7 +800,7 @@ threats:
     assets:
     - asset.harness
     - asset.findings
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: V. Hygiene by default
     elements:
@@ -564,6 +811,21 @@ threats:
     severity: medium
     technique: sensitive-data-exposure
 mitigations:
+- id: mitigation.actionable-refusal
+  name: SpawnError::HardLinks names every file with its link count, and its message says how to proceed (remove
+    the extra name, or choose Report or Off by name)
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.benign-links-block
+    status: verified
+    kind: corrective
+    requirements:
+    - SR-015
+    touchpoints:
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/audit.rs
 - id: mitigation.after-run-only
   name: The post-run audit is available only once the run is over (child reaped, the run's processes killed); otherwise
     it is incomplete with that reason
@@ -576,7 +838,24 @@ mitigations:
     requirements:
     - SR-006
     touchpoints:
-    - component.postrun
+    - crates/procage/src/macos/child.rs
+    - crates/procage/src/linux/child.rs
+- id: mitigation.bounded-cost
+  name: The walk limit bounds both walks (default 200,000 on both systems); the handoff audit is off unless with_handoff_audit;
+    the link check examines only the Targets; SC-003 is measured
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.audit-cost
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-014
+    touchpoints:
+    - crates/procage/src/audit.rs
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/tests/audit.rs
 - id: mitigation.byte-paths
   name: Findings keep paths and link targets as bytes; the serialised form round-trips them and the display escapes
     control characters
@@ -589,8 +868,24 @@ mitigations:
     requirements:
     - SR-007
     touchpoints:
-    - component.postrun
-    - component.receipt
+    - crates/procage/src/audit.rs
+    - crates/procage/src/receipt.rs
+    - crates/procage/tests/audit.rs
+- id: mitigation.check-last
+  name: The link check runs in prepare on every spawn, from the Targets roots, as the last parent step before the
+    fork; no result is cached across spawns; the docs name the window left to unsandboxed writers
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.check-spawn-race
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/audit.rs
 - id: mitigation.ctime-snapshot
   name: The spawn snapshot records inode, size, modification and status-change time; a file differs when any of
     them differs, and the status-change time cannot be set by the child
@@ -598,16 +893,31 @@ mitigations:
   attributes:
     threats:
     - threat.mtime-reset
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-003
     touchpoints:
-    - component.snapshot
-    - component.postrun
+    - crates/procage/src/audit.rs
+    - crates/procage/tests/audit.rs
+- id: mitigation.in-run-canary
+  name: Non-ignored canaries on every lane assert that a caged child cannot hard link a protected or hidden file
+    into a writable tree
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.in-run-link
+    status: required
+    kind: detective
+    requirements:
+    - SR-012
+    touchpoints:
+    - crates/procage/tests/escape_macos.rs
+    - crates/procage/tests/escape_linux.rs
 - id: mitigation.inode-match
-  name: The pre-run audit collects (device, inode) of every protected and hidden file and, in every writable tree,
-    every file with more than one link; a match is a finding naming both paths; R-08 canaries on every lane
+  name: Targets cover the literal protect and hide targets, every file under their subpath roots, glob fixed prefixes
+    filtered by the glob, and the existing class files; each is examined with lstat and a regular file with a link
+    count above one is a finding, wherever its other name lies; R-08 canaries on every lane
   riskReduction: 85
   attributes:
     threats:
@@ -617,8 +927,11 @@ mitigations:
     requirements:
     - SR-001
     touchpoints:
-    - component.prerun
-    - component.spawn
+    - crates/procage/src/audit.rs
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/tests/escape_macos.rs
+    - crates/procage/tests/escape_linux.rs
 - id: mitigation.measured-status
   name: R-08 changes status only with non-ignored canaries on every lane; the docs say the post-run audit detects
     and never prevents, that it lists changes by any writer, and that the harness still reviews the trees
@@ -626,12 +939,15 @@ mitigations:
   attributes:
     threats:
     - threat.status-overclaim
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-009
     touchpoints:
-    - component.docs
+    - crates/procage/THREAT_MODEL.md
+    - crates/procage/src/lib.rs
+    - site/content/docs/audits.md
+    - crates/procage/tests/threat_model.rs
 - id: mitigation.nofollow-walk
   name: Walks use lstat and directory descriptors opened without following links, stay on the tree's device, and
     read link targets with readlink only
@@ -639,13 +955,12 @@ mitigations:
   attributes:
     threats:
     - threat.walk-follows-link
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-005
     touchpoints:
-    - component.prerun
-    - component.postrun
+    - crates/procage/src/audit.rs
 - id: mitigation.parent-only
   name: Both audits run in the parent before the fork and after the reap; the multithreaded spawn tests run with
     the audit on
@@ -653,16 +968,30 @@ mitigations:
   attributes:
     threats:
     - threat.audit-in-child
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-008
     touchpoints:
-    - component.spawn
-    - component.prerun
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
+- id: mitigation.receipt-counts
+  name: The receipt audit summary holds counts and completeness only; finding paths appear only when the receipt
+    includes the policy
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.receipt-paths-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-013
+    touchpoints:
+    - crates/procage/src/receipt.rs
+    - crates/procage/tests/receipts.rs
 - id: mitigation.refuse-default
-  name: Refuse is the default when the policy protects or hides files; report only when the caller chooses it by
-    name, recorded in the result and the receipt
+  name: LinkAudit::Refuse is the Default whatever the policy; Report and Off only when the caller names them; the
+    mode is recorded in the audit result and the receipt
   riskReduction: 85
   attributes:
     threats:
@@ -672,11 +1001,28 @@ mitigations:
     requirements:
     - SR-002
     touchpoints:
-    - component.prerun
-    - component.receipt
+    - crates/procage/src/audit.rs
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/receipt.rs
+- id: mitigation.target-link-finding
+  name: A literal protect or hide target that is a symbolic link is itself a link finding, so refuse fails the spawn
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.target-replaced-by-link
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-011
+    touchpoints:
+    - crates/procage/src/audit.rs
+    - crates/procage/tests/escape_linux.rs
+    - crates/procage/tests/escape_macos.rs
 - id: mitigation.typed-incomplete
-  name: Both walks count entries against a limit and treat any walk error as loss; past the limit or on loss the
-    result is a typed incomplete with how far it got, never a plain list
+  name: Both walks count entries against the walk limit and treat any walk error as loss; the result carries links_complete
+    and handoff_complete with visited, the receipt says incomplete, and an incomplete link check runs the spawn
+    but is never shown as clean
   riskReduction: 80
   attributes:
     threats:
@@ -686,39 +1032,54 @@ mitigations:
     requirements:
     - SR-004
     touchpoints:
-    - component.prerun
-    - component.postrun
+    - crates/procage/src/audit.rs
+    - crates/procage/src/receipt.rs
+    - crates/procage/tests/audit.rs
 requirements:
 - id: SR-001
-  statement: Before spawning, procage MUST find every file in a writable tree whose device and inode equal those
-    of a protected or hidden file, and in refuse mode the spawn MUST fail before the child runs, naming both paths.
+  statement: Before every spawn, procage MUST examine, in the parent, every literal protect and hide target, every
+    file under protect and hide subpaths and under the fixed prefix of protect and hide globs, and the existing
+    files of the secrets, trust-handoff and persistence classes in every home; a regular file with a link count
+    above one MUST be a link finding unless every one of its names was found among the targets and, for a file found
+    in a hidden target, every name lies in a hidden target. Globs are matched exactly for *, ? and **; a glob with
+    classes or alternatives is matched conservatively and its matches never count as accounted names. Cache directories
+    inside class paths and the large application data and privacy-guarded folders named in the threat model are
+    not examined. In Refuse mode a finding MUST fail the spawn with SpawnError::HardLinks.
   priority: P1
   mitigations:
   - mitigation.inode-match
   acceptance:
   - given: a file in a writable tree hard-linked to a protected .git/config
-    then: the spawn fails naming the alias and the protected path, and the target never runs
-    when: the cage spawns in refuse mode, on macOS, Linux T1 and T2
-  - given: a hard link to a hidden file
-    then: the spawn fails the same way
-    when: the cage spawns in refuse mode
-  - given: a writable tree with hard links only between unprotected files
+    then: the spawn fails with HardLinks naming .git/config and its link count, and the target never runs
+    when: the cage spawns with Refuse on macOS, Linux T1 and T2
+  - given: a hidden file whose second name lies in a readable-only tree, and a secrets class file whose second name
+      lies outside every granted tree
+    then: the spawn fails naming both files
+    when: the cage spawns with Refuse
+  - given: a protect or hide glob, a file it matches with a second name outside the glob, and a multi-link file
+      under the glob's prefix that the glob does not match
+    then: the matched file is a finding and the unmatched one is not
+    when: the link check runs
+  - given: hard links only between unprotected files in a writable tree
     then: it runs and the audit has no link finding
     when: the cage spawns
   tasks: []
 - id: SR-002
-  statement: Refuse MUST be the default whenever the policy protects or hides files; report mode MUST be chosen
-    by the caller by name, and the mode and every link finding MUST be in the audit result and in the receipt when
-    receipts exist.
+  statement: LinkAudit::Refuse MUST be the default for every cage; Report and Off MUST take effect only when the
+    caller names them, and the mode and every link finding MUST be in the audit result and in the receipt when receipts
+    exist.
   priority: P1
   mitigations:
   - mitigation.refuse-default
   acceptance:
-  - given: a policy that protects files and no audit option set
-    then: the spawn is refused
-    when: a cage with an aliasing hard link spawns
-  - given: report mode chosen by the caller
-    then: the child runs, and the audit result and the receipt record report mode and list the link
+  - given: CageOptions with no link audit option
+    then: the spawn is refused with HardLinks
+    when: a cage whose protected file has a second name spawns
+  - given: with_link_audit(Report)
+    then: the child runs, and the audit result and the receipt record Report and list the file
+    when: the same cage spawns
+  - given: with_link_audit(Off)
+    then: the child runs and the audit result and the receipt record Off, never an empty complete link check
     when: the same cage spawns
   tasks: []
 - id: SR-003
@@ -743,18 +1104,21 @@ requirements:
     when: the audit runs
   tasks: []
 - id: SR-004
-  statement: Both audits MUST stop at a walk limit and MUST return a typed incomplete result, with how far they
-    got, past the limit or when any entry cannot be read; an incomplete result MUST NOT be presentable as an empty
-    list.
+  statement: Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited,
+    past the limit or when any entry cannot be read; an incomplete link check MUST NOT refuse the spawn, and an
+    incomplete result MUST NOT be presentable as an empty complete one, in the audit result or in the receipt.
   priority: P1
   mitigations:
   - mitigation.typed-incomplete
   acceptance:
+  - given: a protect subpath with more files than a small walk limit
+    then: the child runs, links_complete is false with the visited count, and the receipt says the audit is incomplete
+    when: the cage spawns with Refuse
   - given: a child that creates more files than the walk limit
-    then: it returns incomplete with the count reached, within the time bound of SC-003 scaled to the limit
+    then: handoff_complete is false with the count reached, within the time bound of SC-003 scaled to the limit
     when: the post-run audit runs
-  - given: a child that makes a directory in the tree unreadable
-    then: the result is incomplete and names the directory
+  - given: a child that makes a directory in a tree unreadable
+    then: the result is incomplete
     when: either audit runs
   tasks: []
 - id: SR-005
@@ -767,9 +1131,9 @@ requirements:
   - given: a child that creates a link loop pointing to its own directory and a link out pointing to the home directory
     then: it terminates, lists both links with their targets, and lists nothing from the home directory
     when: the post-run audit runs
-  - given: a protected file reachable only through a symbolic link in a writable tree
-    then: the link is not traversed and no file outside the tree is examined through it
-    when: the pre-run audit runs
+  - given: a protect subpath containing a symbolic link to a directory outside it
+    then: the link is not traversed and no file outside the subpath is examined through it
+    when: the pre-run link check runs
   tasks: []
 - id: SR-006
   statement: The post-run audit MUST run only after the run is over (child reaped, every process of the run gone);
@@ -819,5 +1183,491 @@ requirements:
       empty audit proof
     when: they describe R-07, R-08 and the audit
   tasks: []
-verification: []
+- id: SR-010
+  statement: The link check MUST run in the parent on every spawn as the last step before the fork, re-examining
+    the Targets each time, and MUST NOT reuse a result from an earlier spawn.
+  priority: P2
+  mitigations:
+  - mitigation.check-last
+  acceptance:
+  - given: a cage that spawned cleanly once
+    then: the second spawn is refused
+    when: a second name is given to its protected file and the same cage spawns again
+  - given: a protect subpath
+    then: the spawn is refused naming that file
+    when: an aliased file is created under it after the cage was built and the cage spawns
+  tasks: []
+- id: SR-011
+  statement: A literal protect or hide target that is a symbolic link MUST be a link finding, so that Refuse fails
+    the spawn, without the check following the link.
+  priority: P1
+  mitigations:
+  - mitigation.target-link-finding
+  acceptance:
+  - given: a protected .git/config replaced by a symbolic link to a file with a second name
+    then: the spawn fails naming .git/config
+    when: the cage spawns with Refuse on macOS, Linux T1 and T2
+  tasks: []
+- id: SR-012
+  statement: Every lane MUST have a non-ignored canary in which a caged child tries to hard link a protected and
+    a hidden file into a writable tree and the kernel refuses it.
+  priority: P2
+  mitigations:
+  - mitigation.in-run-canary
+  acceptance:
+  - given: the escape suites on macOS, Linux T1 and T2
+    then: both calls fail and no second name exists after the run
+    when: the child calls link on a protected and on a hidden file
+  tasks: []
+- id: SR-013
+  statement: The receipt audit summary MUST hold only counts, mode and completeness unless the receipt includes
+    the policy; finding paths MUST NOT appear otherwise.
+  priority: P2
+  mitigations:
+  - mitigation.receipt-counts
+  acceptance:
+  - given: a Report run with a link finding and a handoff finding
+    then: it holds the counts, the mode and completeness, and no finding path bytes
+    when: the receipt is built without the policy
+  - given: the same run
+    then: the finding paths are present
+    when: the receipt is built with the policy
+  tasks: []
+- id: SR-014
+  statement: Both walks MUST honour the walk limit (default 200,000 on both systems); the handoff audit MUST NOT
+    walk unless with_handoff_audit is set; the link check MUST stay within SC-003.
+  priority: P2
+  mitigations:
+  - mitigation.bounded-cost
+  acceptance:
+  - given: a cage without with_handoff_audit
+    then: no snapshot is taken and the audit has no handoff part
+    when: it spawns and the run ends
+  - given: the default policy and a 10,000-file workspace on the reference machine
+    then: it adds under 10 ms to the spawn
+    when: the link check runs
+  tasks: []
+- id: SR-015
+  statement: SpawnError::HardLinks MUST name every refused file with its link count, and its message MUST say that
+    removing the extra name, or choosing Report or Off by name, lets the spawn proceed.
+  priority: P3
+  mitigations:
+  - mitigation.actionable-refusal
+  acceptance:
+  - given: two protected files with second names
+    then: the error lists both files with their link counts and the message names the remedies
+    when: the spawn is refused
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: review
+  evidence: crates/procage/src/audit.rs:245
+  result: partial
+  verdict: partial
+  justification: Hidden and protected aliases are refused (escape_macos.rs and escape_linux.rs r08_* canaries, T2
+    protect only on T1), but glob targets are matched with may_overlap, which notes every file at depth one or more
+    under the fixed prefix, so an aliased file under the prefix that does not match the glob is a finding (AC3 fails);
+    the name-count refinement counts names across all targets regardless of access, so a hidden file whose second
+    name lies in a protect target (readable) is not a finding; no test covers a secrets class file aliased outside
+    the grants, a glob target, or benign links between unprotected files.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-001.2026-11-01-2
+  requirement: SR-001
+  method: review
+  evidence: crates/procage/src/audit.rs:256
+  result: partial
+  verdict: partial
+  justification: 'links() examines literal, subpath, class and glob targets in the parent (wired as the last step
+    before the fork, macos/mod.rs:693, linux/mod.rs:859), applies the strict name count (src/audit.rs::a_hidden_file_needs_every_name_hidden)
+    and Refuse yields HardLinks; escape_macos.rs and escape_linux.rs r08_* cover a protected alias (macOS, T1) and
+    a hidden file aliased in a readable-only tree (all lanes). Gaps: AC3''s second clause (a non-matching aliased
+    file under a glob prefix is not a finding) contradicts the conservative may_overlap matching the updated statement
+    prescribes, so the scenario needs reconciling in the model; and no test covers a secrets class file aliased
+    outside every grant, a glob target, or hard links between unprotected files in a writable tree running without
+    a finding (AC4).'
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-001.2026-11-02-3
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/src/audit.rs::tests::class_files_and_globs_are_examined_and_nothing_else
+  result: pass
+  verdict: verified
+  justification: A class credential file with a name outside and a glob-matched file with a name outside are findings;
+    a multi-link file under the glob prefix that the glob does not match is not; the strict hidden count and exact
+    glob matching are unit-tested; the R-08 canaries pass on macOS, Linux T1 and T2.
+  verified_at: '2026-11-02T02:00:00Z'
+  commit: 10b728b
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: review
+  evidence: crates/procage/src/audit.rs:512
+  result: partial
+  verdict: partial
+  justification: Refuse is the default (macos/mod.rs:390, linux/mod.rs:508; default cages refused in the r08 canaries)
+    and Report runs and lists the file in Child::audit, but with Off before_spawn records links_complete true with
+    no findings, which is the empty complete link check AC3 forbids, and no test checks the receipt for Report or
+    Off.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-002.2026-11-01-2
+  requirement: SR-002
+  method: review
+  evidence: crates/procage/src/receipt.rs:436
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: Refuse is the default (macos/mod.rs:390, linux/mod.rs:508; default cages refused in the r08 canaries);
+    Report runs and lists the file in Child::audit (r08_a_hard_link_to_a_hidden_file_is_refused); Off gives links_complete
+    false (src/audit.rs::incomplete_is_never_clean_and_never_a_refusal); the receipt maps the mode and count, but
+    no test checks the receipt of a Report or Off run (tests/audit.rs::the_receipt_counts_the_findings uses Refuse
+    only).
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-002.2026-11-02-3
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/audit.rs::the_receipt_says_the_link_check_mode
+  result: pass
+  verdict: verified
+  justification: Refuse is the default (canaries); Report lists the finding and the receipt says report with one
+    link; Off says off and not complete; passes on macOS and Linux T1/T2.
+  verified_at: '2026-11-02T02:00:00Z'
+  commit: 10b728b
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: review
+  evidence: crates/procage/src/audit.rs:427
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The snapshot keys on inode, size and ctime and tests/audit.rs::what_a_run_left_behind_is_listed_once
+    asserts created, modified (size change), link with target, nested .git each once, and a_quiet_run_is_complete_and_empty
+    the empty case; no test covers AC1, a same-size rewrite with the modification time reset.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-003.2026-11-01-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/src/audit.rs::a_disguised_rewrite_is_modified; crates/procage/tests/audit.rs::what_a_run_left_behind_is_listed_once;
+    crates/procage/tests/audit.rs::a_quiet_run_is_complete_and_empty
+  result: pass
+  verdict: verified
+  justification: A same-size rewrite with the modification time set back is Modified (change time in the key); a
+    caged run's created .vscode/settings.json, modified .git/config, link with its target and nested .git are each
+    counted exactly once; a quiet run is empty and complete. Passed locally on macOS; the integration tests are
+    shared with Linux.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-004.2026-11-01
+  requirement: SR-004
+  method: review
+  evidence: crates/procage/src/audit.rs:347
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: Walks mark the result incomplete past the limit and on unreadable entries, Refuse refuses only
+    on findings, and the receipt carries both completeness flags; tests/audit.rs::past_the_walk_limit_the_audit_is_incomplete
+    covers only the handoff side, with no test of an incomplete link check under Refuse (runs, visited count, receipt)
+    or of an unreadable directory.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-004.2026-11-01-2
+  requirement: SR-004
+  method: review
+  evidence: crates/procage/src/audit.rs:112
+  result: partial
+  verdict: partial
+  justification: Both walks mark incomplete past the limit and on unreadable entries (src/audit.rs::walks_stay_put_and_say_what_they_could_not_read),
+    an incomplete link check under Refuse lets the spawn run (incomplete_is_never_clean_and_never_a_refusal), and
+    the receipt carries both completeness flags; but AC2 asks for the count the handoff audit reached and Audit
+    has no handoff visited count (only links_visited), the receipt carries no visited count at all, and no test
+    asserts links_visited or the receipt of an incomplete link check.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-004.2026-11-02-3
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/src/audit.rs::tests::incomplete_is_never_clean_and_never_a_refusal
+  result: pass
+  verdict: verified
+  justification: Both audits count the entries visited (Audit::links_visited, handoff_visited; receipt visited);
+    an incomplete check is never a refusal and never complete; an unreadable directory is incomplete (walks_stay_put_and_say_what_they_could_not_read).
+  verified_at: '2026-11-02T02:00:00Z'
+  commit: 10b728b
+- id: verification.sr-005.2026-11-01
+  requirement: SR-005
+  method: review
+  evidence: crates/procage/src/audit.rs:353
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: Walks use symlink_metadata, descend only real directories on the root's device and read link targets
+    with read_link; no test creates a link loop, a link to the home directory, or a symbolic link to a directory
+    outside a protect subpath.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-005.2026-11-01-2
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/src/audit.rs::walks_stay_put_and_say_what_they_could_not_read; crates/procage/tests/audit.rs::what_a_run_left_behind_is_listed_once
+  result: pass
+  verdict: verified
+  justification: A tree holding a link loop and a link to the root is walked completely in under ten entries (the
+    shared walker never follows links); the post-run snapshot lists a created link with its target read, not resolved
+    (build -> /etc/passwd); walks descend only real directories on the root's device (audit.rs:372).
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-006.2026-11-01
+  requirement: SR-006
+  method: review
+  evidence: crates/procage/src/macos/child.rs:77
+  result: partial
+  verdict: partial
+  justification: Child::audit (macOS child.rs:77, Linux child.rs:79) is None only while the direct child runs; after
+    the child exits it walks at once even while descendants of the run still run (wait does not end them), and the
+    Audit has no incomplete-because-not-ended state; neither AC is tested.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-006.2026-11-01-2
+  requirement: SR-006
+  method: review
+  evidence: crates/procage/src/macos/child.rs:79
+  result: partial
+  verdict: partial
+  justification: Child::audit (macOS child.rs:79, Linux child.rs:81) now ends the run with kill_all before the second
+    walk, but ignores a kill_all failure and walks anyway; Child::receipt (macOS child.rs:88, Linux child.rs:90)
+    calls finish, the second walk, without ending the run; the Audit has no incomplete-because-the-run-has-not-ended
+    state, and neither acceptance scenario (a detached descendant still running, a Lifetime::Run descendant writing
+    a hook after the child exits) is tested.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-006.2026-11-02-3
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/src/macos/child.rs, crates/procage/src/linux/child.rs
+  result: pass
+  verdict: verified
+  justification: Child::audit and Child::receipt end the run (kill_all) before the second walk; a failed end makes
+    the handoff result incomplete (RunAudit::finish(ended)); before exit both return None (tests/audit.rs, tests/receipts.rs).
+  verified_at: '2026-11-02T02:00:00Z'
+  commit: 10b728b
+- id: verification.sr-007.2026-11-01
+  requirement: SR-007
+  method: review
+  evidence: crates/procage/src/receipt.rs:430
+  result: partial
+  verdict: partial
+  justification: Findings hold PathBuf and Display escapes control characters (newline tested), but findings have
+    no serialised form of their own and the receipt serialises paths with display().to_string(), which replaces
+    invalid UTF-8, so bytes do not round-trip; no test uses an escape character or invalid UTF-8.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-007.2026-11-01-2
+  requirement: SR-007
+  method: review
+  evidence: crates/procage/src/receipt.rs:156
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: Findings hold PathBuf; receipt paths are ReceiptPath (text when valid UTF-8, else the bytes, untagged),
+    which can round-trip; Display escapes control characters (newline tested in tests/audit.rs and src/audit.rs);
+    no test serialises and reads back a name with an escape character or invalid UTF-8, or checks the bytes are
+    equal.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-007.2026-11-02-3
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/audit.rs::paths_round_trip_exactly
+  result: pass
+  verdict: verified
+  justification: A name with an escape character (both systems) and a non-UTF-8 name (Linux) round-trip through
+    the receipt as text or bytes (ReceiptPath); display escapes control characters (control_characters_are_escaped_in_messages).
+  verified_at: '2026-11-02T02:00:00Z'
+  commit: 10b728b
+- id: verification.sr-008.2026-11-01
+  requirement: SR-008
+  method: review
+  evidence: crates/procage/src/macos/mod.rs:693; crates/procage/src/linux/mod.rs:859; crates/procage/tests/spawn_macos.rs::one_cage_spawns_from_several_threads
+  result: pass
+  verdict: verified
+  justification: before_spawn runs in the parent before command.spawn in both backends and RunAudit::finish runs
+    from Child methods in the parent; no pre_exec closure (macos/sys.rs, linux/sys.rs) references the audit, and
+    the multithreaded spawn test runs with the default link check on.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-008.2026-11-01-2
+  requirement: SR-008
+  method: review
+  evidence: crates/procage/src/macos/mod.rs:693; crates/procage/src/linux/mod.rs:859; crates/procage/tests/spawn_macos.rs::one_cage_spawns_from_several_threads
+  result: pass
+  verdict: verified
+  justification: before_spawn runs in the parent before command.spawn in both backends and RunAudit::finish runs
+    from Child methods in the parent; no child-side code references the audit, and the multithreaded spawn test
+    runs with the default link check.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-009.2026-11-01
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/threat_model.rs::gate
+  result: pass
+  verdict: verified
+  justification: The gate passes and enforces non-ignored canaries per platform for R-08 (mitigated, six r08 canaries
+    listed); R-07 stays harness/documented and says the audit lists findings for the harness to review; audits.md
+    and the crate docs say an incomplete result is never clean and nowhere call an empty audit proof.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-009.2026-11-01-2
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/threat_model.rs::gate
+  result: pass
+  verdict: verified
+  justification: The gate passes (run locally) and enforces non-ignored canaries per platform for R-08 (mitigated,
+    six r08 canaries); R-07 stays harness/documented and says the audit lists findings for the harness to review;
+    audits.md and the crate docs say an incomplete result is never clean and nowhere call an empty audit proof.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-010.2026-11-01
+  requirement: SR-010
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused
+  result: pass
+  verdict: verified
+  justification: The same cage spawns cleanly, a second name is then given to a file under its protect subpath,
+    and the next spawn is refused naming it (also escape_linux.rs on T1); before_spawn re-walks the Targets on every
+    spawn with no cached result.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-010.2026-11-01-2
+  requirement: SR-010
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused; crates/procage/tests/escape_linux.rs::r08_a_hard_link_to_a_protected_file_is_refused
+  result: pass
+  verdict: verified
+  justification: The same cage spawns cleanly, a second name is then given to a file under its protect subpath,
+    and the next spawn is refused naming it; before_spawn re-walks the Targets on every spawn with no cached result
+    (audit.rs:530).
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-011.2026-11-01
+  requirement: SR-011
+  method: review
+  evidence: crates/procage/src/audit.rs:254
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused asserts a literal hide target replaced
+    by a symbolic link is a symbolic finding, and the unit test covers the logic, but escape_linux.rs has no symbolic-link-target
+    canary for T1 or T2.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-011.2026-11-01-2
+  requirement: SR-011
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused; crates/procage/tests/escape_linux.rs::r08_a_hard_link_to_a_hidden_file_is_refused;
+    crates/procage/src/audit.rs::a_literal_target_that_became_a_link_is_a_finding
+  result: pass
+  verdict: verified
+  justification: On macOS and on every Linux tier a literal hide target that spawned cleanly is replaced by a symbolic
+    link and the next spawn is refused with a symbolic finding; links() reads it with symlink_metadata and never
+    follows it.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-012.2026-11-01
+  requirement: SR-012
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r08_no_hard_link_can_be_made_during_the_run
+  result: partial
+  verdict: partial
+  justification: macOS asserts both link calls fail; escape_linux.rs::r08_no_hard_link_can_be_made_during_the_run
+    tries only the hidden file, never a protected one, skips a tier whose cage cannot be built (the T2 layout, per
+    its comment), and no lane asserts that no second name exists after the run.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-012.2026-11-01-2
+  requirement: SR-012
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r08_no_hard_link_can_be_made_during_the_run
+  result: partial
+  verdict: partial
+  justification: macOS asserts both link calls fail, and Linux now runs every tier with no skip and asserts the
+    hidden-file link fails; but on T2 the protected-file attempt is neither made against a protected target nor
+    asserted (the protect rule is added on T1 only, though T2 can protect a file outside the writable tree), so
+    the T2 lane lacks the protected canary.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-012.2026-11-02-3
+  requirement: SR-012
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r08_no_hard_link_can_be_made_during_the_run
+  result: pass
+  verdict: verified
+  justification: On every lane a child's attempt to link a hidden file and a protected (T1) or read-only (T2, which
+    cannot protect) file into the writable tree is refused, next to a write that succeeds; macOS asserts the same
+    in its canary.
+  verified_at: '2026-11-02T02:00:00Z'
+  commit: 10b728b
+- id: verification.sr-013.2026-11-01
+  requirement: SR-013
+  method: test
+  evidence: crates/procage/tests/audit.rs::the_receipt_counts_the_findings
+  result: pass
+  verdict: verified
+  justification: Without the policy the receipt JSON (policy and paths removed) holds no finding path and paths
+    is None; with it paths is present; link findings enter the summary only as a count (receipt.rs:422) and their
+    paths only under the same gate.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-013.2026-11-01-2
+  requirement: SR-013
+  method: test
+  evidence: crates/procage/tests/audit.rs::the_receipt_counts_the_findings
+  result: pass
+  verdict: verified
+  justification: Without the policy the receipt JSON (policy and paths removed) holds no finding path and paths
+    is None; with it paths is present; findings enter the summary only as counts (receipt.rs:443) and their paths
+    only under the same gate.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-014.2026-11-01
+  requirement: SR-014
+  method: test
+  evidence: crates/procage/tests/audit.rs::without_the_option_nothing_is_walked; specs/023-tree-audit/quickstart.md
+  result: pass
+  verdict: verified
+  justification: 'Without with_handoff_audit no snapshot is taken and handoff is None; walk_limit defaults to 200,000
+    on both systems; the recorded latency probe puts the default link check at 1.3-1.7 ms on macOS and 1.29 ms /
+    0.47 ms on Linux T1/T2, within SC-003 (workspace size does not enter: writable trees are not link-check targets).'
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-014.2026-11-01-2
+  requirement: SR-014
+  method: test
+  evidence: crates/procage/tests/audit.rs::without_the_option_nothing_is_walked; specs/023-tree-audit/quickstart.md
+  result: pass
+  verdict: verified
+  justification: Without with_handoff_audit no snapshot is taken and handoff is None; walk_limit defaults to 200,000
+    on both systems; the recorded latency probe puts the default link check within SC-003 on macOS and Linux T1/T2.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
+- id: verification.sr-015.2026-11-01
+  requirement: SR-015
+  method: review
+  evidence: crates/procage/src/audit.rs:565
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: SpawnError::HardLinks carries every finding and its Display (refusal) lists each with its link
+    count and names both remedies, but no test refuses two files or asserts the message text.
+  verified_at: '2026-11-01T23:17:35Z'
+  commit: 10b728b
+- id: verification.sr-015.2026-11-01-2
+  requirement: SR-015
+  method: test
+  evidence: crates/procage/src/audit.rs::the_refusal_names_every_file_and_the_way_out
+  result: pass
+  verdict: verified
+  justification: The refusal text lists two files each with its link count and names LinkAudit::Report and LinkAudit::Off;
+    SpawnError's Display for HardLinks is that text on both systems (macos/mod.rs:326, linux/mod.rs:440) and carries
+    every finding.
+  verified_at: '2026-11-01T23:30:39Z'
+  commit: 10b728b
 decisions: []

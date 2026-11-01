@@ -245,6 +245,7 @@ impl fmt::Display for GrantError {
 
 /// Why no caged child runs.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SpawnError {
     /// This release or version cannot do it.
     Unsupported(Unsupported),
@@ -290,6 +291,9 @@ pub enum SpawnError {
     },
     /// Spawning failed (for example, the target cannot be executed).
     Io(io::Error),
+    /// A protected, hidden or class file has another name (a hard link),
+    /// which path rules do not cover; see [`LinkAudit`](crate::LinkAudit).
+    HardLinks(Vec<crate::LinkFinding>),
 }
 
 impl fmt::Display for SpawnError {
@@ -319,6 +323,7 @@ impl fmt::Display for SpawnError {
                 io::Error::from_raw_os_error(*errno)
             ),
             SpawnError::Io(e) => write!(f, "{e}"),
+            SpawnError::HardLinks(found) => f.write_str(&crate::audit::refusal(found)),
         }
     }
 }
@@ -366,6 +371,13 @@ pub struct CageOptions {
     /// Whether receipts hold the policy (see
     /// [`CageOptions::with_policy_in_receipt`]).
     pub policy_in_receipt: bool,
+    /// What the link check does before each spawn (default: refuse).
+    pub link_audit: crate::LinkAudit,
+    /// Whether runs note what they leave behind (see
+    /// [`CageOptions::with_handoff_audit`]).
+    pub handoff_audit: bool,
+    /// The most entries one audit walk visits (default 200,000).
+    pub walk_limit: usize,
 }
 
 impl Default for CageOptions {
@@ -375,6 +387,9 @@ impl Default for CageOptions {
             compile_limit: 2000,
             violations: false,
             policy_in_receipt: false,
+            link_audit: crate::LinkAudit::Refuse,
+            handoff_audit: false,
+            walk_limit: 200_000,
         }
     }
 }
@@ -389,6 +404,26 @@ impl CageOptions {
     /// These options with an in-process compile limit of `limit` rules.
     pub fn with_compile_limit(mut self, limit: usize) -> Self {
         self.compile_limit = limit;
+        self
+    }
+
+    /// These options with the link check in `mode` (see [`crate::audit`]).
+    pub fn with_link_audit(mut self, mode: crate::LinkAudit) -> Self {
+        self.link_audit = mode;
+        self
+    }
+
+    /// These options with the handoff audit: each run notes the trust-handoff
+    /// files, symbolic links and repositories of the writable trees, and
+    /// [`Child::audit`] lists what it created or changed (see [`crate::audit`]).
+    pub fn with_handoff_audit(mut self) -> Self {
+        self.handoff_audit = true;
+        self
+    }
+
+    /// These options with audit walks of at most `limit` entries.
+    pub fn with_walk_limit(mut self, limit: usize) -> Self {
+        self.walk_limit = limit;
         self
     }
 
@@ -498,6 +533,8 @@ pub struct Cage {
     violations: bool,
     /// What every run's receipt starts from.
     facts: Arc<crate::receipt::CageFacts>,
+    /// The audits every spawn runs.
+    audit: Arc<crate::audit::CageAudit>,
 }
 
 impl Cage {
@@ -586,6 +623,7 @@ impl Cage {
         };
         let (bytecode, compiled) = compiled(lib, &plan, &marker)?;
         let facts = Arc::new(facts(policy, options, &plan, &[]));
+        let audit = Arc::new(cage_audit(&resolved, options));
         Ok(Cage {
             plan,
             bytecode,
@@ -593,6 +631,7 @@ impl Cage {
             compiled,
             violations,
             facts,
+            audit,
         })
     }
 
@@ -650,6 +689,8 @@ impl Cage {
             sys::Session::New
         };
         let prepared = self.prepare(command, grants, fds, session)?;
+        // The link check is the last step before the fork.
+        let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
         // The record is registered before the fork, so no early denial is
         // missed.
         let report = match &prepared.run {
@@ -682,6 +723,7 @@ impl Cage {
                 record: report,
             },
             crate::receipt::RunFacts::new(self.facts.clone(), names),
+            run_audit,
         ))
     }
 
@@ -745,7 +787,10 @@ impl Cage {
         match self.prepare(command, grants, fds, sys::Session::Keep) {
             // On success `exec` does not return; the run marker (forking
             // policies) is never searched: there is no handle.
-            Ok(_prepared) => spawn::decode(command.exec()),
+            Ok(_prepared) => match self.audit.before_spawn() {
+                Ok(_) => spawn::decode(command.exec()),
+                Err(found) => SpawnError::HardLinks(found),
+            },
             Err(e) => e,
         }
     }
@@ -1004,4 +1049,76 @@ fn facts(
         crate::receipt::approximations(&plan.degradations),
         relaxed,
     )
+}
+
+/// The audits of a cage for `policy` (resolved): the link check's targets,
+/// with the class paths of every home under `/Users`, and the handoff
+/// audit's trees.
+fn cage_audit(policy: &Policy, options: &CageOptions) -> crate::audit::CageAudit {
+    use procage_policy::{HardDenyClass, presets};
+    use std::os::unix::ffi::OsStrExt;
+    let homes: Vec<PathBuf> = std::fs::read_dir("/Users")
+        .map(|e| {
+            e.flatten()
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                .map(|e| e.path())
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut class_paths = Vec::new();
+    if !policy.waive.contains(&HardDenyClass::Secrets) {
+        class_paths.extend(crate::audit::class_paths(
+            &homes,
+            presets::SECRETS_HOME,
+            &[],
+            true,
+        ));
+    }
+    if !policy.waive.contains(&HardDenyClass::TrustHandoff) {
+        class_paths.extend(crate::audit::class_paths(
+            &homes,
+            presets::HANDOFF_HOME,
+            &[],
+            false,
+        ));
+    }
+    if !policy.waive.contains(&HardDenyClass::Persistence) {
+        let system: Vec<PathBuf> = presets::PERSISTENCE_SYSTEM
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        class_paths.extend(crate::audit::class_paths(
+            &homes,
+            presets::PERSISTENCE_HOME,
+            &system,
+            false,
+        ));
+    }
+    let targets = crate::audit::Targets::new(policy, class_paths);
+    let handoff = options.handoff_audit.then(|| {
+        let trees = policy
+            .fs
+            .iter()
+            .filter(|r| r.access == procage_policy::Access::Write)
+            .filter_map(|r| match &r.target {
+                procage_policy::FsTarget::Subpath(p) => {
+                    Some(PathBuf::from(std::ffi::OsStr::from_bytes(p.as_bytes())))
+                }
+                _ => None,
+            })
+            .collect();
+        let home = homes
+            .iter()
+            .flat_map(|h| presets::HANDOFF_HOME.iter().map(move |r| h.join(r)))
+            .collect();
+        (
+            trees,
+            presets::HANDOFF_ANYWHERE
+                .iter()
+                .map(|n| n.to_string())
+                .collect(),
+            home,
+        )
+    });
+    crate::audit::CageAudit::new(options.link_audit, targets, handoff, options.walk_limit)
 }

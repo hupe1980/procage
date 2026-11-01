@@ -49,6 +49,8 @@ pub struct Child {
     receipt: crate::receipt::RunFacts,
     /// The caller ended the run while it was running.
     killed: bool,
+    /// The run's audits.
+    audit: crate::audit::RunAudit,
 }
 
 impl Child {
@@ -58,6 +60,7 @@ impl Child {
         tmpdir: Option<PathBuf>,
         reporting: Reporting,
         receipt: crate::receipt::RunFacts,
+        audit: crate::audit::RunAudit,
     ) -> Self {
         Self {
             inner: Some(inner),
@@ -66,16 +69,33 @@ impl Child {
             reporting,
             receipt,
             killed: false,
+            audit,
         }
+    }
+
+    /// The run's [audits](crate::audit): `None` while the child runs. Once it
+    /// has exited, this ends the run (as [`Child::kill_all`] does), so no
+    /// descendant writes after the walk, and gives the link check's findings
+    /// (report mode) and, with the handoff audit, what the run created or
+    /// changed.
+    pub fn audit(&mut self) -> Option<crate::Audit> {
+        self.inner_mut().try_wait().ok()??;
+        let ended = self.kill_all().is_ok();
+        Some(self.audit.finish(ended))
     }
 
     /// The run's [receipt](crate::Receipt): `None` while the child runs,
     /// the receipt once it has exited (after [`wait`](std::process::Child::wait),
-    /// or once [`try_wait`](std::process::Child::try_wait) saw it exit).
+    /// or once [`try_wait`](std::process::Child::try_wait) saw it exit). It
+    /// ends the run (as [`Child::kill_all`] does) so its audit summary covers
+    /// a finished run.
     pub fn receipt(&mut self) -> Option<crate::Receipt> {
         let status = self.inner_mut().try_wait().ok()??;
+        // The audit's second walk needs the run over, as `audit` does.
+        let ended = self.kill_all().is_ok();
         let record = self.violations();
-        Some(self.receipt.receipt(status, &record, self.killed))
+        let audit = self.audit.finish(ended);
+        Some(self.receipt.receipt(status, &record, self.killed, &audit))
     }
 
     /// Marks the record complete once the supervisor is done and the child

@@ -23,12 +23,21 @@ All notable changes to procage are listed here. The format follows
   it by name). Evidence: the escape-suite canaries `r34_*` on macOS and on
   Linux tiers T1 and T2.
 
+- A pre-existing hard link to a protected, hidden or credential file now
+  refuses the spawn by default (escape class R-08): `SpawnError::HardLinks`.
+  **Migration**: a caller with benign second names chooses
+  `LinkAudit::Report` or `LinkAudit::Off` by name.
+
 ### Added
 
 - `HardDenyClass::ContainerEngines` and `Construct::HdContainerEngines`;
   the socket lists in `procage_policy::presets` and
   `procage_policy::linux::SocketPaths`.
 - `linux::CageOptions::with_runtime_dir`.
+- Audits (`procage::audit`): the link check before every spawn
+  (`CageOptions::with_link_audit`), the opt-in handoff audit
+  (`CageOptions::with_handoff_audit`, `Child::audit`); macOS
+  `CageOptions::with_walk_limit`; the receipt's `audit` summary.
 - Receipts: `Child::receipt` on both systems gives a `Receipt` for every
   finished run (policy digest, preset and base, backend and tier, OS build or
   kernel, approximations, relaxations, waivers, `enforced_as_written`,
@@ -39,6 +48,7 @@ All notable changes to procage are listed here. The format follows
 
 ### Changed
 
+- `SpawnError` is `#[non_exhaustive]` on both systems.
 - `LinuxPlan` gains `service_sockets`; `linux::CageOptions` gains
   `runtime_dirs`. `Construct::SPAWN_SNAPSHOT` includes the two socket
   classes.

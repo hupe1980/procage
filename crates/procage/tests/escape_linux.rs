@@ -593,27 +593,148 @@ fn r07_trust_handoff_files_are_protected_in_a_writable_workspace() {
 
 // ---- R-08 Pre-existing hard links ----
 
-/// A hard link made before the run gives a hidden file a second name.
-#[test]
-#[ignore = "open: R-08 a pre-existing hard link to a hidden file is neither reported nor refused"]
-fn r08_a_hard_link_to_a_hidden_file_is_refused() {
-    if !t1("r08") {
-        return;
+/// The findings of a spawn the link check refused.
+fn link_refusal(cage: &Cage) -> Vec<procage::LinkFinding> {
+    match cage.spawn(&mut child_command("read:/dev/null"), &Grants::new()) {
+        Err(SpawnError::HardLinks(found)) => found,
+        Err(e) => panic!("another error: {e}"),
+        Ok(_) => panic!("the spawn was not refused"),
     }
+}
+
+/// Options for `tier` that accept the spawn-snapshot approximations (hiding
+/// inside a readable tree on T2).
+fn snapshot_options(tier: Tier) -> CageOptions {
+    let options = options(tier);
+    let lower = options.lower.clone().accept_spawn_snapshot();
+    options.with_lower(lower)
+}
+
+/// A hard link made before the run gives a hidden file a second name: the
+/// spawn is refused on every tier, naming the hidden file; in report mode the
+/// run starts and the audit lists it.
+#[test]
+fn r08_a_hard_link_to_a_hidden_file_is_refused() {
     let d = scratch("r08");
     std::fs::create_dir_all(d.join("secret")).unwrap();
     std::fs::create_dir_all(d.join("ws")).unwrap();
     std::fs::write(d.join("secret/key"), "key").unwrap();
     std::fs::hard_link(d.join("secret/key"), d.join("ws/key")).unwrap();
+    for tier in tiers() {
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, &d));
+        p.fs.push(rule(Access::Hide, d.join("secret")));
+        let cage = Cage::with_options(&p, &snapshot_options(tier))
+            .unwrap_or_else(|e| panic!("{tier}: {e}"));
+        let found = link_refusal(&cage);
+        assert_eq!(found.len(), 1, "{tier} {found:?}");
+        assert_eq!(found[0].path, d.join("secret/key"), "{tier}");
+        let report = Cage::with_options(
+            &p,
+            &snapshot_options(tier).with_link_audit(procage::LinkAudit::Report),
+        )
+        .unwrap();
+        let mut child = report
+            .spawn(&mut child_command("read:/dev/null"), &Grants::new())
+            .unwrap();
+        child.wait().unwrap();
+        assert_eq!(child.audit().unwrap().links.len(), 1, "{tier}");
+    }
+    // A literal target that became a symbolic link refuses the spawn too.
+    std::fs::remove_file(d.join("ws/key")).unwrap();
+    std::fs::write(d.join("ws/.env"), "x").unwrap();
+    for tier in tiers() {
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, &d));
+        p.fs.push(FsRule::new(
+            Access::Hide,
+            FsTarget::Literal(abs(d.join("ws/.env"))),
+        ));
+        let cage = Cage::with_options(&p, &snapshot_options(tier))
+            .unwrap_or_else(|e| panic!("{tier}: {e}"));
+        assert_eq!(
+            run_in(&cage, "read:/dev/null", &Grants::new()),
+            "ok",
+            "{tier}: the control"
+        );
+        std::fs::remove_file(d.join("ws/.env")).unwrap();
+        std::os::unix::fs::symlink(d.join("secret/key"), d.join("ws/.env")).unwrap();
+        let found = link_refusal(&cage);
+        assert!(found[0].symbolic, "{tier} {found:?}");
+        std::fs::remove_file(d.join("ws/.env")).unwrap();
+        std::fs::write(d.join("ws/.env"), "x").unwrap();
+    }
+}
+
+/// A protected file with a second name in the writable tree refuses the
+/// spawn on T1 (T2 cannot protect inside a writable tree).
+#[test]
+fn r08_a_hard_link_to_a_protected_file_is_refused() {
+    if !t1("r08_a_hard_link_to_a_protected_file_is_refused") {
+        return;
+    }
+    let d = scratch("r08-protect");
+    std::fs::create_dir_all(d.join("ws/keep")).unwrap();
+    std::fs::write(d.join("ws/keep/config"), "x").unwrap();
     let mut p = policy();
-    p.fs.push(rule(Access::Read, &d));
-    p.fs.push(rule(Access::Hide, d.join("secret")));
-    let got = in_child(
-        &format!("read:{0}/secret/key;read:{0}/ws/key", d.display()),
-        &p,
-        Tier::T1,
+    p.fs.push(rule(Access::Write, d.join("ws")));
+    p.fs.push(rule(Access::Protect, d.join("ws/keep")));
+    let p = for_tier(p, Tier::T1);
+    let cage = Cage::with_options(&p, &snapshot_options(Tier::T1)).unwrap();
+    assert_eq!(
+        run_in(&cage, "read:/dev/null", &Grants::new()),
+        "ok",
+        "the control"
     );
-    assert_eq!(got, format!("{EACCES} {EACCES}"));
+    std::fs::hard_link(d.join("ws/keep/config"), d.join("ws/notes")).unwrap();
+    let found = link_refusal(&cage);
+    assert_eq!(found[0].path, d.join("ws/keep/config"));
+}
+
+/// No second name can be made during the run: Landlock never grants linking
+/// across directories, and on T1 a protected path is a separate mount.
+#[test]
+fn r08_no_hard_link_can_be_made_during_the_run() {
+    let d = scratch("r08-run");
+    std::fs::create_dir_all(d.join("secret")).unwrap();
+    std::fs::create_dir_all(d.join("ws/keep")).unwrap();
+    std::fs::write(d.join("secret/key"), "key").unwrap();
+    std::fs::write(d.join("ws/keep/config"), "x").unwrap();
+    std::fs::create_dir_all(d.join("keep")).unwrap();
+    std::fs::write(d.join("keep/config"), "x").unwrap();
+    for tier in tiers() {
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, &d));
+        p.fs.push(rule(Access::Write, d.join("ws")));
+        p.fs.push(rule(Access::Hide, d.join("secret")));
+        if tier == Tier::T1 {
+            // Protecting inside a writable tree needs a mount (T1 only).
+            p.fs.push(rule(Access::Protect, d.join("ws/keep")));
+        }
+        // T2 cannot protect; a file in a read-only tree beside the writable
+        // one stands in (Landlock refuses linking across directories).
+        let p = for_tier(p, tier);
+        let cage = Cage::with_options(&p, &snapshot_options(tier))
+            .unwrap_or_else(|e| panic!("{tier}: {e}"));
+        let attempt = format!(
+            "link:{0}/secret/key|{0}/ws/a;link:{1}|{0}/ws/b;write:{0}/ws/c",
+            d.display(),
+            if tier == Tier::T1 {
+                d.join("ws/keep/config")
+            } else {
+                d.join("keep/config")
+            }
+            .display()
+        );
+        let got = run_in(&cage, &attempt, &Grants::new());
+        let parts: Vec<&str> = got.split(' ').collect();
+        assert_ne!(parts[0], "ok", "{tier}: a hidden file was linked ({got})");
+        assert_ne!(
+            parts[1], "ok",
+            "{tier}: a protected file was linked ({got})"
+        );
+        assert_eq!(parts[2], "ok", "{tier}: the control ({got})");
+    }
 }
 
 // ---- R-09 Local daemons ----

@@ -521,9 +521,19 @@ fn r07_trust_handoff_files_are_refused_in_a_writable_workspace() {
 
 // ---- R-08 Pre-existing hard links ----
 
-/// A hard link made before the run gives a hidden file a second name.
+/// The findings of a spawn the link check refused.
+fn link_refusal(cage: &Cage, action: &str) -> Vec<procage::LinkFinding> {
+    match cage.spawn(&mut child_command(action), &Grants::new()) {
+        Err(SpawnError::HardLinks(found)) => found,
+        Err(e) => panic!("another error: {e}"),
+        Ok(_) => panic!("the spawn was not refused"),
+    }
+}
+
+/// A hard link made before the run gives a hidden file a second name: the
+/// spawn is refused, naming the hidden file; in report mode the run starts
+/// and the audit lists it; without the second name the cage hides the file.
 #[test]
-#[ignore = "open: R-08 a pre-existing hard link to a hidden file is neither reported nor refused"]
 fn r08_a_hard_link_to_a_hidden_file_is_refused() {
     let d = scratch("r08").canonical();
     std::fs::create_dir_all(d.join("secret")).unwrap();
@@ -533,11 +543,74 @@ fn r08_a_hard_link_to_a_hidden_file_is_refused() {
     let mut p = policy();
     p.fs.push(rule(Access::Read, &d));
     p.fs.push(rule(Access::Hide, d.join("secret")));
-    let got = in_child(
-        &format!("read:{0}/secret/key;read:{0}/ws/key", d.display()),
+    let attempt = format!("read:{0}/secret/key;read:{0}/ws/key", d.display());
+    let found = link_refusal(&cage_for(&p).unwrap(), &attempt);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].path, d.join("secret/key"));
+    assert_eq!(found[0].links, 2);
+    // Report mode: the run starts, and the audit names the file.
+    let report = Cage::with_options(
         &p,
+        &CageOptions::default().with_link_audit(procage::LinkAudit::Report),
+    )
+    .unwrap();
+    let mut child = report
+        .spawn(&mut child_command(&attempt), &Grants::new())
+        .unwrap();
+    child.wait().unwrap();
+    let audit = child.audit().unwrap();
+    assert_eq!(audit.links.len(), 1);
+    // The control: without the second name the file stays hidden.
+    std::fs::remove_file(d.join("ws/key")).unwrap();
+    assert_eq!(in_child(&attempt, &p), format!("{EPERM} 2"));
+}
+
+/// A protected file with a second name in the writable tree refuses the
+/// spawn too, and so does a literal target that became a symbolic link.
+#[test]
+fn r08_a_hard_link_to_a_protected_file_is_refused() {
+    let d = scratch("r08-protect").canonical();
+    std::fs::create_dir_all(d.join("ws/keep")).unwrap();
+    std::fs::write(d.join("ws/keep/config"), "x").unwrap();
+    std::fs::write(d.join("ws/.env"), "x").unwrap();
+    let mut p = policy();
+    p.fs.push(rule(Access::Write, d.join("ws")));
+    p.fs.push(rule(Access::Protect, d.join("ws/keep")));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Literal(abs(d.join("ws/.env"))),
+    ));
+    let cage = cage_for(&p).unwrap();
+    assert_eq!(in_child("read:/dev/null", &p), "ok", "the control");
+    std::fs::hard_link(d.join("ws/keep/config"), d.join("ws/notes")).unwrap();
+    let found = link_refusal(&cage, "read:/dev/null");
+    assert_eq!(found[0].path, d.join("ws/keep/config"));
+    std::fs::remove_file(d.join("ws/notes")).unwrap();
+    std::fs::remove_file(d.join("ws/.env")).unwrap();
+    std::os::unix::fs::symlink(d.join("ws/keep/config"), d.join("ws/.env")).unwrap();
+    let found = link_refusal(&cage, "read:/dev/null");
+    assert!(found[0].symbolic, "{found:?}");
+}
+
+/// No second name can be made during the run: Seatbelt refuses to link a
+/// file the child cannot write.
+#[test]
+fn r08_no_hard_link_can_be_made_during_the_run() {
+    let d = scratch("r08-run").canonical();
+    std::fs::create_dir_all(d.join("secret")).unwrap();
+    std::fs::create_dir_all(d.join("ws/keep")).unwrap();
+    std::fs::write(d.join("secret/key"), "key").unwrap();
+    std::fs::write(d.join("ws/keep/config"), "x").unwrap();
+    let mut p = policy();
+    p.fs.push(rule(Access::Read, &d));
+    p.fs.push(rule(Access::Write, d.join("ws")));
+    p.fs.push(rule(Access::Hide, d.join("secret")));
+    p.fs.push(rule(Access::Protect, d.join("ws/keep")));
+    let attempt = format!(
+        "link:{0}/secret/key|{0}/ws/a;link:{0}/ws/keep/config|{0}/ws/b;write:{0}/ws/c",
+        d.display()
     );
-    assert_eq!(got, format!("{EPERM} {EPERM}"));
+    assert_eq!(in_child(&attempt, &p), format!("{EPERM} {EPERM} ok"));
 }
 
 // ---- R-09 Local daemons ----

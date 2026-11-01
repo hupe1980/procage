@@ -371,6 +371,7 @@ impl fmt::Display for GrantError {
 
 /// Why no caged child runs.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SpawnError {
     /// This host or version cannot do it.
     Unsupported(Unsupported),
@@ -409,6 +410,9 @@ pub enum SpawnError {
     },
     /// Spawning failed (for example, the target cannot be executed).
     Io(io::Error),
+    /// A protected, hidden or class file has another name (a hard link),
+    /// which path rules do not cover; see [`LinkAudit`](crate::LinkAudit).
+    HardLinks(Vec<crate::LinkFinding>),
 }
 
 impl fmt::Display for SpawnError {
@@ -433,6 +437,7 @@ impl fmt::Display for SpawnError {
                 io::Error::from_raw_os_error(*errno)
             ),
             SpawnError::Io(e) => write!(f, "{e}"),
+            SpawnError::HardLinks(found) => f.write_str(&crate::audit::refusal(found)),
         }
     }
 }
@@ -482,6 +487,11 @@ pub struct CageOptions {
     /// Whether receipts hold the policy (see
     /// [`CageOptions::with_policy_in_receipt`]).
     pub policy_in_receipt: bool,
+    /// What the link check does before each spawn (default: refuse).
+    pub link_audit: crate::LinkAudit,
+    /// Whether runs note what they leave behind (see
+    /// [`CageOptions::with_handoff_audit`]).
+    pub handoff_audit: bool,
 }
 
 impl Default for CageOptions {
@@ -495,6 +505,8 @@ impl Default for CageOptions {
             violations: false,
             runtime_dirs: Vec::new(),
             policy_in_receipt: false,
+            link_audit: crate::LinkAudit::Refuse,
+            handoff_audit: false,
         }
     }
 }
@@ -521,6 +533,20 @@ impl CageOptions {
     /// These options with `home` as one more home directory.
     pub fn with_home(mut self, home: impl AsRef<Path>) -> Self {
         self.homes.push(home.as_ref().to_path_buf());
+        self
+    }
+
+    /// These options with the link check in `mode` (see [`crate::audit`]).
+    pub fn with_link_audit(mut self, mode: crate::LinkAudit) -> Self {
+        self.link_audit = mode;
+        self
+    }
+
+    /// These options with the handoff audit: each run notes the trust-handoff
+    /// files, symbolic links and repositories of the writable trees, and
+    /// [`Child::audit`] lists what it created or changed (see [`crate::audit`]).
+    pub fn with_handoff_audit(mut self) -> Self {
+        self.handoff_audit = true;
         self
     }
 
@@ -618,6 +644,8 @@ pub struct Cage {
     allowed: BTreeSet<Construct>,
     /// What every run's receipt starts from.
     facts: Arc<crate::receipt::CageFacts>,
+    /// The audits every spawn runs.
+    audit: Arc<crate::audit::CageAudit>,
 }
 
 impl Cage {
@@ -742,6 +770,7 @@ impl Cage {
             plan.degradations.sort();
         }
         let facts = Arc::new(facts(policy, options, &plan, &[]));
+        let audit = Arc::new(cage_audit(policy, options, &plan, &homes));
         Ok(Cage {
             plan,
             filter,
@@ -751,6 +780,7 @@ impl Cage {
             runtime,
             allowed: options.lower.allow_degrade.clone(),
             facts,
+            audit,
         })
     }
 
@@ -825,6 +855,8 @@ impl Cage {
             None => (None, None),
         };
         let (dropped, removal) = self.prepare(command, grants, fds, session, notify)?;
+        // The link check is the last step before the fork.
+        let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
         let inner = command.spawn().map_err(spawn::decode)?;
         let reporting = match parent_end {
             None => child::Reporting::Off,
@@ -841,6 +873,7 @@ impl Cage {
             tmpdir,
             reporting,
             crate::receipt::RunFacts::new(self.facts.clone(), names),
+            run_audit,
         ))
     }
 
@@ -920,7 +953,10 @@ impl Cage {
         }
         // No handle and no supervisor: the kernel answers refused calls.
         match self.prepare(command, grants, fds, sys::Session::Keep, None) {
-            Ok(_) => spawn::decode(command.exec()),
+            Ok(_) => match self.audit.before_spawn() {
+                Ok(_) => spawn::decode(command.exec()),
+                Err(found) => SpawnError::HardLinks(found),
+            },
             Err(e) => e,
         }
     }
@@ -1416,4 +1452,52 @@ fn facts(
         crate::receipt::approximations(&plan.degradations),
         relaxed,
     )
+}
+
+/// The audits of a cage for `policy`: the link check's targets, with the
+/// class paths in force in every home, and the handoff audit's trees.
+fn cage_audit(
+    policy: &Policy,
+    options: &CageOptions,
+    plan: &LinuxPlan,
+    homes: &[PathBuf],
+) -> crate::audit::CageAudit {
+    use std::os::unix::ffi::OsStrExt;
+    let to_path =
+        |p: &procage_policy::AbsPath| PathBuf::from(std::ffi::OsStr::from_bytes(p.as_bytes()));
+    let mut class_paths = Vec::new();
+    for class in &plan.classes {
+        let rels: Vec<&str> = class.home.iter().map(String::as_str).collect();
+        let system: Vec<PathBuf> = class.system.iter().map(to_path).collect();
+        class_paths.extend(crate::audit::class_paths(homes, &rels, &system, class.hide));
+    }
+    let targets = crate::audit::Targets::new(policy, class_paths);
+    let handoff = options.handoff_audit.then(|| {
+        let trees = policy
+            .fs
+            .iter()
+            .filter(|r| r.access == procage_policy::Access::Write)
+            .filter_map(|r| match &r.target {
+                procage_policy::FsTarget::Subpath(p) => Some(to_path(p)),
+                _ => None,
+            })
+            .collect();
+        let home = homes
+            .iter()
+            .flat_map(|h| {
+                procage_policy::presets::HANDOFF_HOME
+                    .iter()
+                    .map(move |r| h.join(r))
+            })
+            .collect();
+        (
+            trees,
+            procage_policy::presets::HANDOFF_ANYWHERE
+                .iter()
+                .map(|n| n.to_string())
+                .collect(),
+            home,
+        )
+    });
+    crate::audit::CageAudit::new(options.link_audit, targets, handoff, options.walk_limit)
 }

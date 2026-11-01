@@ -28,4 +28,5 @@ procage is a Rust library that runs a child process in an OS sandbox. You descri
 - **Tiers.** On [Linux](@/docs/linux.md), tier T1 adds user namespaces and mounts to Landlock and seccomp; tier T2 has only the latter two. The [macOS backend](@/docs/macos.md) has one mechanism, Seatbelt.
 - **Fitting.** When a host cannot enforce a policy, [`Cage::fit`](@/docs/fitting.md) relaxes only what you name and reports what would lift each relaxation.
 - **Receipts.** Every finished run gives a [receipt](@/docs/receipts.md): the policy digest, backend and tier, and everything accepted short of the policy.
+- **Audits.** A protected file with a second name refuses the spawn; the opt-in [handoff audit](@/docs/audits.md) lists what a run left behind.
 - **Evidence.** Every known escape class has a stable id and a status in the [threat model](@/docs/threat-model.md); statuses rest on caged [canaries and kernel facts](@/docs/testing.md).

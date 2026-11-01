@@ -1,0 +1,1031 @@
+{
+  "feature": "023-tree-audit",
+  "commit": "10b728b",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "Before every spawn, procage MUST examine, in the parent, every literal protect and hide target, every file under protect and hide subpaths and under the fixed prefix of protect and hide globs (matched conservatively: a file that may match counts), and the existing files of the secrets, trust-handoff and persistence classes in every home; a regular file with a link count above one MUST be a link finding unless every one of its names was found among the targets and, for a file found in a hidden target, every name lies in a hidden target; cache directories inside class paths and the large application data and privacy-guarded folders named in the threat model are not examined. In Refuse mode a finding MUST fail the spawn with SpawnError::HardLinks.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a file in a writable tree hard-linked to a protected .git/config",
+          "then": "the spawn fails with HardLinks naming .git/config and its link count, and the target never runs",
+          "when": "the cage spawns with Refuse on macOS, Linux T1 and T2"
+        },
+        {
+          "given": "a hidden file whose second name lies in a readable-only tree, and a secrets class file whose second name lies outside every granted tree",
+          "then": "the spawn fails naming both files",
+          "when": "the cage spawns with Refuse"
+        },
+        {
+          "given": "a hide glob rule and an aliased file under its fixed prefix that matches the glob",
+          "then": "the spawn fails naming that file, and an aliased file under the prefix that does not match the glob is not a finding",
+          "when": "the cage spawns with Refuse"
+        },
+        {
+          "given": "hard links only between unprotected files in a writable tree",
+          "then": "it runs and the audit has no link finding",
+          "when": "the cage spawns"
+        }
+      ],
+      "mitigations": [
+        "mitigation.inode-match"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-011] [SR-014] `Targets` (from the resolved policy and the class home paths) and `links(&Targets, limit)`: literal targets (a symbolic link is a finding), files under protect and hide subpaths, glob prefixes matched with `may_overlap`, existing class files in every home and the system persistence paths; a regular file with `st_nlink > 1` is a finding; incomplete past the limit or on an unreadable entry, with the entries visited"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] [SR-010] [SR-015] Both backends: `CageOptions::with_link_audit(mode)`; `Targets` built in `with_options`; the link check last in `prepare` before the fork, every spawn; `SpawnError::HardLinks(Vec<LinkFinding>)` (message names each file, its link count and the remedies); `SpawnError` marked `#[non_exhaustive]`; macOS `CageOptions::with_walk_limit` (default 200,000)"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-011] [SR-012] Canaries: `r08_a_hard_link_to_a_hidden_file_is_refused` un-ignored, plus `r08_a_hard_link_to_a_protected_file_is_refused`, a symbolic-link target, report mode runs and lists, and the in-run link attempt refused \u2014 crates/procage/tests/escape_macos.rs and crates/procage/tests/escape_linux.rs (T1 and T2)"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[SR-001] Complete SR-001 (Before every spawn, procage MUST examine, in the parent, every literal protect and hide target, every file under protect and hide subpaths and under the fixed prefix of protect and hide globs that matches the glob, and every existing secrets, trust-handoff and persistence class file, and MUST treat each regular file among them with a link count above one as a link finding, wherever its other name lies; with Refuse the spawn MUST fail with SpawnError::HardLinks naming each such file before the child runs) \u2014 touchpoints: crates/procage/src/audit.rs, crates/procage/src/linux/mod.rs, crates/procage/src/macos/mod.rs, crates/procage/tests/escape_linux.rs, crates/procage/tests/escape_macos.rs [converge: partial; Hidden and protected aliases are refused (escape_macos.rs and escape_linux.rs r08_* canaries, T2 protect only on T1), but glob targets are matched with may_overlap, which notes every file at depth one or more under the fixed prefix, so an aliased file under the prefix that does not match the glob is a finding (AC3 fails); the name-count refinement counts names across all targets regardless of access, so a hidden file whose second name lies in a protect target (readable) is not a finding; no test covers a secrets class file aliased outside the grants, a glob target, or benign links between unprotected files.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-001.2026-11-01",
+          "requirement": "SR-001",
+          "method": "review",
+          "evidence": "crates/procage/src/audit.rs:245",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "Hidden and protected aliases are refused (escape_macos.rs and escape_linux.rs r08_* canaries, T2 protect only on T1), but glob targets are matched with may_overlap, which notes every file at depth one or more under the fixed prefix, so an aliased file under the prefix that does not match the glob is a finding (AC3 fails); the name-count refinement counts names across all targets regardless of access, so a hidden file whose second name lies in a protect target (readable) is not a finding; no test covers a secrets class file aliased outside the grants, a glob target, or benign links between unprotected files.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "LinkAudit::Refuse MUST be the default for every cage; Report and Off MUST take effect only when the caller names them, and the mode and every link finding MUST be in the audit result and in the receipt when receipts exist.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "CageOptions with no link audit option",
+          "then": "the spawn is refused with HardLinks",
+          "when": "a cage whose protected file has a second name spawns"
+        },
+        {
+          "given": "with_link_audit(Report)",
+          "then": "the child runs, and the audit result and the receipt record Report and list the file",
+          "when": "the same cage spawns"
+        },
+        {
+          "given": "with_link_audit(Off)",
+          "then": "the child runs and the audit result and the receipt record Off, never an empty complete link check",
+          "when": "the same cage spawns"
+        }
+      ],
+      "mitigations": [
+        "mitigation.refuse-default"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] [SR-010] [SR-015] Both backends: `CageOptions::with_link_audit(mode)`; `Targets` built in `with_options`; the link check last in `prepare` before the fork, every spawn; `SpawnError::HardLinks(Vec<LinkFinding>)` (message names each file, its link count and the remedies); `SpawnError` marked `#[non_exhaustive]`; macOS `CageOptions::with_walk_limit` (default 200,000)"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-011] [SR-012] Canaries: `r08_a_hard_link_to_a_hidden_file_is_refused` un-ignored, plus `r08_a_hard_link_to_a_protected_file_is_refused`, a symbolic-link target, report mode runs and lists, and the in-run link attempt refused \u2014 crates/procage/tests/escape_macos.rs and crates/procage/tests/escape_linux.rs (T1 and T2)"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[SR-002] Complete SR-002 (LinkAudit::Refuse MUST be the default for every cage; Report and Off MUST take effect only when the caller names them, and the mode and every link finding MUST be in the audit result and in the receipt when receipts exist) \u2014 touchpoints: crates/procage/src/audit.rs, crates/procage/src/linux/mod.rs, crates/procage/src/macos/mod.rs, crates/procage/src/receipt.rs [converge: partial; Refuse is the default (macos/mod.rs:390, linux/mod.rs:508; default cages refused in the r08 canaries) and Report runs and lists the file in Child::audit, but with Off before_spawn records links_complete true with no findings, which is the empty complete link check AC3 forbids, and no test checks the receipt for Report or Off.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-002.2026-11-01",
+          "requirement": "SR-002",
+          "method": "review",
+          "evidence": "crates/procage/src/audit.rs:512",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "Refuse is the default (macos/mod.rs:390, linux/mod.rs:508; default cages refused in the r08 canaries) and Report runs and lists the file in Child::audit, but with Off before_spawn records links_complete true with no findings, which is the empty complete link check AC3 forbids, and no test checks the receipt for Report or Off.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The post-run audit MUST list each trust-handoff file created or modified, each symbolic link created (with its target) and each repository metadata directory created in the writable trees exactly once, and MUST detect a change by inode, size and status-change time, never by modification time alone.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a waived trust-handoff class and an existing .git/hooks/pre-commit",
+          "then": "the audit lists it as modified",
+          "when": "the child rewrites it with the same size and resets its modification time"
+        },
+        {
+          "given": "Linux T1 and a .vscode/settings.json that did not exist at spawn",
+          "then": "the audit lists it as created",
+          "when": "the child creates it"
+        },
+        {
+          "given": "a child that creates a symbolic link build pointing to the home directory and a nested .git directory",
+          "then": "it lists the link with its target and the repository metadata, each once",
+          "when": "the audit runs"
+        },
+        {
+          "given": "a run that touched nothing of these kinds",
+          "then": "it is empty and complete",
+          "when": "the audit runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.ctime-snapshot"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-003] [SR-004] `Snapshot::take(writable, limit)` and `handoff(&before, &after)`: handoff names (`HANDOFF_ANYWHERE`, home handoff paths) with inode, size, ctime, mtime; every symbolic link with its target (read, not resolved); every `.git` directory; created, modified, link and repository findings, each once; unit tests"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-006] [SR-014] `CageOptions::with_handoff_audit()` (both): snapshot before the fork; `Child::audit()` \u2192 `None` while the run is alive, then the second walk and the diff; crates/procage/src/macos/{mod.rs,child.rs}, crates/procage/src/linux/{mod.rs,child.rs}"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-004] [SR-007] crates/procage/tests/audit.rs (new, both systems): each kind detected once (a handoff file created when absent at spawn, one modified, a symbolic link with its target, a nested `.git`), a quiet run complete and empty, incomplete at a small limit, `None` before exit, a name with a newline kept as bytes and escaped in display"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[SR-003] Add a test for SR-003 (The post-run audit MUST list each trust-handoff file created or modified, each symbolic link created (with its target) and each repository metadata directory created in the writable trees exactly once, and MUST detect a change by inode, size and status-change time, never by modification time alone) \u2014 touchpoints: crates/procage/src/audit.rs, crates/procage/tests/audit.rs [converge: implemented-unverified; The snapshot keys on inode, size and ctime and tests/audit.rs::what_a_run_left_behind_is_listed_once asserts created, modified (size change), link with target, nested .git each once, and a_quiet_run_is_complete_and_empty the empty case; no test covers AC1, a same-size rewrite with the modification time reset.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-003.2026-11-01",
+          "requirement": "SR-003",
+          "method": "review",
+          "evidence": "crates/procage/src/audit.rs:427",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The snapshot keys on inode, size and ctime and tests/audit.rs::what_a_run_left_behind_is_listed_once asserts created, modified (size change), link with target, nested .git each once, and a_quiet_run_is_complete_and_empty the empty case; no test covers AC1, a same-size rewrite with the modification time reset.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/audit.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited, past the limit or when any entry cannot be read; an incomplete link check MUST NOT refuse the spawn, and an incomplete result MUST NOT be presentable as an empty complete one, in the audit result or in the receipt.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a protect subpath with more files than a small walk limit",
+          "then": "the child runs, links_complete is false with the visited count, and the receipt says the audit is incomplete",
+          "when": "the cage spawns with Refuse"
+        },
+        {
+          "given": "a child that creates more files than the walk limit",
+          "then": "handoff_complete is false with the count reached, within the time bound of SC-003 scaled to the limit",
+          "when": "the post-run audit runs"
+        },
+        {
+          "given": "a child that makes a directory in a tree unreadable",
+          "then": "the result is incomplete",
+          "when": "either audit runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.typed-incomplete"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-011] [SR-014] `Targets` (from the resolved policy and the class home paths) and `links(&Targets, limit)`: literal targets (a symbolic link is a finding), files under protect and hide subpaths, glob prefixes matched with `may_overlap`, existing class files in every home and the system persistence paths; a regular file with `st_nlink > 1` is a finding; incomplete past the limit or on an unreadable entry, with the entries visited"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-003] [SR-004] `Snapshot::take(writable, limit)` and `handoff(&before, &after)`: handoff names (`HANDOFF_ANYWHERE`, home handoff paths) with inode, size, ctime, mtime; every symbolic link with its target (read, not resolved); every `.git` directory; created, modified, link and repository findings, each once; unit tests"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-004] [SR-007] crates/procage/tests/audit.rs (new, both systems): each kind detected once (a handoff file created when absent at spawn, one modified, a symbolic link with its target, a nested `.git`), a quiet run complete and empty, incomplete at a small limit, `None` before exit, a name with a newline kept as bytes and escaped in display"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[SR-004] Add a test for SR-004 (Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited, past the limit or when any entry cannot be read; an incomplete link check MUST NOT refuse the spawn, and an incomplete result MUST NOT be presentable as an empty complete one, in the audit result or in the receipt) \u2014 touchpoints: crates/procage/src/audit.rs, crates/procage/src/receipt.rs, crates/procage/tests/audit.rs [converge: implemented-unverified; Walks mark the result incomplete past the limit and on unreadable entries, Refuse refuses only on findings, and the receipt carries both completeness flags; tests/audit.rs::past_the_walk_limit_the_audit_is_incomplete covers only the handoff side, with no test of an incomplete link check under Refuse (runs, visited count, receipt) or of an unreadable directory.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-004.2026-11-01",
+          "requirement": "SR-004",
+          "method": "review",
+          "evidence": "crates/procage/src/audit.rs:347",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "Walks mark the result incomplete past the limit and on unreadable entries, Refuse refuses only on findings, and the receipt carries both completeness flags; tests/audit.rs::past_the_walk_limit_the_audit_is_incomplete covers only the handoff side, with no test of an incomplete link check under Refuse (runs, visited count, receipt) or of an unreadable directory.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/audit.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "Audit walks MUST NOT follow symbolic links or cross to another device, and MUST read link targets without resolving them.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a child that creates a link loop pointing to its own directory and a link out pointing to the home directory",
+          "then": "it terminates, lists both links with their targets, and lists nothing from the home directory",
+          "when": "the post-run audit runs"
+        },
+        {
+          "given": "a protect subpath containing a symbolic link to a directory outside it",
+          "then": "the link is not traversed and no file outside the subpath is examined through it",
+          "when": "the pre-run link check runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.nofollow-walk"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-005] [SR-007] crates/procage/src/audit.rs (new): `LinkAudit` (`Refuse` default, `Report`, `Off`), `LinkFinding { path, links, symbolic }`, `HandoffKind`, `HandoffFinding`, `Audit { mode, links, links_complete, links_visited, handoff, handoff_complete }`; paths as `PathBuf` (bytes exact); `Display` escaping control characters; walks with `symlink_metadata`, never following links, never leaving the root's device"
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[SR-005] Add a test for SR-005 (Audit walks MUST NOT follow symbolic links or cross to another device, and MUST read link targets without resolving them) \u2014 touchpoints: crates/procage/src/audit.rs [converge: implemented-unverified; Walks use symlink_metadata, descend only real directories on the root's device and read link targets with read_link; no test creates a link loop, a link to the home directory, or a symbolic link to a directory outside a protect subpath.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-005.2026-11-01",
+          "requirement": "SR-005",
+          "method": "review",
+          "evidence": "crates/procage/src/audit.rs:353",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "Walks use symlink_metadata, descend only real directories on the root's device and read link targets with read_link; no test creates a link loop, a link to the home directory, or a symbolic link to a directory outside a protect subpath.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "The post-run audit MUST run only after the run is over (child reaped, every process of the run gone); before that it MUST return incomplete with that reason.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a detached run whose descendant still runs",
+          "then": "it is incomplete because the run has not ended",
+          "when": "the harness asks for the post-run audit"
+        },
+        {
+          "given": "a run with Lifetime::Run whose descendant writes a hook after the child exits",
+          "then": "the descendant is gone and the hook is listed",
+          "when": "the run ends and the audit runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.after-run-only"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-006] [SR-014] `CageOptions::with_handoff_audit()` (both): snapshot before the fork; `Child::audit()` \u2192 `None` while the run is alive, then the second walk and the diff; crates/procage/src/macos/{mod.rs,child.rs}, crates/procage/src/linux/{mod.rs,child.rs}"
+        },
+        {
+          "id": "T017",
+          "done": true,
+          "text": "[SR-006] Complete SR-006 (The post-run audit MUST run only after the run is over (child reaped, every process of the run gone); before that it MUST return incomplete with that reason) \u2014 touchpoints: crates/procage/src/linux/child.rs, crates/procage/src/macos/child.rs [converge: partial; Child::audit (macOS child.rs:77, Linux child.rs:79) is None only while the direct child runs; after the child exits it walks at once even while descendants of the run still run (wait does not end them), and the Audit has no incomplete-because-not-ended state; neither AC is tested.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-006.2026-11-01",
+          "requirement": "SR-006",
+          "method": "review",
+          "evidence": "crates/procage/src/macos/child.rs:77",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "Child::audit (macOS child.rs:77, Linux child.rs:79) is None only while the direct child runs; after the child exits it walks at once even while descendants of the run still run (wait does not end them), and the Audit has no incomplete-because-not-ended state; neither AC is tested.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/child.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Findings MUST keep paths and link targets as exact bytes; their serialised form MUST round-trip them and their display MUST escape control characters.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a created file whose name holds a newline, an escape character and invalid UTF-8",
+          "then": "the bytes are equal and the display shows the characters escaped",
+          "when": "the finding is serialised, read back and displayed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.byte-paths"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-005] [SR-007] crates/procage/src/audit.rs (new): `LinkAudit` (`Refuse` default, `Report`, `Off`), `LinkFinding { path, links, symbolic }`, `HandoffKind`, `HandoffFinding`, `Audit { mode, links, links_complete, links_visited, handoff, handoff_complete }`; paths as `PathBuf` (bytes exact); `Display` escaping control characters; walks with `symlink_metadata`, never following links, never leaving the root's device"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-004] [SR-007] crates/procage/tests/audit.rs (new, both systems): each kind detected once (a handoff file created when absent at spawn, one modified, a symbolic link with its target, a nested `.git`), a quiet run complete and empty, incomplete at a small limit, `None` before exit, a name with a newline kept as bytes and escaped in display"
+        },
+        {
+          "id": "T018",
+          "done": true,
+          "text": "[SR-007] Complete SR-007 (Findings MUST keep paths and link targets as exact bytes; their serialised form MUST round-trip them and their display MUST escape control characters) \u2014 touchpoints: crates/procage/src/audit.rs, crates/procage/src/receipt.rs, crates/procage/tests/audit.rs [converge: partial; Findings hold PathBuf and Display escapes control characters (newline tested), but findings have no serialised form of their own and the receipt serialises paths with display().to_string(), which replaces invalid UTF-8, so bytes do not round-trip; no test uses an escape character or invalid UTF-8.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-007.2026-11-01",
+          "requirement": "SR-007",
+          "method": "review",
+          "evidence": "crates/procage/src/receipt.rs:430",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "Findings hold PathBuf and Display escapes control characters (newline tested), but findings have no serialised form of their own and the receipt serialises paths with display().to_string(), which replaces invalid UTF-8, so bytes do not round-trip; no test uses an escape character or invalid UTF-8.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/audit.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "Both audits MUST run in the parent, never between fork and exec in the child.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "a multithreaded parent spawning many cages with both audits on",
+          "then": "no spawn deadlocks and the child-side call sequence is unchanged",
+          "when": "the spawn tests run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.parent-only"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] [SR-010] [SR-015] Both backends: `CageOptions::with_link_audit(mode)`; `Targets` built in `with_options`; the link check last in `prepare` before the fork, every spawn; `SpawnError::HardLinks(Vec<LinkFinding>)` (message names each file, its link count and the remedies); `SpawnError` marked `#[non_exhaustive]`; macOS `CageOptions::with_walk_limit` (default 200,000)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-008.2026-11-01",
+          "requirement": "SR-008",
+          "method": "review",
+          "evidence": "crates/procage/src/macos/mod.rs:693; crates/procage/src/linux/mod.rs:859; crates/procage/tests/spawn_macos.rs::one_cage_spawns_from_several_threads",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "before_spawn runs in the parent before command.spawn in both backends and RunAudit::finish runs from Child methods in the parent; no pre_exec closure (macos/sys.rs, linux/sys.rs) references the audit, and the multithreaded spawn test runs with the default link check on.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "The threat model MUST change R-08's status only with non-ignored canaries on every lane, MUST record R-07 as detected by the post-run audit and still a harness responsibility, and the docs MUST NOT present an empty audit as proof that the trees are safe.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "THREAT_MODEL, the crate docs and the site",
+          "then": "R-08 names its canaries per lane, R-07 says the harness still reviews the trees, and no text calls an empty audit proof",
+          "when": "they describe R-07, R-08 and the audit"
+        }
+      ],
+      "mitigations": [
+        "mitigation.measured-status"
+      ],
+      "tasks": [
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[SR-009] THREAT_MODEL: R-08 mitigated with the canaries, R-07 detected by the post-run audit (still a harness responsibility), `PUBLISHED` unchanged; crate docs \"Audits\"; site page audits.md and index; CHANGELOG (Added, Changed: `SpawnError` non-exhaustive; Security: hard links refused by default)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-009.2026-11-01",
+          "requirement": "SR-009",
+          "method": "test",
+          "evidence": "crates/procage/tests/threat_model.rs::gate",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "The gate passes and enforces non-ignored canaries per platform for R-08 (mitigated, six r08 canaries listed); R-07 stays harness/documented and says the audit lists findings for the harness to review; audits.md and the crate docs say an incomplete result is never clean and nowhere call an empty audit proof.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/threat_model.rs",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/audits.md",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "The link check MUST run in the parent on every spawn as the last step before the fork, re-examining the Targets each time, and MUST NOT reuse a result from an earlier spawn.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a cage that spawned cleanly once",
+          "then": "the second spawn is refused",
+          "when": "a second name is given to its protected file and the same cage spawns again"
+        },
+        {
+          "given": "a protect subpath",
+          "then": "the spawn is refused naming that file",
+          "when": "an aliased file is created under it after the cage was built and the cage spawns"
+        }
+      ],
+      "mitigations": [
+        "mitigation.check-last"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] [SR-010] [SR-015] Both backends: `CageOptions::with_link_audit(mode)`; `Targets` built in `with_options`; the link check last in `prepare` before the fork, every spawn; `SpawnError::HardLinks(Vec<LinkFinding>)` (message names each file, its link count and the remedies); `SpawnError` marked `#[non_exhaustive]`; macOS `CageOptions::with_walk_limit` (default 200,000)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-010.2026-11-01",
+          "requirement": "SR-010",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "The same cage spawns cleanly, a second name is then given to a file under its protect subpath, and the next spawn is refused naming it (also escape_linux.rs on T1); before_spawn re-walks the Targets on every spawn with no cached result.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-011",
+      "statement": "A literal protect or hide target that is a symbolic link MUST be a link finding, so that Refuse fails the spawn, without the check following the link.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a protected .git/config replaced by a symbolic link to a file with a second name",
+          "then": "the spawn fails naming .git/config",
+          "when": "the cage spawns with Refuse on macOS, Linux T1 and T2"
+        }
+      ],
+      "mitigations": [
+        "mitigation.target-link-finding"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-011] [SR-014] `Targets` (from the resolved policy and the class home paths) and `links(&Targets, limit)`: literal targets (a symbolic link is a finding), files under protect and hide subpaths, glob prefixes matched with `may_overlap`, existing class files in every home and the system persistence paths; a regular file with `st_nlink > 1` is a finding; incomplete past the limit or on an unreadable entry, with the entries visited"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-011] [SR-012] Canaries: `r08_a_hard_link_to_a_hidden_file_is_refused` un-ignored, plus `r08_a_hard_link_to_a_protected_file_is_refused`, a symbolic-link target, report mode runs and lists, and the in-run link attempt refused \u2014 crates/procage/tests/escape_macos.rs and crates/procage/tests/escape_linux.rs (T1 and T2)"
+        },
+        {
+          "id": "T019",
+          "done": true,
+          "text": "[SR-011] Add a test for SR-011 (A literal protect or hide target that is a symbolic link MUST be a link finding, so that Refuse fails the spawn, without the check following the link) \u2014 touchpoints: crates/procage/src/audit.rs, crates/procage/tests/escape_linux.rs, crates/procage/tests/escape_macos.rs [converge: implemented-unverified; escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused asserts a literal hide target replaced by a symbolic link is a symbolic finding, and the unit test covers the logic, but escape_linux.rs has no symbolic-link-target canary for T1 or T2.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-011.2026-11-01",
+          "requirement": "SR-011",
+          "method": "review",
+          "evidence": "crates/procage/src/audit.rs:254",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "escape_macos.rs::r08_a_hard_link_to_a_protected_file_is_refused asserts a literal hide target replaced by a symbolic link is a symbolic finding, and the unit test covers the logic, but escape_linux.rs has no symbolic-link-target canary for T1 or T2.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-012",
+      "statement": "Every lane MUST have a non-ignored canary in which a caged child tries to hard link a protected and a hidden file into a writable tree and the kernel refuses it.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the escape suites on macOS, Linux T1 and T2",
+          "then": "both calls fail and no second name exists after the run",
+          "when": "the child calls link on a protected and on a hidden file"
+        }
+      ],
+      "mitigations": [
+        "mitigation.in-run-canary"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-011] [SR-012] Canaries: `r08_a_hard_link_to_a_hidden_file_is_refused` un-ignored, plus `r08_a_hard_link_to_a_protected_file_is_refused`, a symbolic-link target, report mode runs and lists, and the in-run link attempt refused \u2014 crates/procage/tests/escape_macos.rs and crates/procage/tests/escape_linux.rs (T1 and T2)"
+        },
+        {
+          "id": "T020",
+          "done": true,
+          "text": "[SR-012] Complete SR-012 (Every lane MUST have a non-ignored canary in which a caged child tries to hard link a protected and a hidden file into a writable tree and the kernel refuses it) \u2014 touchpoints: crates/procage/tests/escape_linux.rs, crates/procage/tests/escape_macos.rs [converge: partial; macOS asserts both link calls fail; escape_linux.rs::r08_no_hard_link_can_be_made_during_the_run tries only the hidden file, never a protected one, skips a tier whose cage cannot be built (the T2 layout, per its comment), and no lane asserts that no second name exists after the run.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-012.2026-11-01",
+          "requirement": "SR-012",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r08_no_hard_link_can_be_made_during_the_run",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "macOS asserts both link calls fail; escape_linux.rs::r08_no_hard_link_can_be_made_during_the_run tries only the hidden file, never a protected one, skips a tier whose cage cannot be built (the T2 layout, per its comment), and no lane asserts that no second name exists after the run.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-013",
+      "statement": "The receipt audit summary MUST hold only counts, mode and completeness unless the receipt includes the policy; finding paths MUST NOT appear otherwise.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a Report run with a link finding and a handoff finding",
+          "then": "it holds the counts, the mode and completeness, and no finding path bytes",
+          "when": "the receipt is built without the policy"
+        },
+        {
+          "given": "the same run",
+          "then": "the finding paths are present",
+          "when": "the receipt is built with the policy"
+        }
+      ],
+      "mitigations": [
+        "mitigation.receipt-counts"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US3] [SR-013] Receipt `audit` summary (`mode`, link and handoff counts, completeness; paths only with the policy) in crates/procage/src/receipt.rs; tests in crates/procage/tests/receipts.rs and crates/procage/tests/audit.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-013.2026-11-01",
+          "requirement": "SR-013",
+          "method": "test",
+          "evidence": "crates/procage/tests/audit.rs::the_receipt_counts_the_findings",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "Without the policy the receipt JSON (policy and paths removed) holds no finding path and paths is None; with it paths is present; link findings enter the summary only as a count (receipt.rs:422) and their paths only under the same gate.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/receipts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-014",
+      "statement": "Both walks MUST honour the walk limit (default 200,000 on both systems); the handoff audit MUST NOT walk unless with_handoff_audit is set; the link check MUST stay within SC-003.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a cage without with_handoff_audit",
+          "then": "no snapshot is taken and the audit has no handoff part",
+          "when": "it spawns and the run ends"
+        },
+        {
+          "given": "the default policy and a 10,000-file workspace on the reference machine",
+          "then": "it adds under 10 ms to the spawn",
+          "when": "the link check runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.bounded-cost"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-011] [SR-014] `Targets` (from the resolved policy and the class home paths) and `links(&Targets, limit)`: literal targets (a symbolic link is a finding), files under protect and hide subpaths, glob prefixes matched with `may_overlap`, existing class files in every home and the system persistence paths; a regular file with `st_nlink > 1` is a finding; incomplete past the limit or on an unreadable entry, with the entries visited"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-006] [SR-014] `CageOptions::with_handoff_audit()` (both): snapshot before the fork; `Child::audit()` \u2192 `None` while the run is alive, then the second walk and the diff; crates/procage/src/macos/{mod.rs,child.rs}, crates/procage/src/linux/{mod.rs,child.rs}"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[SR-014] Gates: `just ci`, `just linux`, `just linux-t1`; the latency probe with the default link check (SC-003); results in specs/023-tree-audit/quickstart.md"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-014.2026-11-01",
+          "requirement": "SR-014",
+          "method": "test",
+          "evidence": "crates/procage/tests/audit.rs::without_the_option_nothing_is_walked; specs/023-tree-audit/quickstart.md",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "Without with_handoff_audit no snapshot is taken and handoff is None; walk_limit defaults to 200,000 on both systems; the recorded latency probe puts the default link check at 1.3-1.7 ms on macOS and 1.29 ms / 0.47 ms on Linux T1/T2, within SC-003 (workspace size does not enter: writable trees are not link-check targets).",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/audit.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-015",
+      "statement": "SpawnError::HardLinks MUST name every refused file with its link count, and its message MUST say that removing the extra name, or choosing Report or Off by name, lets the spawn proceed.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "two protected files with second names",
+          "then": "the error lists both files with their link counts and the message names the remedies",
+          "when": "the spawn is refused"
+        }
+      ],
+      "mitigations": [
+        "mitigation.actionable-refusal"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] [SR-010] [SR-015] Both backends: `CageOptions::with_link_audit(mode)`; `Targets` built in `with_options`; the link check last in `prepare` before the fork, every spawn; `SpawnError::HardLinks(Vec<LinkFinding>)` (message names each file, its link count and the remedies); `SpawnError` marked `#[non_exhaustive]`; macOS `CageOptions::with_walk_limit` (default 200,000)"
+        },
+        {
+          "id": "T021",
+          "done": true,
+          "text": "[SR-015] Add a test for SR-015 (SpawnError::HardLinks MUST name every refused file with its link count, and its message MUST say that removing the extra name, or choosing Report or Off by name, lets the spawn proceed) \u2014 touchpoints: crates/procage/src/audit.rs, crates/procage/src/linux/mod.rs, crates/procage/src/macos/mod.rs [converge: implemented-unverified; SpawnError::HardLinks carries every finding and its Display (refusal) lists each with its link count and names both remedies, but no test refuses two files or asserts the message text.]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-015.2026-11-01",
+          "requirement": "SR-015",
+          "method": "review",
+          "evidence": "crates/procage/src/audit.rs:565",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "SpawnError::HardLinks carries every finding and its Display (refusal) lists each with its link count and names both remedies, but no test refuses two files or asserts the message text.",
+          "verified_at": "2026-11-01T23:17:35Z",
+          "commit": "10b728b"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/audit.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.alias-missed",
+    "threat.audit-too-early",
+    "threat.benign-links-block",
+    "threat.finding-injection",
+    "threat.in-run-link",
+    "threat.mtime-reset",
+    "threat.report-mode-silent",
+    "threat.silent-partial",
+    "threat.target-replaced-by-link",
+    "threat.walk-follows-link"
+  ],
+  "decisions": [],
+  "check_findings": [],
+  "metrics": {
+    "threats": 15,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 10,
+      "mitigated": 5
+    },
+    "threats_by_severity": {
+      "high": 3,
+      "medium": 10,
+      "low": 2
+    },
+    "mitigations": 15,
+    "requirements": 15,
+    "requirements_with_tasks": 15,
+    "requirements_verified": 5,
+    "decisions": 0,
+    "findings": {}
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}
