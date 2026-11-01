@@ -1,6 +1,6 @@
 [package]
 name = "procage"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -24,14 +24,14 @@ path = "tests/exec.rs"
 harness = false
 
 [dependencies]
-procage-policy = { path = "../procage-policy", version = "0.1.0" }
+procage-policy.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
-libc = "0.2"
+libc.workspace = true
 
 # The violation monitor reads `log stream --style ndjson`.
 [target.'cfg(target_os = "macos")'.dependencies]
-serde_json = { version = "1", default-features = false, features = ["std"] }
+serde_json.workspace = true
 
 # The workspace set, except that unsafe code is denied rather than forbidden so
 # that `macos::sys` and `linux::sys` alone can allow it.

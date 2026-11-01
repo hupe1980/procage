@@ -1,6 +1,6 @@
 [package]
 name = "procage-kernel-facts"
-version = "0.0.0"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -10,13 +10,13 @@ description = "Re-verifies the kernel and libsandbox behaviour procage relies on
 publish = false
 
 [dependencies]
-libc = "0.2"
+libc.workspace = true
 
 [dev-dependencies]
 # For the well-formedness check of lowered profiles (policy_compiles).
-procage-policy = { path = "../procage-policy" }
+procage-policy.workspace = true
 # KF-M29 reads `log stream --style ndjson`.
-serde_json = "1"
+serde_json.workspace = true
 
 [[bin]]
 name = "kf-probe"
