@@ -9,9 +9,8 @@ agents, MCP servers, build orchestrators. The code inside the child runs with
 your user id, whether it is an LLM following injected instructions or a
 project's build script.
 
-```toml
-[dependencies]
-procage = "0.1"
+```sh
+cargo add procage
 ```
 
 ```rust

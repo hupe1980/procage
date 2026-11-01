@@ -16,9 +16,8 @@ group = "Start"
 
 ## Add the dependency
 
-```toml
-[dependencies]
-procage = "0.1"
+```sh
+cargo add procage
 ```
 
 The portable policy crate comes with it as `procage::policy`. If you only build or check policies (for example in a service that sends them elsewhere), `procage-policy` alone is `no_std` with `alloc` and free of `unsafe`.
