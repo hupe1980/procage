@@ -6,6 +6,8 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-01
+
 ### Added
 
 - macOS backend: Seatbelt applied in the forked child through libsandbox,
@@ -32,5 +34,6 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/commits/main
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/hupe1980/procage/releases/tag/v0.1.0
 [0.0.1]: https://crates.io/crates/procage/0.0.1

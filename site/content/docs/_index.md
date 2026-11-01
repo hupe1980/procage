@@ -11,8 +11,8 @@ seo_title = "Documentation · procage"
 
 procage is a Rust library that runs a child process in an OS sandbox. You describe what the child may do in a portable **policy**; procage lowers it for the system it runs on and spawns the child under it, or refuses and says exactly which part this host cannot enforce.
 
-> [!WARNING]
-> procage is pre-1.0 and under development. The published 0.0.1 only reserves the crate name; these pages describe the development version on `main` (0.0.2, unreleased). The API will change. Do not rely on any release before 0.1.0 to contain a process.
+> [!NOTE]
+> These pages describe procage 0.1. It is pre-1.0: the API may change between minor versions.
 
 ## The idea in four steps
 

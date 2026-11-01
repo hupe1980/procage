@@ -7,7 +7,7 @@ template = "faq.html"
 [extra]
 group = "Help"
 faq = [
-  { id = "ready", q = "Can I use procage in production?", a = "Not as your only containment yet. procage is pre-1.0: the published 0.0.1 only reserves the name, and the development version on `main` is still changing. The project's own rule is: do not rely on any release before 0.1.0 to contain a process." },
+  { id = "ready", q = "Can I use procage in production?", a = "As one layer, knowing its limits. procage 0.1 is pre-1.0, so the API may still change, and an OS sandbox reduces risk rather than removing it: the [threat model](@/docs/threat-model.md) lists what it contains, the open variants and when to use a microVM instead." },
   { id = "who", q = "Who is it for?", a = "Rust programs that run commands on someone else's behalf: coding agents and their tool calls, MCP servers, build orchestrators, CI-like runners. The adversary is code inside the child running with your user id, such as a model following injected instructions or a malicious build script." },
   { id = "sandbox-exec", q = "Why not just call sandbox-exec on macOS?", a = "`/usr/bin/sandbox-exec` is deprecated and offers no lifetime control, descriptor hygiene or typed policy. procage applies Seatbelt directly through libsandbox in the forked child, with system calls only, and reports a missing interface as an error instead of running uncaged." },
   { id = "private", q = "Is depending on a private libsandbox interface safe?", a = "It is a stated risk. Apple does not document or support those functions and may change them. procage resolves them at run time and probes the apply method before the first spawn; anything missing or different is an `Unsupported` error naming the macOS build, never a fallback to no sandbox." },

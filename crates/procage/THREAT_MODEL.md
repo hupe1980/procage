@@ -7,9 +7,8 @@ and in the crate documentation.
 
 ## Release status
 
-This is procage 0.0.2, an unreleased development version; the published
-0.0.1 only reserves the crate name. Do not rely on any release before 0.1.0
-to contain a process.
+This is procage 0.1.0, the first release. The list below states what it does
+not contain; the catalog states the evidence for every escape class.
 
 Seatbelt is the macOS kernel sandbox. On Linux, Landlock controls files and
 network ports and seccomp filters system calls; tier T1 adds user namespaces
@@ -214,7 +213,7 @@ why the numbering has gaps.
 
 ### Harness responsibilities
 
-- **R-07** On macOS, this development version denies writes to the known
+- **R-07** On macOS, this release denies writes to the known
   trust-handoff locations in every policy, last and waivable only by name:
   version-control hooks and config, shell startup files, common tool
   configuration, editor and agent directories, user program directories and

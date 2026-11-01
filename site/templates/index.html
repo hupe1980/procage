@@ -33,7 +33,7 @@
         <a class="btn btn-ghost" href="{{ get_url(path='@/docs/threat-model.md') }}">Read the threat model</a>
         <a class="btn btn-ghost" href="{{ config.extra.repo }}" rel="noopener">GitHub</a>
       </div>
-      <p class="status-note"><strong>Status:</strong> under development. The published 0.0.1 only reserves the name; the development version on <code>main</code> cages children on both systems. Do not rely on any release before 0.1.0 to contain a process.</p>
+      <p class="status-note"><strong>Status:</strong> 0.1, pre-1.0: the API may change between minor versions.</p>
     </div>
     <div class="hero-code" aria-label="Example">
       {{ section.content | safe }}
@@ -116,8 +116,8 @@
       <ul class="link-list">
         <li><a href="{{ get_url(path='@/docs/_index.md') }}">Documentation</a><span>Concepts, backends, guides</span></li>
         <li><a href="{{ config.extra.repo }}" rel="noopener">GitHub</a><span>Source, issues, the threat model</span></li>
-        <li><a href="{{ config.extra.crate }}" rel="noopener">crates.io</a><span>The published name (0.0.1 reserves it)</span></li>
-        <li><a href="{{ config.extra.docs_rs }}" rel="noopener">docs.rs</a><span>API reference of published releases</span></li>
+        <li><a href="{{ config.extra.crate }}" rel="noopener">crates.io</a><span>The crate</span></li>
+        <li><a href="{{ config.extra.docs_rs }}" rel="noopener">docs.rs</a><span>API reference</span></li>
         <li><a href="{{ config.extra.repo }}/tree/main/specs" rel="noopener">Design records</a><span>Spec, threat model and verification of every change</span></li>
         <li><a href="{{ config.extra.security }}" rel="noopener">Security policy</a><span>Report a suspected escape privately</span></li>
       </ul>

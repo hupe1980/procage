@@ -9,18 +9,16 @@ group = "Start"
 
 ## Before you start
 
-- procage is **pre-1.0**. The crate on crates.io (0.0.1) only reserves the name; the code described here is the development version on `main`. Expect the API to change, and do not use it as your only containment yet.
+- procage is **pre-1.0**: the API may change between minor versions. Read the [threat model](@/docs/threat-model.md) for where it stops.
 - It runs on **macOS** (tested on macOS 26.6.2 on Apple silicon) and on **Linux** with Landlock ABI 1 or later (Linux 5.13 and up). On other targets only the policy types and the hygiene helpers build.
 - It needs **Rust 1.99** or newer (edition 2024).
 - The calling process must **not already be sandboxed**. On macOS a second Seatbelt profile fails or is ignored by the kernel, so procage refuses with `SpawnError::AlreadySandboxed` instead of running a child uncaged. Inside an AI agent's own sandbox, run from a plain terminal.
 
 ## Add the dependency
 
-Until a release with the spawn API is published, depend on the repository:
-
 ```toml
 [dependencies]
-procage = { git = "https://github.com/hupe1980/procage" }
+procage = "0.1"
 ```
 
 The portable policy crate comes with it as `procage::policy`. If you only build or check policies (for example in a service that sends them elsewhere), `procage-policy` alone is `no_std` with `alloc` and free of `unsafe`.
@@ -108,7 +106,7 @@ Every failure is a `SpawnError` with a readable `Display`, and no child runs. Th
 
 ## API reference
 
-The rustdoc of the development version is the reference for every type: build it with `cargo doc --open` in a project that depends on procage. docs.rs shows published releases only.
+The rustdoc on [docs.rs](https://docs.rs/procage) is the reference for every type, with a macOS and a Linux view.
 
 ## Next
 

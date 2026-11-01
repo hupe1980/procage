@@ -7,8 +7,8 @@
 //! untrusted, adaptive code as your user: an LLM agent's tool calls, a
 //! project's build scripts.
 //!
-//! **Status.** Pre-release: do not rely on any version before 0.1.0 to
-//! contain a process. The backends are `macos` and `linux` (tiers T1 and
+//! **Status.** Pre-1.0: the API may change between minor versions. The
+//! backends are `macos` and `linux` (tiers T1 and
 //! T2); each module states its limits, and the [threat model](threat_model)
 //! lists every known escape class and its status.
 //!

@@ -22,11 +22,10 @@ pointer to the upstream vendor.
 
 | Version | Supported |
 |---|---|
-| 0.0.1 | Name reservation; no code |
-| `main` (0.0.2, unreleased) | Development version; escapes are fixed on `main` |
+| 0.1.x | Yes |
+| 0.0.1 | No (name reservation; no code) |
 
-Before 0.1.0 there are no backports: fixes land on `main` and in the next
-release.
+Before 1.0 only the latest minor version gets fixes; there are no backports.
 
 ## What to expect
 

@@ -9,6 +9,11 @@ agents, MCP servers, build orchestrators. The code inside the child runs with
 your user id, whether it is an LLM following injected instructions or a
 project's build script.
 
+```toml
+[dependencies]
+procage = "0.1"
+```
+
 ```rust
 use procage::native::{Cage, Grants};
 use procage::policy::{AbsPath, presets};
@@ -26,9 +31,9 @@ let status = cage
 📝 [Changelog](CHANGELOG.md) ·
 🚨 [Report an escape](SECURITY.md)
 
-> 🚧 **Under development.** The published 0.0.1 only reserves the name;
-> `main` (0.0.2, unreleased) is the development version. Do not rely on any
-> release before 0.1.0 to contain a process.
+> 🚧 **Pre-1.0.** The API may change between minor versions. Read the
+> [threat model](crates/procage/THREAT_MODEL.md) for what procage contains
+> and where it stops.
 
 ## ✨ Features
 

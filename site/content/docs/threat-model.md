@@ -9,8 +9,6 @@ group = "Security"
 
 This page summarises procage's threat model. The canonical text, with every escape class, its evidence and its open variants, is [**THREAT_MODEL.md**](https://github.com/hupe1980/procage/blob/main/crates/procage/THREAT_MODEL.md) in the repository; the same text is published as the `procage::threat_model` module in the crate documentation. Where this page and that file differ, the file is right.
 
-> [!WARNING]
-> procage 0.0.2 is an unreleased development version. Do not rely on any release before 0.1.0 to contain a process.
 
 ## Adversary
 
@@ -50,7 +48,7 @@ When a kernel or service escape is unacceptable, for example for code from unkno
 
 Each way a caged process could escape or leak is an **escape class** with a stable id (R-02 to R-31, with gaps where ids belong to other design risks). Each has a disposition (`mitigate`, `detect`, or `harness`) and a status. A class is `mitigated` only with evidence on every platform it applies to (caged canaries on a real kernel, next to a control showing the operation succeeds where allowed) and only when no variant is known to be open.
 
-As of the development version 0.0.2:
+As of 0.1.0:
 
 - **Mitigated**, with canaries on each applicable platform: non-canonical path rules (R-02), pattern characters in paths (R-03), ancestor rename (R-04), writes through read-only descriptors (R-05), work handed to unsandboxed services (R-06), local daemons (R-09), a shared temporary directory (R-10), the unsandboxed exec modifier (R-11), firmlink spelling (R-12), inherited file descriptors (R-21), terminal input injection (R-22), outliving the run (R-23), secrets in the environment (R-24), filter-bypassing kernel interfaces (R-28), nested user namespaces (R-29), Landlock rule loss (R-30) and truncation without write access (R-31).
 - **Documented, harness responsibility:** trust handoff (R-07). procage denies writes to the known locations; anything else the sandbox wrote must be treated as untrusted.
