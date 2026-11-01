@@ -1,0 +1,868 @@
+otmVersion: 0.2.0
+project:
+  id: 039-ci-lanes
+  name: CI lanes for the releases people run
+threatspec:
+  actors:
+  - id: actor.action-author
+    name: Maintainer of a third-party action the workflow uses, or whoever compromises that action's repository
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness who reads the supported releases and tiers and relies on them
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the workflow, the lane assertions, the base profiles or the platform docs
+    trust: semi-trusted
+  - id: actor.image-provider
+    name: The provider of the hosted runner images, which updates and remaps image labels on its own schedule
+    trust: semi-trusted
+  - id: actor.pr-author
+    name: Author of a pull request, possibly from a fork, whose code the lanes build and run
+    trust: untrusted
+  dispositions:
+  - disposition: no-threat-detected
+    reason: 'checked flow.image: the identity that matters is which OS a lane really runs, covered by threat.silent-image-change'
+    technique: identity-spoofing
+  - disposition: no-threat-detected
+    reason: 'checked flow.actions: actions and toolchains are fetched over TLS by the runner; integrity of what
+      is fetched is threat.action-supply-chain'
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no shared-tenant surface; hosted runners are ephemeral per job and the repository is the only tenant
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.lane: a hung caged test turns the lane red at the job timeout; it delays the signal
+      and grants nothing'
+    technique: resource-exhaustion
+  - disposition: no-threat-detected
+    reason: 'checked flow.report: the lane report prints OS, build, architecture, tier, Landlock ABI and errata,
+      all public; tokens are threat.token-overreach'
+    technique: sensitive-data-exposure
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: the CI lanes call no model and run no agent; programs run in caged tests are the adversary inside the
+      child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:15:52Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: 126f92403c883c6e2afe705e15aab32552637db76f6135f1348361da3a4f61c8
+  surfaces:
+  - external-input
+  - authentication
+  - network-boundary
+  - persistent-store
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.readers
+  name: People who read the README, SECURITY and the platform table
+  risk:
+    trustRating: 50
+- id: tz.repo
+  name: The public repository, its workflow files, tags and releases
+  risk:
+    trustRating: 90
+- id: tz.runner
+  name: A hosted runner image (OS release, build, architecture, host security defaults)
+  risk:
+    trustRating: 60
+- id: tz.third-party
+  name: Third-party action repositories and tool downloads
+  risk:
+    trustRating: 30
+assets:
+- id: asset.claims
+  name: 'The supported-release list and platform table: which releases, which Linux tier, measured when'
+  risk:
+    availability: 30
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#FR-005
+    classification: public
+- id: asset.evidence
+  name: The lane report and test results that back each claim (OS, build, arch, sandboxed, tier, ABI, errata)
+  risk:
+    availability: 60
+    confidentiality: 0
+    integrity: 85
+  attributes:
+    type: log
+    source: spec.md#Key-Entities
+    classification: public
+- id: asset.frozen-bases
+  name: The frozen base profiles V1 to V3 and their fixtures
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: source-code
+    source: spec.md#FR-006
+    classification: internal
+- id: asset.repo
+  name: Integrity of the repository, its branches, tags, releases and published pages
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 100
+  attributes:
+    type: source-code
+    source: spec.md#FR-007
+    classification: internal
+- id: asset.token
+  name: The job token and any secret a job could see
+  risk:
+    availability: 10
+    confidentiality: 90
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#FR-007
+    classification: secret
+components:
+- id: component.actions
+  name: Third-party actions the workflow uses (checkout, tool installers)
+  type: library
+  parent:
+    trustZone: tz.third-party
+  attributes:
+    source: spec.md#FR-007
+- id: component.bases
+  name: Frozen base profiles, their fixtures and any new base version a newer macOS needs
+  type: library
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-006
+- id: component.docs
+  name: README and SECURITY release lists and the platform table
+  type: document
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-005
+- id: component.lane
+  name: 'A lane: one job with an image label, architecture, expected tier or macOS major version, and its suites'
+  type: pipeline
+  parent:
+    trustZone: tz.runner
+  attributes:
+    source: spec.md#Key-Entities
+- id: component.lane-report
+  name: Kernel facts and the lane report header, with the expected-version and expected-tier assertions
+  type: library
+  parent:
+    trustZone: tz.runner
+  attributes:
+    source: spec.md#FR-004
+- id: component.suites
+  name: Spawn tests, base program-set tests, escape suite (plain and with reporting, newest base) and the profile-compile
+    check
+  type: library
+  parent:
+    trustZone: tz.runner
+  attributes:
+    source: spec.md#FR-001
+- id: component.t1-step
+  name: The step that lifts the user-namespace restriction for a T1 job
+  type: pipeline
+  parent:
+    trustZone: tz.runner
+  attributes:
+    source: spec.md#Clarifications
+- id: component.workflow
+  name: The CI workflow file (triggers, permissions, jobs, steps)
+  type: pipeline
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-007
+dataflows:
+- id: flow.actions
+  name: The runner fetches the actions and tools a lane uses
+  source: component.actions
+  destination: component.lane
+  assets:
+  - asset.token
+  - asset.repo
+  attributes:
+    crosses:
+    - tz.third-party
+    - tz.runner
+- id: flow.claims
+  name: The docs tell readers which releases are supported and at which tier
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.claims
+  attributes:
+    crosses:
+    - tz.repo
+    - tz.readers
+- id: flow.image
+  name: An image label resolves to an OS release, build and architecture chosen by the image provider
+  source: actor.image-provider
+  destination: component.lane
+  assets:
+  - asset.evidence
+  attributes:
+    crosses:
+    - tz.runner
+- id: flow.pr
+  name: A pull request's code is checked out and run by the lanes
+  source: actor.pr-author
+  destination: component.workflow
+  assets:
+  - asset.repo
+  - asset.token
+  attributes:
+    crosses:
+    - tz.repo
+- id: flow.report
+  name: The lane report and suite results go to the job log as evidence
+  source: component.lane-report
+  destination: component.workflow
+  assets:
+  - asset.evidence
+  attributes:
+    crosses:
+    - tz.runner
+    - tz.repo
+- id: flow.token
+  name: The workflow hands the job token (and nothing else) to each lane
+  source: component.workflow
+  destination: component.lane
+  assets:
+  - asset.token
+  attributes:
+    crosses:
+    - tz.repo
+    - tz.runner
+threats:
+- id: threat.action-supply-chain
+  name: A third-party action referenced by a tag or branch, or re-pinned to a malicious commit, runs attacker code
+    in a lane with the job token
+  categories:
+  - Tampering
+  - Elevation of Privilege
+  cwes:
+  - CWE-829
+  - CWE-494
+  risk:
+    impact: 85
+    impactComment: attacker code runs with whatever the token can do and can falsify every result
+    likelihood: 40
+    likelihoodComment: moved tags of popular actions were used to steal tokens in 2025
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.repo
+    - asset.token
+    - asset.evidence
+    status: open
+    actor: actor.action-author
+    elements:
+    - component.actions
+    - flow.actions
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.cache-poisoning
+  name: A pull-request job saves a build cache that a main-branch lane restores, so pull-request code alters what
+    main measures
+  categories:
+  - Tampering
+  cwes:
+  - CWE-349
+  risk:
+    impact: 60
+    impactComment: main's results would no longer come from main's code
+    likelihood: 20
+    likelihoodComment: no lane caches today; ten lanes make caching tempting
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.evidence
+    status: open
+    actor: actor.pr-author
+    elements:
+    - component.workflow
+    - component.lane
+    profile: stride
+    severity: low
+    technique: data-tampering-at-rest
+- id: threat.evidence-expiry
+  name: The lane report lives only in job logs that expire, so a dated claim later cites evidence nobody can see
+  categories:
+  - Repudiation
+  risk:
+    impact: 30
+    impactComment: the claim stays true but becomes unverifiable
+    likelihood: 60
+    likelihoodComment: hosted job logs expire after a retention period
+  attributes:
+    source: spec.md#Key-Entities
+    assets:
+    - asset.evidence
+    status: open
+    actor: actor.contributor
+    elements:
+    - component.lane-report
+    - flow.report
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.expression-injection
+  name: A run step interpolates pull-request text (title, branch name, commit message) into a shell script, which
+    then runs as the workflow
+  categories:
+  - Tampering
+  cwes:
+  - CWE-78
+  risk:
+    impact: 75
+    impactComment: arbitrary commands in the job with its token
+    likelihood: 20
+    likelihoodComment: new lanes add steps that print context
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.token
+    - asset.evidence
+    status: open
+    actor: actor.pr-author
+    elements:
+    - component.workflow
+    - flow.pr
+    profile: stride
+    severity: medium
+    technique: injection
+- id: threat.frozen-base-drift
+  name: An allowance macOS 27 needs is edited into a frozen base V1 to V3 instead of a new base version, silently
+    loosening every cage built on it
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  risk:
+    impact: 85
+    impactComment: every consumer pinned to that base gets wider rules without a breaking change
+    likelihood: 30
+    likelihoodComment: editing the existing base is the shortest fix for a red lane
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.frozen-bases
+    status: open
+    actor: actor.contributor
+    constitution: VII. A library, not a harness
+    elements:
+    - component.bases
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.pass-without-evidence
+  name: A lane is green without evidence because enforcement tests skip (AlreadySandboxed, no administrator, a feature
+    missing) or the job is marked continue-on-error or unavailable
+  categories:
+  - Repudiation
+  risk:
+    impact: 75
+    impactComment: the release is named supported on no measurement
+    likelihood: 40
+    likelihoodComment: a skip or a soft-failing job is the quickest way to make a new lane green
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.evidence
+    - asset.claims
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.suites
+    - component.lane
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.silent-image-change
+  name: An image label moves to another OS release, build or architecture (ubuntu-latest to 26.04, xcode-27 to a
+    later macOS, an arm label on x86_64) and the lane stays green while the docs name the old release
+  categories:
+  - Repudiation
+  - Spoofing
+  risk:
+    impact: 70
+    impactComment: procage claims a release it no longer tests, the regression on the real one unseen
+    likelihood: 60
+    likelihoodComment: ubuntu-latest moves in November 2026; the xcode label names an Xcode, not an OS
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.evidence
+    - asset.claims
+    status: open
+    actor: actor.image-provider
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.lane
+    - component.lane-report
+    - flow.image
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.silent-tier-change
+  name: A Linux lane gets a different tier than it states (T1 expected, T2 observed after an AppArmor default change,
+    or the reverse) and the tier-specific tests pass vacuously
+  categories:
+  - Repudiation
+  risk:
+    impact: 75
+    impactComment: a tier claim without a run on that tier; T1 escape canaries never execute
+    likelihood: 50
+    likelihoodComment: Ubuntu 26.04 is reported to restrict user namespaces more than 24.04
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.evidence
+    - asset.claims
+    status: open
+    actor: actor.image-provider
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.lane-report
+    - component.t1-step
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.stale-claims
+  name: README or SECURITY still name a release supported after its lane was removed, turned red or its image retired
+    (macOS 14 on 2026-11-02), or state a tier that was not measured, without a date
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    impactComment: a consumer deploys on a release nobody tested
+    likelihood: 50
+    likelihoodComment: docs and workflow change in separate edits
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.claims
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.t1-step-scope
+  name: '[NEEDS CLARIFICATION: does a documented host change made as root (the sysctl used on 24.04, an AppArmor
+    profile) count as the documented, user-level way for a 26.04 T1 job, or only a step that needs no host change?]'
+  categories:
+  - Repudiation
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.claims
+    status: open
+    actor: actor.contributor
+    disposition: needs-clarification
+    elements:
+    - component.t1-step
+    profile: stride
+    severity: unrated
+    technique: missing-audit-trail
+- id: threat.t1-unrepresentative
+  name: A T1 job reaches T1 by weakening the host beyond what users would do (AppArmor off, tests as root), so the
+    T1 claim and the docs' advice overstate what users get
+  categories:
+  - Repudiation
+  - Elevation of Privilege
+  risk:
+    impact: 60
+    impactComment: users weaken their host to follow the docs, or get a different tier than claimed
+    likelihood: 35
+    likelihoodComment: lifting the sysctl may no longer suffice on 26.04
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.claims
+    - asset.evidence
+    status: open
+    actor: actor.contributor
+    elements:
+    - component.t1-step
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.token-overreach
+  name: A lane gets a writable token or a secret, so pull-request code, a caged test program or a compromised action
+    writes to the repository, releases or pages
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  cwes:
+  - CWE-250
+  - CWE-522
+  risk:
+    impact: 85
+    impactComment: a push or release from CI reaches every user of the crate
+    likelihood: 35
+    likelihoodComment: adding lanes adds jobs whose permissions are easy to widen for convenience
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.token
+    - asset.repo
+    status: open
+    actor: actor.pr-author
+    elements:
+    - component.workflow
+    - flow.token
+    - flow.pr
+    profile: stride
+    severity: high
+    technique: credential-theft
+- id: threat.unavailable-lane-status
+  name: '[NEEDS CLARIFICATION: while a lane is marked temporarily unavailable, is its release still listed as supported
+    on the last measured result, and for how long, given that supported means exactly the green lanes?]'
+  categories:
+  - Repudiation
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.claims
+    status: open
+    actor: actor.contributor
+    disposition: needs-clarification
+    elements:
+    - component.docs
+    profile: stride
+    severity: unrated
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.assert-expected
+  name: Each lane prints its report header and asserts the expected macOS major version and architecture or Linux
+    tier; any mismatch fails the lane
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.silent-image-change
+    - threat.silent-tier-change
+    status: required
+    kind: detective
+    requirements:
+    - SR-004
+    touchpoints:
+    - component.lane-report
+    - component.lane
+- id: mitigation.docs-from-lanes
+  name: The supported list equals the workflow's green lanes, with tier, build and measurement date copied from
+    the lane report; a gate compares docs and workflow
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.stale-claims
+    - threat.evidence-expiry
+    status: required
+    kind: detective
+    requirements:
+    - SR-006
+    touchpoints:
+    - component.docs
+    - component.workflow
+- id: mitigation.least-privilege-workflow
+  name: Read-only token at workflow level, no job-level widening in test lanes, no secrets, pull_request trigger
+    only (no pull_request_target or workflow_run running PR code), no PR-saved cache restored on main, untrusted
+    context passed through env only
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.token-overreach
+    - threat.expression-injection
+    - threat.cache-poisoning
+    status: required
+    kind: preventive
+    requirements:
+    - SR-002
+    - SR-003
+    touchpoints:
+    - component.workflow
+- id: mitigation.new-base-version
+  name: A newer macOS's allowance lands as a new frozen base version with its program-set measurement; fixtures
+    of V1 to V3 stay byte-identical in CI
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.frozen-base-drift
+    status: required
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - component.bases
+    - component.suites
+- id: mitigation.no-skip-green
+  name: Enforcement tests fail instead of skipping; no lane whose release is named supported is continue-on-error
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.pass-without-evidence
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.suites
+    - component.workflow
+- id: mitigation.representative-t1
+  name: A T1 job applies only the documented step, logs it, runs the tests unprivileged; without such a step T1
+    is recorded unavailable
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.t1-unrepresentative
+    status: required
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - component.t1-step
+    - component.docs
+- id: mitigation.sha-pins
+  name: Every action reference is a full commit SHA with its version as a comment; a lint gate rejects tags, branches
+    and short SHAs
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.action-supply-chain
+    status: required
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - component.workflow
+    - component.actions
+requirements:
+- id: SR-001
+  statement: Every action a workflow uses MUST be referenced by a full 40-character commit SHA; a gate MUST fail
+    on any tag, branch or short-SHA reference.
+  priority: P1
+  mitigations:
+  - mitigation.sha-pins
+  acceptance:
+  - given: a workflow step using an action at a tag such as v4
+    then: it fails naming the file and line
+    when: the pin gate runs
+  - given: the workflows on main
+    then: it passes and every reference carries its version as a comment
+    when: the pin gate runs
+  tasks: []
+- id: SR-002
+  statement: Every workflow MUST default to a read-only token; test lanes MUST NOT widen permissions or reference
+    secrets, and no workflow MAY run pull-request code under pull_request_target or workflow_run.
+  priority: P1
+  mitigations:
+  - mitigation.least-privilege-workflow
+  acceptance:
+  - given: the CI workflow
+    then: the top-level permissions are contents read, no test job sets permissions, and no step references secrets
+    when: a gate parses it
+  - given: a pull request from a fork
+    then: the token cannot push, and the job has no secrets
+    when: its lanes run
+  tasks: []
+- id: SR-003
+  statement: Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment
+    variables), and a main-branch lane MUST NOT restore a cache saved by a pull-request job.
+  priority: P2
+  mitigations:
+  - mitigation.least-privilege-workflow
+  acceptance:
+  - given: the workflows
+    then: none appear inside a run script
+    when: a gate searches run steps for github.event and github.head_ref expressions
+  - given: any cache step
+    then: main-branch lanes restore only caches saved on main
+    when: its keys are reviewed
+  tasks: []
+- id: SR-004
+  statement: Every lane MUST print its OS release and build (or kernel release), architecture, sandbox status, observed
+    tier, Landlock ABI and errata, and MUST fail when the macOS major version, architecture or Linux tier differs
+    from what it expects.
+  priority: P1
+  mitigations:
+  - mitigation.assert-expected
+  acceptance:
+  - given: the macOS 27 lane expecting major version 27 on arm64
+    then: the lane fails naming expected and observed
+    when: the image reports another major version or architecture
+  - given: a Linux lane with PROCAGE_EXPECT_TIER=T1
+    then: the lane fails
+    when: the probe observes T2, or a T2 lane observes T1
+  - given: any green lane
+    then: the report header shows release, build, architecture, sandboxed no and tier
+    when: its log is read
+  tasks: []
+- id: SR-005
+  statement: In CI an enforcement test MUST fail, never skip, when it cannot run (AlreadySandboxed, missing administrator
+    rights, a missing feature), and a lane whose release is named supported MUST NOT be continue-on-error.
+  priority: P1
+  mitigations:
+  - mitigation.no-skip-green
+  acceptance:
+  - given: a lane run inside an outer sandbox
+    then: they fail with AlreadySandboxed
+    when: the enforcement tests run
+  - given: the workflow
+    then: no lane of a supported release has continue-on-error
+    when: a gate reads it
+  tasks: []
+- id: SR-006
+  statement: README and SECURITY MUST list as supported exactly the releases with a green lane, each with its build
+    or kernel, measured Linux tier and measurement date, and MUST name every other release untested.
+  priority: P2
+  mitigations:
+  - mitigation.docs-from-lanes
+  acceptance:
+  - given: a lane removed from the workflow while its release stays listed
+    then: it fails naming the release
+    when: the docs gate runs
+  - given: macOS 14 retired and macOS 15 without a green lane
+    then: both are named untested
+    when: the docs are read
+  - given: the platform table
+    then: every Linux lane has its measured tier and date
+    when: it is read
+  tasks: []
+- id: SR-007
+  statement: Existing base profile versions MUST stay byte-identical; an entry a newer macOS needs MUST be a new
+    frozen base version with its own program-set measurement on that release.
+  priority: P1
+  mitigations:
+  - mitigation.new-base-version
+  acceptance:
+  - given: the fixtures of base V1 to V3
+    then: the output equals the fixture byte for byte
+    when: CI compiles each base
+  - given: a base entry added for macOS 27
+    then: it is in a new base version whose program-set test passed on the 27.x lane with the build recorded
+    when: it is reviewed
+  tasks: []
+- id: SR-008
+  statement: A T1 job MUST apply only the documented step that lifts the user-namespace restriction, MUST log that
+    step and run the tests unprivileged; where no such step exists, the docs MUST record T1 as unavailable without
+    host changes.
+  priority: P2
+  mitigations:
+  - mitigation.representative-t1
+  acceptance:
+  - given: a T1 job
+    then: it shows the exact step applied and the tests ran as a non-root user
+    when: its log is read
+  - given: Ubuntu 26.04 with no documented step
+    then: they state T1 is unavailable there without host changes
+    when: the docs are read
+  tasks: []
+verification: []
+decisions: []

@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "Make the specs public; only the private notes stay private. Rewrite specs and .specify so they read well in public: no links to private notes, no naming of the consumer project." Also a showcase of the ThreatSpec extension for Spec Kit.
 

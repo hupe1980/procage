@@ -1,0 +1,911 @@
+otmVersion: 0.2.0
+project:
+  id: 040-path-resolution
+  name: Path resolution that cannot be redirected or mis-spelled
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that builds and fits policies
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the backends, the data classes or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no store; the mount plan lives in memory for one spawn
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: single user
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: no configuration added; protected tool config is the asset of threat.mount-redirect
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:15:44Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: 49aad8c0c2210a7ddfe39698c653d595708318bda04cb4864020ced5f52c3169
+  surfaces:
+  - external-input
+  - authorization
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and concurrent caged runs
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel (mounts, Landlock, Seatbelt) and the file systems
+  risk:
+    trustRating: 95
+assets:
+- id: asset.claim
+  name: The published canonicalisation claim and the escape-class evidence
+  risk:
+    availability: 10
+    confidentiality: 0
+    integrity: 70
+  attributes:
+    type: configuration
+    source: spec.md#SC-004
+    classification: public
+- id: asset.harness
+  name: Spawns of concurrent runs on a shared workspace
+  risk:
+    availability: 60
+    confidentiality: 0
+    integrity: 30
+  attributes:
+    type: capability
+    source: spec.md#US1
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.plan
+  name: 'The T1 mount plan: each planned path and the object it resolved to'
+  risk:
+    availability: 40
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#Key-Entities
+    classification: internal
+components:
+- id: component.canaries
+  name: Race canary and spelling matrix
+  type: test
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.canonicaliser
+  name: macOS path canonicaliser and SBPL lowering of rule spellings
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-004
+- id: component.child-mounts
+  name: Child mount sequence between fork and execve (T1)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.docs
+  name: Published canonicalisation claim and THREAT_MODEL escape class
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-007
+- id: component.resolver
+  name: 'Parent-side mount plan: resolves policy paths and prepares targets'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Context
+dataflows:
+- id: flow.claims
+  name: The docs tell the consumer which spellings are handled
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.claim
+  attributes:
+    crosses: []
+- id: flow.lower
+  name: The consumer's rule spellings are canonicalised and lowered to the profile
+  source: actor.consumer
+  destination: component.canonicaliser
+  assets:
+  - asset.host
+  attributes:
+    crosses: []
+- id: flow.mount
+  name: The child mounts over a tree that other runs can write
+  source: component.child-mounts
+  destination: tz.os
+  assets:
+  - asset.plan
+  - asset.host
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.os
+- id: flow.plan
+  name: The parent hands the prepared mount plan to the child
+  source: component.resolver
+  destination: component.child-mounts
+  assets:
+  - asset.plan
+  attributes:
+    crosses: []
+- id: flow.plant
+  name: A concurrent caged run changes the shared workspace
+  source: tz.cage
+  destination: tz.os
+  assets:
+  - asset.plan
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.os
+threats:
+- id: threat.case-miss
+  name: On a case-insensitive macOS volume, a deny spelled in another case than on disk matches nothing in the profile,
+    so the child reads the file through its on-disk spelling
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-178
+  risk:
+    impact: 90
+    impactComment: a protected or hidden file is readable while the cage was built without error
+    likelihood: 50
+    likelihoodComment: harnesses pass paths as the user typed them; the default volume is case-insensitive
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.host
+    status: open
+    actor: actor.consumer
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.canonicaliser
+    - flow.lower
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.child-unsafe
+  name: Resolution moved into the child allocates, takes locks or builds paths between fork and execve, so a multithreaded
+    parent deadlocks or the child runs with corrupt state
+  categories:
+  - Denial of Service
+  risk:
+    impact: 60
+    impactComment: hung or corrupted spawns
+    likelihood: 30
+    likelihoodComment: resolution code tends to build paths and buffers
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.harness
+    status: open
+    actor: actor.contributor
+    constitution: IV. Syscalls only between fork and exec
+    disposition: threat
+    elements:
+    - component.child-mounts
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.claim-overstates
+  name: The published canonicalisation claim lists cases (case, Unicode, case-folding) that no caged test covers
+  categories:
+  - Repudiation
+  risk:
+    impact: 50
+    impactComment: consumers rely on spelling handling that is unmeasured
+    likelihood: 60
+    likelihoodComment: 'true today: the claim is only partly backed'
+  attributes:
+    source: spec.md#Input
+    assets:
+    - asset.claim
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.fold-overgrant
+  name: 'Folding case or normalising a rule to make it match widens an allow: on a case-sensitive volume a grant
+    for one name also grants a different file that differs only in case or form'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    impactComment: a write grant reaches a file the user did not name
+    likelihood: 25
+    likelihoodComment: a normalising fix for the miss is the obvious first attempt
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.host
+    status: open
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.canonicaliser
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.hide-redirect
+  name: A hidden file's parent directory becomes a link before the child mounts, so the empty file system or /dev/null
+    cover lands on an unrelated path and the secret stays readable
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-59
+  - CWE-367
+  risk:
+    impact: 90
+    impactComment: credentials the policy hides become readable, and an unrelated path is covered
+    likelihood: 45
+    likelihoodComment: same race as the protect bind, on hide and data-class covers
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    - asset.plan
+    status: open
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.child-mounts
+    - flow.mount
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.kernel-fallback
+  name: On a kernel without the system calls to resolve without following links or to mount by descriptor, the backend
+    falls back to path mounts without an error
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    impactComment: the race silently reopens on those kernels
+    likelihood: 25
+    likelihoodComment: T1 kernels vary; a fallback is tempting to keep old kernels working
+  attributes:
+    source: spec.md#Assumptions
+    assets:
+    - asset.host
+    status: open
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.resolver
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.mount-redirect
+  name: A concurrent caged run on the same workspace replaces a component of a protected path with a symbolic link
+    between the parent's plan and the child's mounts, so the read-only bind lands elsewhere and the protected path
+    stays writable
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-59
+  - CWE-367
+  risk:
+    impact: 95
+    impactComment: protected files (tool config, hooks) become writable from inside the cage
+    likelihood: 45
+    likelihoodComment: needs a shared writable tree and a won race; the same class was exploitable in another sandbox's
+      setup
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    - asset.plan
+    status: open
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.child-mounts
+    - flow.mount
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.q-macos-race
+  name: '[NEEDS CLARIFICATION: is a link planted on macOS between canonicalisation and the child''s access in scope
+    here, or fully covered by R-02 and R-04 (rules bind targets; protected ancestors cannot be renamed)?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Out-of-Scope
+    assets:
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    disposition: needs-clarification
+    elements:
+    - component.canonicaliser
+    profile: stride
+    severity: unrated
+- id: threat.q-missing-leaf-spelling
+  name: '[NEEDS CLARIFICATION: on a case-insensitive volume the on-disk spelling of a path that does not exist yet
+    is unknown; is such a rule emitted as written, refused, or matched case-insensitively (FR-005)?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.host
+    status: open
+    actor: actor.consumer
+    disposition: needs-clarification
+    elements:
+    - component.canonicaliser
+    profile: stride
+    severity: unrated
+- id: threat.q-planned-root
+  name: '[NEEDS CLARIFICATION: which ancestor is the planned root that a mount path is resolved beneath, and how
+    are ancestors that are links on the host (resolved at plan time) treated?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.plan
+    status: open
+    actor: actor.contributor
+    disposition: needs-clarification
+    elements:
+    - component.resolver
+    profile: stride
+    severity: unrated
+- id: threat.resolve-then-remount
+  name: The backend checks for links and then mounts by path name again, so a component replaced after the check
+    still redirects the mount
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-367
+  risk:
+    impact: 95
+    impactComment: the fix looks present and the race stays open
+    likelihood: 30
+    likelihoodComment: 'an easy implementation slip: a no-follow check followed by a path-based mount'
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.host
+    - asset.plan
+    status: open
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.resolver
+    - component.child-mounts
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.source-redirect
+  name: A bind source (a grant bind, the source of a protect bind) is redirected through a planted link, so the
+    child sees content chosen by another run at a path it trusts
+  categories:
+  - Tampering
+  cwes:
+  - CWE-59
+  risk:
+    impact: 85
+    impactComment: the child, or a later unsandboxed reader, trusts substituted content
+    likelihood: 35
+    likelihoodComment: sources live in the same writable trees as targets
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.host
+    - asset.plan
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.child-mounts
+    - flow.mount
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.spawn-sabotage
+  name: A caged run plants links in a shared workspace so that every sibling run's spawn fails, now that a link
+    fails the spawn
+  categories:
+  - Denial of Service
+  risk:
+    impact: 35
+    impactComment: sibling runs stop until the link is removed
+    likelihood: 45
+    likelihoodComment: fail-closed by design; any run with write access can trigger it
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.harness
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.child-mounts
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.unicode-miss
+  name: A rule in composed Unicode and a name in decomposed form on disk (or the reverse) do not match, so the rule
+    silently misses the file
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-176
+  risk:
+    impact: 90
+    impactComment: same as a case miss
+    likelihood: 35
+    likelihoodComment: names typed on one system and created on another differ in form
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.host
+    status: open
+    actor: actor.consumer
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.canonicaliser
+    - flow.lower
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.vacuous-canary
+  name: The race canary never wins the race (timing, too few attempts), so zero redirected mounts after the change
+    proves nothing, or the spelling matrix skips when a disk image or case-folding directory is missing
+  categories:
+  - Repudiation
+  risk:
+    impact: 75
+    impactComment: a false green on the escape class and the published claim
+    likelihood: 45
+    likelihoodComment: races are timing-dependent; disk images and casefold need lane support
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.claim
+    - asset.host
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.canaries
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.claim-from-matrix
+  name: The published claim lists exactly the matrix cases, says Linux case-folding is untested where it is, and
+    the threat model gains the escape class with its canary
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.claim-overstates
+    status: required
+    kind: detective
+    requirements:
+    - SR-010
+    touchpoints:
+    - component.docs
+- id: mitigation.exact-or-refuse
+  name: The matrix measures what Seatbelt does per spelling; the canonicaliser emits the matching spelling or refuses
+    the rule with a typed error
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.case-miss
+    - threat.unicode-miss
+    status: required
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - component.canonicaliser
+- id: mitigation.mount-by-descriptor
+  name: The mount applies to the descriptor of the resolved object, never to the path name again
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.resolve-then-remount
+    - threat.mount-redirect
+    - threat.hide-redirect
+    status: required
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - component.child-mounts
+- id: mitigation.named-failure
+  name: The spawn error names the path, the component that is a link and the mount kind; vanished snapshot covers
+    keep their skip, declared mounts stay strict
+  riskReduction: 40
+  attributes:
+    threats:
+    - threat.spawn-sabotage
+    status: required
+    kind: detective
+    requirements:
+    - SR-006
+    touchpoints:
+    - component.child-mounts
+    - component.docs
+- id: mitigation.no-fallback
+  name: A kernel without the needed calls gives a typed error at cage build; there is no path-mount fallback
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.kernel-fallback
+    status: required
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - component.resolver
+- id: mitigation.no-follow-resolution
+  name: The parent prepares and the child resolves every source and target beneath its planned root without following
+    links in any component; a link fails the spawn with a typed error naming the path
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.mount-redirect
+    - threat.hide-redirect
+    - threat.source-redirect
+    status: required
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - component.resolver
+    - component.child-mounts
+- id: mitigation.no-widening
+  name: No rule is folded or normalised into a broader match; on a case-sensitive volume a rule covers its exact
+    name
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.fold-overgrant
+    status: required
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - component.canonicaliser
+- id: mitigation.race-canary
+  name: Escape canary per mount kind (protect, hide, data-class cover, socket cover, grant bind) with a deterministic
+    link-planting hook as positive control and 10,000 racing attempts, run before and after the change
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.vacuous-canary
+    - threat.mount-redirect
+    - threat.hide-redirect
+    - threat.source-redirect
+    status: required
+    kind: detective
+    requirements:
+    - SR-001
+    touchpoints:
+    - component.canaries
+- id: mitigation.spelling-matrix
+  name: Caged matrix on case-insensitive and case-sensitive APFS, composed and decomposed names, nested links, missing
+    leaves and firmlinks, and a Linux case-folding directory where the lane has one; fails, never skips
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.vacuous-canary
+    - threat.case-miss
+    - threat.unicode-miss
+    status: required
+    kind: detective
+    requirements:
+    - SR-009
+    touchpoints:
+    - component.canaries
+- id: mitigation.syscalls-only
+  name: Every path and buffer is prepared in the parent; the child's sequence is listed in the plan and tested with
+    a multithreaded parent
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.child-unsafe
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.child-mounts
+requirements:
+- id: SR-001
+  statement: An escape canary MUST, for each T1 mount kind (protect, hide, data-class cover, socket cover, grant
+    bind), replace a source or target component with a symbolic link between plan and mount, both at a deterministic
+    hook and in at least 10,000 racing attempts, and MUST record the outcome before and after the change.
+  priority: P1
+  mitigations:
+  - mitigation.race-canary
+  acceptance:
+  - given: the build before the change and the deterministic hook
+    then: the canary records whether the mount was redirected
+    when: the link is planted for each mount kind
+  - given: the build after the change
+    then: no spawn runs with a redirected mount
+    when: 10,000 racing attempts run per mount kind
+  tasks: []
+- id: SR-002
+  statement: On T1 every mount source and target MUST be resolved beneath its planned root without following a symbolic
+    link in any component; a link MUST fail the spawn with a typed error naming the path, even when the link points
+    into a path the child may write.
+  priority: P1
+  mitigations:
+  - mitigation.no-follow-resolution
+  acceptance:
+  - given: a protected directory replaced by a link to another directory before the child mounts
+    then: it fails with an error naming the path and the link target is unchanged
+    when: the spawn runs
+  - given: a hidden file whose parent directory became a link
+    then: it fails the same way
+    when: the spawn runs
+  - given: a grant bind whose source became a link into the writable workspace
+    then: it fails the same way
+    when: the spawn runs
+  tasks: []
+- id: SR-003
+  statement: The mount MUST apply to exactly the object resolved; no step MUST resolve the path name again after
+    the no-follow resolution.
+  priority: P1
+  mitigations:
+  - mitigation.mount-by-descriptor
+  acceptance:
+  - given: a hook that replaces a component after resolution and before the mount call
+    then: the mount lands on the originally resolved object, or the spawn fails; never on the link target
+    when: the child mounts
+  tasks: []
+- id: SR-004
+  statement: If the kernel lacks a call needed to resolve without following links or to mount by descriptor, the
+    cage MUST fail with a typed error at build time and MUST NOT fall back to mounting by path.
+  priority: P1
+  mitigations:
+  - mitigation.no-fallback
+  acceptance:
+  - given: a T1 test where the needed call returns ENOSYS
+    then: it fails with a typed error naming the call, and no child runs
+    when: the cage is built
+  tasks: []
+- id: SR-005
+  statement: The child's mount sequence MUST issue system calls only, with every path and buffer prepared in the
+    parent, and MUST be covered by the multithreaded spawn test.
+  priority: P2
+  mitigations:
+  - mitigation.syscalls-only
+  acceptance:
+  - given: a parent whose other threads allocate and lock continuously
+    then: all complete and the child sequence contains no allocation (review of the sys module)
+    when: 1,000 T1 spawns run with the new sequence
+  tasks: []
+- id: SR-006
+  statement: A spawn failed by a link MUST name the path, the component that is a link and the mount kind; vanished
+    snapshot covers MUST keep being skipped and declared mounts MUST stay strict.
+  priority: P2
+  mitigations:
+  - mitigation.named-failure
+  acceptance:
+  - given: a planted link
+    then: the error names the path, the linked component and the mount kind
+    when: the spawn fails
+  - given: the existing spawn and escape suites
+    then: they pass unchanged
+    when: they run
+  tasks: []
+- id: SR-007
+  statement: On macOS a rule whose spelling differs from the on-disk name (case on a case-insensitive volume, Unicode
+    form) MUST either enforce on the file under every spelling the volume treats as the same name, or the cage MUST
+    be refused with a typed error naming the rule; it MUST NOT silently match nothing.
+  priority: P1
+  mitigations:
+  - mitigation.exact-or-refuse
+  acceptance:
+  - given: a case-insensitive APFS volume and a read deny spelled in another case than on disk
+    then: it is denied, or the cage was refused
+    when: the child reads the file by its on-disk spelling
+  - given: a name decomposed on disk and composed in the rule
+    then: the result equals that of the on-disk spelling, or the cage was refused
+    when: the child accesses it
+  tasks: []
+- id: SR-008
+  statement: No rule MUST be widened by case folding or normalisation; on a case-sensitive volume a rule MUST cover
+    only its exact name.
+  priority: P1
+  mitigations:
+  - mitigation.no-widening
+  acceptance:
+  - given: a case-sensitive APFS disk image with files A and a and a write grant for a
+    then: the write is denied
+    when: the child writes A
+  tasks: []
+- id: SR-009
+  statement: The spelling matrix MUST run as caged tests on a case-insensitive and a case-sensitive APFS volume
+    with composed and decomposed names, nested links, missing leaves and firmlinks, and on a Linux case-folding
+    directory where the lane supports one; a macOS lane that cannot create the disk image MUST fail, not skip.
+  priority: P1
+  mitigations:
+  - mitigation.spelling-matrix
+  acceptance:
+  - given: each macOS lane
+    then: every case enforces as intended or is refused
+    when: the matrix runs
+  - given: a macOS lane where the disk image cannot be created
+    then: it fails
+    when: the matrix runs
+  tasks: []
+- id: SR-010
+  statement: The published canonicalisation claim MUST list exactly the cases the matrix covers and say where Linux
+    case-folding is untested, and the threat model MUST carry the escape class for setup that follows a planted
+    link with the race canary as evidence.
+  priority: P2
+  mitigations:
+  - mitigation.claim-from-matrix
+  acceptance:
+  - given: the claim and the matrix
+    then: every claimed case has a test and every test a claim
+    when: they are compared
+  - given: the threat model
+    then: it lists the class with the race canary
+    when: it is read
+  tasks: []
+verification: []
+decisions: []

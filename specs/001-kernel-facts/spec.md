@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-29
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "001-kernel-facts — Workspace + tests/kernel_facts: every verified fact from the earlier macOS and Linux research becomes a regression test on real kernels. Closes the open kernel questions: path A layout (macOS lanes), compile-abort threshold (soft limit bisection), extension ordering, TIOCSTI; Linux probe skeleton; CI matrix (macOS + Linux lanes, outside-sandbox rule); justfile, deny, MSRV."
 

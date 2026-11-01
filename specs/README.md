@@ -45,9 +45,61 @@ without a task); `converge` records how each requirement was verified and is
 clean only when every one is. A claim procage makes about enforcement is
 backed by a caged test on a real kernel, never by the profile text alone.
 
+## Index
+
+### Shipped in 0.1.0
+
+| Record | Change |
+|---|---|
+| [001-kernel-facts](001-kernel-facts/spec.md) | Kernel facts as regression tests |
+| [002-threat-model](002-threat-model/spec.md) | Published threat model and escape-class contract |
+| [003-policy-ir](003-policy-ir/spec.md) | Portable policy IR and its lowering to each backend |
+| [004-spawn-macos](004-spawn-macos/spec.md) | Spawn a caged child on macOS |
+| [005-hygiene](005-hygiene/spec.md) | Process hygiene for caged children |
+| [006-base-profile](006-base-profile/spec.md) | A base profile that lets ordinary programs start |
+| [007-hard-deny-and-presets](007-hard-deny-and-presets/spec.md) | Data-driven hard denies and frozen presets |
+| [008-spawn-linux](008-spawn-linux/spec.md) | Spawning a caged child on Linux |
+| [009-escape-suite](009-escape-suite/spec.md) | The escape suite |
+| [010-violations](010-violations/spec.md) | Violations — what the sandbox denied, and why |
+| [024-lifetime](024-lifetime/spec.md) | Lifetime — nothing a run starts outlives it |
+| [026-consumer-api](026-consumer-api/spec.md) | Consumer API before the freeze |
+| [027-base-v2](027-base-v2/spec.md) | Base profile V2 — developer tools work in a cage |
+| [028-linux-gaps](028-linux-gaps/spec.md) | Unix sockets under trees, and hiding on Linux T2 |
+| [029-exec-entry](029-exec-entry/spec.md) | Exec entry — a helper becomes the caged command |
+| [030-older-kernels](030-older-kernels/spec.md) | Older Linux kernels — honest confinement from Landlock ABI 1 |
+| [032-fit](032-fit/spec.md) | Fitting a policy to the host |
+| [034-linux-violations](034-linux-violations/spec.md) | Linux violations — exact reports of refused system calls |
+| [036-base-v3](036-base-v3/spec.md) | Base V3 and quiet records |
+| [037-public-design-records](037-public-design-records/spec.md) | Public design records |
+| [038-snapshot-covers-and-report-loss](038-snapshot-covers-and-report-loss/spec.md) | Vanished snapshot covers and honest report loss |
+
+### Specified, not yet built
+
+Drafts: requirements and decisions taken; plans and tasks follow when a
+change is picked up. Grouped by the release they are aimed at.
+
+| Record | Change | Aimed at |
+|---|---|---|
+| [039-ci-lanes](039-ci-lanes/spec.md) | CI lanes for the releases people run | 0.1.x |
+| [040-path-resolution](040-path-resolution/spec.md) | Path resolution that cannot be redirected or mis-spelled | 0.1.x |
+| [041-service-sockets](041-service-sockets/spec.md) | No service handoff over Unix sockets | 0.2.0 |
+| [011-receipts](011-receipts/spec.md) | Receipts — evidence of how a run was caged | 0.2.0 |
+| [042-explain](042-explain/spec.md) | Explain and diff, checked against the kernel | 0.2.0 |
+| [023-tree-audit](023-tree-audit/spec.md) | Audit of the writable trees, before and after a run | 0.2.0 |
+| [025-introspection](025-introspection/spec.md) | Other processes stay opaque | 0.2.0 |
+| [043-benchmarks](043-benchmarks/spec.md) | Published spawn benchmarks | 0.2.0 |
+| [013-tokio](013-tokio/spec.md) | Async integration (tokio) | 0.3.0 |
+| [016-proxy](016-proxy/spec.md) | Egress proxy with a domain allowlist | 0.3.0 |
+| [044-kernel-matrix](044-kernel-matrix/spec.md) | Kernel matrix and newer Landlock ABIs | 0.3.0 |
+| [022-pty](022-pty/spec.md) | A fresh pseudo-terminal for interactive runs | 0.4.0 |
+| [017-grant-on-denial](017-grant-on-denial/spec.md) | Grant on denial | 0.4.0 |
+| [020-python](020-python/spec.md) | Python bindings | 0.5.0 |
+
 ## Reading order
 
 Start with [001-kernel-facts](001-kernel-facts/spec.md) (what the kernels
 really do) and [002-threat-model](002-threat-model/spec.md) (what procage
 defends against), then any change that interests you. Numbers are
-allocation order; gaps belong to changes that are not public or not started.
+allocation order; gaps belong to changes that are not public, not started,
+or waiting for a trigger (a helper binary for macOS, importing existing
+Seatbelt profiles).

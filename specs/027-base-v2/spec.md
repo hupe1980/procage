@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-31
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "027-base-v2: macOS `Base::V2`: `com.apple.bsd.dirhelper` and other services measured from consumer workloads; V1 stays frozen. Research it; we want a great developer experience."
 

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-31
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "029-exec-entry: Self-confine-then-exec entry for helper processes (a blocker for a consumer harness): apply the cage to the calling (single-threaded) process and `exec` the target, so a helper *becomes* the command and the caller's process-group and kill semantics hold; both systems, with the lifetime trade-offs of feature 024 stated. Research it; we want a great developer experience."
 

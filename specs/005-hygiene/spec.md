@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "005-hygiene: fds, env allowlist, `setsid`/tty, process group / kill-on-drop, rlimits — shared by both backends; canaries R-21…R-26."
 

@@ -1,0 +1,828 @@
+otmVersion: 0.2.0
+project:
+  id: 042-explain
+  name: Explain and diff, checked against the kernel
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child, whose denied operations become explain questions
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer or user of a harness who asks why an operation was denied and changes the policy
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the evaluator, the diff, the oracle or the docs
+    trust: semi-trusted
+  - id: actor.policy-author
+    name: Author of a policy change under review, possibly code-generating tooling
+    trust: semi-trusted
+  - id: actor.reviewer
+    name: Reviewer of a policy or preset change who reads its diff
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface; explain and diff are pure functions over a plan
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit; questions and answers stay in the caller's process
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked component.evaluator and component.diff: both read an in-memory plan and write nothing; a changed
+      stored policy or preset is threat.diff-hides-loosening'
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: single user; a question is asked of the caller's own policy
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:15:36Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: d3da7d6b06d23b68e63e3ddb78dee58ddf969a2e9bd99571afac3ad310faa3d3
+  surfaces:
+  - external-input
+  - authorization
+  - persistent-store
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness process, and the CI lanes that run the oracle
+  risk:
+    trustRating: 90
+- id: tz.kernel
+  name: The enforcing kernel (Seatbelt and sandbox_check on macOS; Landlock and seccomp on Linux)
+  risk:
+    trustRating: 95
+- id: tz.repo
+  name: Where policies and frozen presets are stored and reviewed
+  risk:
+    trustRating: 60
+assets:
+- id: asset.answer
+  name: An explain answer (decision, deciding rule, what would change it) a user acts on
+  risk:
+    availability: 20
+    confidentiality: 30
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#Key-Entities
+    classification: internal
+- id: asset.diff
+  name: The diff a reviewer approves a policy or preset change on
+  risk:
+    availability: 20
+    confidentiality: 10
+    integrity: 95
+  attributes:
+    type: capability
+    source: spec.md#US2
+    classification: internal
+- id: asset.harness
+  name: The harness's time and memory spent on explain and diff
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 10
+  attributes:
+    type: capability
+    source: spec.md#SC-003
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+components:
+- id: component.diff
+  name: diff between two policies for one target (policy crate)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.docs
+  name: Explain docs and the list of oracle-proven operations
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-006
+- id: component.evaluator
+  name: explain over a lowered plan (policy crate, no_std)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.oracle
+  name: Differential oracle suite (sandbox_check for proven operations, caged children otherwise)
+  type: service
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-004
+- id: component.query
+  name: Question construction and the canonical-path check
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Clarifications
+dataflows:
+- id: flow.answer
+  name: The answer reaches the user, who may change the policy
+  source: component.evaluator
+  destination: actor.consumer
+  assets:
+  - asset.answer
+  - asset.host
+  attributes:
+    crosses: []
+- id: flow.claims
+  name: The docs tell the user which answers are proven
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.answer
+  attributes:
+    crosses: []
+- id: flow.compare
+  name: The oracle compares the evaluator's answers with the kernel's
+  source: component.evaluator
+  destination: component.oracle
+  assets:
+  - asset.answer
+  attributes:
+    crosses: []
+- id: flow.diff
+  name: The diff reaches the reviewer
+  source: component.diff
+  destination: actor.reviewer
+  assets:
+  - asset.diff
+  - asset.host
+  attributes:
+    crosses: []
+- id: flow.kernel-answer
+  name: The kernel answers the same questions (sandbox_check or a caged child's observed result)
+  source: tz.kernel
+  destination: component.oracle
+  assets:
+  - asset.answer
+  attributes:
+    crosses:
+    - tz.kernel
+    - tz.harness
+- id: flow.policies
+  name: Two stored policies or preset versions reach the diff
+  source: tz.repo
+  destination: component.diff
+  assets:
+  - asset.diff
+  attributes:
+    crosses:
+    - tz.repo
+    - tz.harness
+- id: flow.question
+  name: A checked question reaches the evaluator with the target and grants
+  source: component.query
+  destination: component.evaluator
+  assets:
+  - asset.answer
+  attributes:
+    crosses: []
+- id: flow.violation-question
+  name: A denied operation of the caged code becomes a question
+  source: tz.cage
+  destination: component.query
+  assets:
+  - asset.answer
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+threats:
+- id: threat.answer-reveals-rules
+  name: A harness relays answers into the cage, and a deciding rule's pattern wider than the path asked tells caged
+    code which hidden or protected paths exist
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    impact: 40
+    likelihood: 30
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.answer
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    elements:
+    - flow.answer
+    - component.docs
+    profile: stride
+    severity: low
+    technique: sensitive-data-exposure
+- id: threat.canonicalisation-owner
+  name: '[NEEDS CLARIFICATION: the portable evaluator cannot read the file system; which layer resolves a symlinked
+    component that is not a known alias, and what does the policy crate alone refuse?]'
+  categories:
+  - Tampering
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.answer
+    status: open
+    actor: actor.consumer
+    disposition: needs-clarification
+    elements:
+    - component.query
+    profile: stride
+    severity: unrated
+    technique: injection
+- id: threat.diff-hides-loosening
+  name: diff misses a newly allowed operation (an overlapping subpath or glob, a waiver, a base or preset version
+    change, network, process or signal rules), so a reviewer approves a loosening
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-697
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.diff
+    - asset.host
+    status: open
+    actor: actor.policy-author
+    constitution: VII. A library, not a harness (loosening a frozen preset is a breaking change)
+    elements:
+    - component.diff
+    - flow.policies
+    - flow.diff
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.evaluator-exhaustion
+  name: A crafted policy or question (deep globs, many overlapping rules, a very long path) makes explain or diff
+    run unbounded in the harness
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-400
+  - CWE-1333
+  risk:
+    impact: 40
+    likelihood: 30
+  attributes:
+    source: spec.md#SC-003
+    assets:
+    - asset.harness
+    status: open
+    actor: actor.policy-author
+    elements:
+    - component.evaluator
+    - component.diff
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.false-denied
+  name: explain answers denied, protected or hidden for an operation the kernel allows (a T1 path created after
+    spawn, a grant left out, an undocumented Seatbelt or Landlock rule), so the user trusts a protection that does
+    not hold
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-697
+  risk:
+    impact: 85
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.host
+    - asset.answer
+    status: open
+    actor: actor.consumer
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.evaluator
+    - flow.answer
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.misleading-remedy
+  name: explain names an allow the kernel does not honour, the wrong deciding rule, or a remedy wider than the question
+    (a subpath over the home directory, a waiver), so the user weakens the policy more than needed
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-732
+  risk:
+    impact: 70
+    likelihood: 45
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    - asset.answer
+    status: open
+    actor: actor.consumer
+    elements:
+    - component.evaluator
+    - flow.answer
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.non-canonical-query
+  name: A question path spelled through an alias, firmlink, symlink or dot component, or carrying pattern characters
+    from a child-controlled violation path, is answered as if canonical and literal, so the answer is about a different
+    file (R-02, R-03, R-12)
+  categories:
+  - Tampering
+  cwes:
+  - CWE-41
+  - CWE-155
+  risk:
+    impact: 75
+    likelihood: 40
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.answer
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.query
+    - flow.violation-question
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.oracle-overclaim
+  name: The oracle or the docs claim proof the oracle does not give (sandbox_check used for an unproven operation,
+    ENOENT counted as agreement, a lane that skips, rule kinds no generated question reaches)
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-1068
+  risk:
+    impact: 80
+    likelihood: 35
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.answer
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.oracle
+    - flow.kernel-answer
+    - component.docs
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.proof-marker
+  name: '[NEEDS CLARIFICATION: does each answer say whether its operation is oracle-proven on that target, or only
+    the docs?]'
+  categories:
+  - Repudiation
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.answer
+    status: open
+    actor: actor.consumer
+    disposition: needs-clarification
+    elements:
+    - component.evaluator
+    - component.docs
+    profile: stride
+    severity: unrated
+    technique: missing-audit-trail
+- id: threat.single-target-diff
+  name: '[NEEDS CLARIFICATION: diff is per target; how does a reviewer see a change that loosens only one target
+    or one Linux tier?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.diff
+    status: open
+    actor: actor.reviewer
+    disposition: needs-clarification
+    elements:
+    - component.diff
+    profile: stride
+    severity: unrated
+    technique: privilege-escalation-via-config
+- id: threat.unmodelled-guess
+  name: An operation explain does not model falls through to the default or the base and comes back as denied or
+    allowed instead of not modelled
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-1023
+  risk:
+    impact: 60
+    likelihood: 35
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.answer
+    status: open
+    actor: actor.contributor
+    elements:
+    - component.evaluator
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.bounded-evaluation
+  name: explain is linear in the plan; diff has a documented bound and refuses beyond it
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.evaluator-exhaustion
+    status: required
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - component.evaluator
+    - component.diff
+- id: mitigation.canonical-question
+  name: Questions take a canonical-path type; lexical and known-alias spellings are refused naming the canonical
+    form; pattern characters stay literal
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.non-canonical-query
+    status: required
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - component.query
+- id: mitigation.closed-operations
+  name: A closed set of modelled operations; anything else answers not modelled
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.unmodelled-guess
+    status: required
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - component.evaluator
+- id: mitigation.differential-oracle
+  name: Generated questions per preset, target and rule kind, asked of the kernel on every lane; any disagreement
+    or unresolved outcome fails and names the question; no skip
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.false-denied
+    - threat.oracle-overclaim
+    - threat.misleading-remedy
+    status: required
+    kind: detective
+    requirements:
+    - SR-001
+    - SR-002
+    touchpoints:
+    - component.oracle
+    - component.evaluator
+- id: mitigation.full-question
+  name: Questions carry the target, tier and grants; T1 answers outside the spawn-time covers say covered at spawn
+    with the limits
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.false-denied
+    status: required
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - component.query
+    - component.evaluator
+- id: mitigation.minimal-remedy
+  name: The suggested change is the narrowest that flips the question, checked by applying it and diffing
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.misleading-remedy
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.evaluator
+    - component.diff
+- id: mitigation.proven-list
+  name: The docs' list of proven operations is checked against the oracle suite; nothing else is called proven
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.oracle-overclaim
+    status: required
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - component.docs
+    - component.oracle
+- id: mitigation.relay-guidance
+  name: The docs say an answer names the deciding rule and is for the user, not to be relayed into the cage unfiltered
+  riskReduction: 50
+  attributes:
+    threats:
+    - threat.answer-reveals-rules
+    status: required
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - component.docs
+- id: mitigation.sound-diff
+  name: diff is checked against explain on generated policy pairs, covers every rule dimension, and lists what it
+    does not compare
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.diff-hides-loosening
+    status: required
+    kind: detective
+    requirements:
+    - SR-008
+    touchpoints:
+    - component.diff
+    - component.evaluator
+requirements:
+- id: SR-001
+  statement: On every CI lane, a differential oracle MUST ask the kernel at least 1,000 generated questions per
+    preset and target, reaching every rule kind (allow, protect, hide, hard-deny class, base, default, grant, T1
+    cover), for every operation listed as proven, and MUST fail naming the question on any disagreement; a lane
+    that cannot confine its children MUST fail, never skip.
+  priority: P1
+  mitigations:
+  - mitigation.differential-oracle
+  acceptance:
+  - given: the oracle suite on each lane
+    then: every rule kind is reached, at least 1,000 questions per preset and target are asked, and all agree
+    when: it runs
+  - given: an evaluator mutated to flip the decision of one rule kind
+    then: it fails and names a question of that kind
+    when: the oracle runs
+  - given: a lane that is itself sandboxed
+    then: it fails with AlreadySandboxed
+    when: the oracle starts
+  tasks: []
+- id: SR-002
+  statement: The oracle MUST classify a kernel outcome as allowed, denied or unresolved (absent file, other error),
+    MUST fail on an unresolved question rather than count it as agreement, and MUST use sandbox_check only for operations
+    a kernel fact proves reliable.
+  priority: P1
+  mitigations:
+  - mitigation.differential-oracle
+  acceptance:
+  - given: a question about a file that does not exist
+    then: the question is unresolved and the suite fails unless the generator creates the file first
+    when: the caged child observes ENOENT
+  - given: an operation without a kernel fact for sandbox_check
+    then: it uses a caged child's observed result
+    when: the oracle checks it
+  tasks: []
+- id: SR-003
+  statement: The docs MUST list, per target, exactly the operations the oracle suite proves, and MUST NOT call any
+    other answer proven.
+  priority: P1
+  mitigations:
+  - mitigation.proven-list
+  acceptance:
+  - given: the docs list and the oracle suite's covered operations
+    then: they are equal per target
+    when: a test compares them
+  tasks: []
+- id: SR-004
+  statement: A question MUST carry the target, the Linux tier and the per-spawn grants; on Linux T1 a path outside
+    the spawn-time covers MUST answer covered at spawn with the cover's limits, never a plain denied.
+  priority: P1
+  mitigations:
+  - mitigation.full-question
+  acceptance:
+  - given: a protected directory on T1 and a file created in it after spawn
+    then: the answer says covered at spawn and names the limit, and the oracle agrees with the kernel's observed
+      result
+    when: a write to it is explained
+  - given: a path outside the policy and a grant for it
+    then: it is allowed by the grant with it and denied by the deciding rule without it, as the kernel observes
+    when: it is explained with and without the grant
+  tasks: []
+- id: SR-005
+  statement: What would change an answer MUST be the narrowest change that flips that question (a literal rule or
+    grant for the path asked, a waiver by class only when a hard-deny class decides), and MUST name every other
+    question it also flips.
+  priority: P1
+  mitigations:
+  - mitigation.minimal-remedy
+  acceptance:
+  - given: every generated denied question of a preset
+    then: the question flips and the diff lists only the path asked, or exactly the questions the suggestion names
+    when: its suggested change is applied and the old and new policies are diffed
+  - given: a write to .git/hooks/x
+    then: the answer is denied by hard deny trust-handoff and names that waiver, and no subpath grant
+    when: explained
+  tasks: []
+- id: SR-006
+  statement: explain MUST accept only a canonical absolute path; a relative path, dot or dot-dot components, repeated
+    separators, a trailing separator and a known alias or firmlink spelling MUST return an error naming the canonical
+    form; pattern characters in a question path MUST stay literal.
+  priority: P1
+  mitigations:
+  - mitigation.canonical-question
+  acceptance:
+  - given: /etc/hosts on macOS and /a/../b
+    then: each is an error naming /private/etc/hosts and /b
+    when: they are explained
+  - given: a path containing * and [ under a protect rule for a sibling
+    then: the answer is about that literal path only, and the oracle agrees
+    when: it is explained
+  tasks: []
+- id: SR-007
+  statement: An operation outside the modelled set MUST return not modelled, never allowed, denied or a default.
+  priority: P2
+  mitigations:
+  - mitigation.closed-operations
+  acceptance:
+  - given: each operation kind the kernel knows and explain does not model
+    then: the answer is not modelled
+    when: it is explained under every preset
+  tasks: []
+- id: SR-008
+  statement: For two policies on one target, every question whose explain answers differ MUST be covered by a diff
+    entry naming its direction; changes to waivers, the base, the preset version, network, process and signal rules
+    MUST appear; anything diff does not compare MUST be listed as not compared, never as unchanged.
+  priority: P1
+  mitigations:
+  - mitigation.sound-diff
+  acceptance:
+  - given: generated policy pairs and generated questions
+    then: a diff entry covers that question with the right direction
+    when: explain disagrees between the two for a question
+  - given: a policy and the same policy with one more writable path, or one more waiver
+    then: the diff names that path and its operations only, or that class and its operations only
+    when: they are diffed
+  - given: every frozen preset pair vN and vN+1
+    then: the result matches the changelog entry of that version
+    when: diffed
+  tasks: []
+- id: SR-009
+  statement: explain MUST run in time linear in the plan size and under 1 ms per question on the reference machine;
+    diff MUST have a documented bound on pattern pairs and MUST return an error beyond it instead of running unbounded.
+  priority: P3
+  mitigations:
+  - mitigation.bounded-evaluation
+  acceptance:
+  - given: the largest preset and a path of the maximum length with deep globs in the policy
+    then: it answers in under 1 ms
+    when: explain is benchmarked
+  - given: two policies over the diff bound
+    then: diff returns the bound error
+    when: diffed
+  tasks: []
+- id: SR-010
+  statement: The explain docs MUST state that an answer names the deciding rule and is meant for the user, and that
+    a harness MUST NOT relay it into the cage unfiltered.
+  priority: P3
+  mitigations:
+  - mitigation.relay-guidance
+  acceptance:
+  - given: the crate docs and the site page on explain
+    then: both say so
+    when: they describe answers
+  tasks: []
+verification: []
+decisions: []

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-31
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "028-linux-gaps: Linux: `Hide` on T2 by enumerating readable siblings as a consumer harness's builtin engine does; keep `AF_UNIX` while denying IP below Landlock ABI 9; a portable network setting for Unix sockets under trees (macOS by subpath filters on the network operations, moved from 026). Research it; we want a great developer experience."
 

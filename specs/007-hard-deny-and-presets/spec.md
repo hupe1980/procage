@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "007-hard-deny-and-presets: Hard-deny tier (both OSes), secrets/trust-handoff data files, `minimal`, `build`, `agent_workspace`, `agent_readonly` as frozen `V1`, waivers overridable by name."
 

@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: Two defects found while a consumer harness adopted violation reporting: Linux tier T1 spawns failed when a file vanished during the spawn, and the macOS docs promised more completeness than the system delivers.
 

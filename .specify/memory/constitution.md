@@ -77,9 +77,9 @@ A caged child receives:
 - no inherited controlling terminal, unless the caller asked for one;
 - rlimits.
 
-The child and its descendants do not outlive the run. A helper binary that
-procage executes is write-protected by every policy and digest-checked before
-use.
+The child and its descendants do not outlive the run. When procage ships a
+helper binary, it is write-protected by every policy and digest-checked before
+use; procage's own setup never follows a link the child could have planted.
 
 Checked by escape-suite canaries for fds, env, tty, lifetime and helper integrity.
 
@@ -102,7 +102,8 @@ Checked by the probe tests and rustdoc review.
   in-memory compile cache, the run-marker slots (a per-process prefix and the
   slots in use, so concurrent runs stay apart without defeating the cache)
   and the violation monitor. Nothing else.
-- **No async runtime required**: tokio sits behind a feature.
+- **No async runtime required**: an async integration (tokio) only ever sits
+  behind an opt-in feature.
 - **Overridable defaults**: safe presets by default, but no opinion the caller
   cannot override, and every override is recorded.
 - **Presets are versioned and frozen**: loosening one is a breaking change.
@@ -110,8 +111,9 @@ Checked by the probe tests and rustdoc review.
 - **`procage-policy`** stays portable, `no_std` + `alloc`, and free of `unsafe`.
 - **Breaking changes** ship with a migration note for consumers.
 
-Checked by the MSRV, feature-matrix and `no_std` jobs, `cargo-semver-checks`
-and `cargo-deny`.
+Checked by the MSRV and `no_std` jobs, the all-features build of
+`procage-policy` (and of `procage` once it has features),
+`cargo-semver-checks` and `cargo-deny`.
 
 ## Development Workflow
 
@@ -131,7 +133,9 @@ and `cargo-deny`.
   the change records it, with its reason, in the same commit.
 - **Tests.** Run focused tests after each change, and `just ci` before merging.
 - **Authorization.** Do not create commits, branches, tags or releases without
-  the user's authorization. Releases go through crates.io Trusted Publishing only.
+  the user's authorization. Releases go through the release workflow only: a
+  pushed version tag publishes with the crates.io token of the protected
+  `release` environment.
 
 ## Governance
 
@@ -154,4 +158,13 @@ Evidence: the records are procage's evidence for its claims (threat models,
 measurements, verification). Affects every specification (rewritten, spec
 037-public-design-records).
 
-**Version**: 2.2.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-11-01
+2.3.0 (2026-11-01) aligns the constitution with the shipped repository:
+releases run through the release workflow and its protected token (Trusted
+Publishing was not adopted); the async rule is stated as "behind a feature,
+when it ships"; helper integrity applies when a helper ships, and setup
+never follows a link the child could plant (principle V); the feature check
+is named as it runs. Evidence: the 0.1.0 release and an audit of the
+constitution against the code. Affects the release workflow and specs
+040-path-resolution and 013-tokio.
+
+**Version**: 2.3.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-11-01

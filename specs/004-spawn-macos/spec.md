@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "004-spawn-macos: `macos::sys` (dlsym table), compile + in-memory cache + crash isolation, path A + probe, path B helper with integrity, status pipe, verify, `AlreadySandboxed`, extension grants."
 

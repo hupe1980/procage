@@ -1,0 +1,823 @@
+otmVersion: 0.2.0
+project:
+  id: 023-tree-audit
+  name: Audit of the writable trees, before and after a run
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child, or content it left in the trees in an earlier run
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that runs cages and reviews what they leave behind
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the audits, the spawn path or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit; both audits read the local file system in the parent
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: single user; runs that share a writable tree belong to one principal, and the audit lists changes by
+      any writer (documented edge case)
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:14:20Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: 191abb9459b29cd36daf4301ac3f1e1eb01e30dcdbd6ba4e854fc1614ee9ccd9
+  surfaces:
+  - external-input
+  - audit-relevant
+  - authorization
+  - persistent-store
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages and runs the audits
+  risk:
+    trustRating: 90
+- id: tz.host-tools
+  name: Unsandboxed programs that later run or follow what the writable trees hold (version control, editors, agents,
+    build tools)
+  risk:
+    trustRating: 60
+assets:
+- id: asset.findings
+  name: 'The audit result the harness reviews before trusting the trees: link and handoff findings, mode and completeness'
+  risk:
+    availability: 40
+    confidentiality: 30
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#Key-Entities
+    classification: internal
+- id: asset.harness
+  name: 'The harness process: memory, threads and the time the audits take'
+  risk:
+    availability: 60
+    confidentiality: 0
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#SC-003
+    classification: internal
+- id: asset.protected
+  name: Protected and hidden files the policy names (for example .git/config, an SSH key)
+  risk:
+    availability: 30
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#FR-001
+    classification: secret
+- id: asset.trees
+  name: The writable trees, whose trust-handoff files, symbolic links and repository metadata unsandboxed tools
+    later run or follow
+  risk:
+    availability: 40
+    confidentiality: 50
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#Context
+    classification: internal
+components:
+- id: component.docs
+  name: THREAT_MODEL, crate docs and site on R-07 and R-08
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-005
+- id: component.postrun
+  name: Post-run handoff audit in the parent (trust-handoff files, symbolic links, repository metadata)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.prerun
+  name: Pre-run link audit in the parent (writable trees against the protected and hidden set)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.receipt
+  name: Run receipt (spec 011) carrying the audit summary
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-006
+- id: component.snapshot
+  name: Snapshot of the writable trees taken at spawn
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Assumptions
+- id: component.spawn
+  name: Spawn path (fork, sandbox apply in the child, exec)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-004
+dataflows:
+- id: flow.claims
+  name: The docs tell the consumer what the audit proves
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.findings
+  attributes:
+    crosses: []
+- id: flow.confine
+  name: The cage confines the child to the policy, protected and hidden files included
+  source: component.spawn
+  destination: tz.cage
+  assets:
+  - asset.protected
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.findings
+  name: The audit result reaches the harness and its receipt
+  source: component.postrun
+  destination: actor.consumer
+  assets:
+  - asset.findings
+  attributes:
+    crosses: []
+- id: flow.handoff
+  name: Files, links and repository metadata the child wrote reach unsandboxed tools through the trees
+  source: tz.cage
+  destination: tz.host-tools
+  assets:
+  - asset.trees
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.host-tools
+- id: flow.prewalk
+  name: The pre-run audit walks the writable trees and refuses or allows the spawn
+  source: component.prerun
+  destination: component.spawn
+  assets:
+  - asset.protected
+  - asset.findings
+  attributes:
+    crosses: []
+- id: flow.walk
+  name: The post-run audit reads names, link targets and metadata the child chose, against the spawn snapshot
+  source: tz.cage
+  destination: component.postrun
+  assets:
+  - asset.trees
+  - asset.harness
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+threats:
+- id: threat.alias-missed
+  name: A hard link in a writable tree to a protected or hidden file (left by an earlier run or an unpacked archive)
+    escapes the pre-run audit (wrong inode set, other device, unread directory), so the child reads or writes the
+    file through its second name
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  cwes:
+  - CWE-62
+  risk:
+    comment: archives and earlier runs plant links easily; the alias defeats exactly the protect and hide rules
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.protected
+    status: open
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.prerun
+    - flow.prewalk
+    - flow.confine
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.audit-in-child
+  name: The audit walk is placed between fork and exec, allocating or locking in the child of a multithreaded parent,
+    so spawns deadlock
+  categories:
+  - Denial of Service
+  risk:
+    comment: excluded by the spec and the constitution; a refactor could still move it
+    impact: 60
+    likelihood: 15
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.harness
+    status: open
+    actor: actor.contributor
+    constitution: IV. Syscalls only between fork and exec
+    elements:
+    - component.spawn
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.audit-too-early
+  name: The post-run audit runs while a process of the run still writes (detached run, a descendant not yet killed),
+    so an artefact written after the walk is never listed
+  categories:
+  - Repudiation
+  risk:
+    comment: a descendant that sleeps past the audit is a simple evasion
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.findings
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.postrun
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.finding-injection
+  name: File names and link targets the child chose carry control characters or invalid UTF-8, so a lossy finding
+    names the wrong path or the harness display and log are injected
+  categories:
+  - Tampering
+  cwes:
+  - CWE-150
+  risk:
+    comment: the harness shows findings to a human who decides on them
+    impact: 50
+    likelihood: 40
+  attributes:
+    source: spec.md#Key-Entities
+    assets:
+    - asset.findings
+    status: open
+    actor: actor.caged-code
+    constitution: II. Types over strings
+    elements:
+    - flow.walk
+    - flow.findings
+    profile: stride
+    severity: medium
+    technique: injection
+- id: threat.mtime-reset
+  name: The child changes a trust-handoff file in place and resets its modification time (or keeps size and inode),
+    so the post-run audit compares equal to the snapshot and lists nothing
+  categories:
+  - Tampering
+  - Repudiation
+  cwes:
+  - CWE-345
+  risk:
+    comment: utimensat is one call for an adaptive child; an unlisted hook runs unsandboxed later
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#Assumptions
+    assets:
+    - asset.trees
+    - asset.findings
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.snapshot
+    - component.postrun
+    - flow.handoff
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.nc-links-during-run
+  name: '[NEEDS CLARIFICATION: does the post-run audit list hard links created during the run that alias a protected
+    or hidden file, or does only the next spawn''s pre-run audit catch them?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.protected
+    status: open
+    actor: actor.caged-code
+    disposition: needs-clarification
+    elements:
+    - component.postrun
+    profile: stride
+    severity: unrated
+    technique: broken-access-control
+- id: threat.nc-protected-set
+  name: '[NEEDS CLARIFICATION: how does the pre-run audit turn subpath and glob protect or hide rules into the inode
+    set it compares against (walk them too, under the same limit), and what happens when that set is incomplete?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.protected
+    status: open
+    actor: actor.caged-code
+    disposition: needs-clarification
+    elements:
+    - component.prerun
+    profile: stride
+    severity: unrated
+    technique: broken-access-control
+- id: threat.nc-readable-trees
+  name: '[NEEDS CLARIFICATION: does the pre-run audit also check readable (not writable) trees, since a hard link
+    to a hidden file inside a read-only grant reveals it just the same?]'
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.protected
+    status: open
+    actor: actor.caged-code
+    disposition: needs-clarification
+    elements:
+    - component.prerun
+    profile: stride
+    severity: unrated
+    technique: sensitive-data-exposure
+- id: threat.report-mode-silent
+  name: Report mode (the child runs with the alias reachable) applies by default, or without being recorded, so
+    a cage is silently weaker than its policy
+  categories:
+  - Elevation of Privilege
+  risk:
+    comment: a wrong default or a lost flag turns refuse into report for every caller
+    impact: 90
+    likelihood: 30
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.protected
+    - asset.findings
+    status: open
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.prerun
+    - component.receipt
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.silent-partial
+  name: The child floods a tree past the walk limit or makes a directory unreadable, and the audit returns a partial
+    list that reads as complete, or exhausts the harness
+  categories:
+  - Repudiation
+  - Denial of Service
+  risk:
+    comment: creating a million files or a mode-000 directory is trivial; a clean-looking list is trusted
+    impact: 70
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.findings
+    - asset.harness
+    status: open
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.prerun
+    - component.postrun
+    - flow.walk
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.status-overclaim
+  name: The threat model moves R-08 to mitigated or detected, or presents the post-run audit as preventing trust
+    handoff, without canaries on every lane, so a consumer stops reviewing what the run left
+  categories:
+  - Repudiation
+  risk:
+    comment: an empty audit is easy to read as proof of a clean tree
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.findings
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.walk-follows-link
+  name: A symbolic link the child planted makes an audit walk leave the tree (into the home directory) or loop,
+    so the parent reads outside the trees, reports foreign files or never finishes
+  categories:
+  - Information Disclosure
+  - Denial of Service
+  cwes:
+  - CWE-59
+  risk:
+    comment: link planting is the class this feature audits; the walk itself is the first follower
+    impact: 60
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.harness
+    - asset.findings
+    status: open
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    elements:
+    - component.prerun
+    - component.postrun
+    - flow.walk
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+mitigations:
+- id: mitigation.after-run-only
+  name: The post-run audit is available only once the run is over (child reaped, the run's processes killed); otherwise
+    it is incomplete with that reason
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.audit-too-early
+    status: required
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - component.postrun
+- id: mitigation.byte-paths
+  name: Findings keep paths and link targets as bytes; the serialised form round-trips them and the display escapes
+    control characters
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.finding-injection
+    status: required
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - component.postrun
+    - component.receipt
+- id: mitigation.ctime-snapshot
+  name: The spawn snapshot records inode, size, modification and status-change time; a file differs when any of
+    them differs, and the status-change time cannot be set by the child
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.mtime-reset
+    status: required
+    kind: detective
+    requirements:
+    - SR-003
+    touchpoints:
+    - component.snapshot
+    - component.postrun
+- id: mitigation.inode-match
+  name: The pre-run audit collects (device, inode) of every protected and hidden file and, in every writable tree,
+    every file with more than one link; a match is a finding naming both paths; R-08 canaries on every lane
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.alias-missed
+    status: required
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - component.prerun
+    - component.spawn
+- id: mitigation.measured-status
+  name: R-08 changes status only with non-ignored canaries on every lane; the docs say the post-run audit detects
+    and never prevents, that it lists changes by any writer, and that the harness still reviews the trees
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.status-overclaim
+    status: required
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - component.docs
+- id: mitigation.nofollow-walk
+  name: Walks use lstat and directory descriptors opened without following links, stay on the tree's device, and
+    read link targets with readlink only
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.walk-follows-link
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.prerun
+    - component.postrun
+- id: mitigation.parent-only
+  name: Both audits run in the parent before the fork and after the reap; the multithreaded spawn tests run with
+    the audit on
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.audit-in-child
+    status: required
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - component.spawn
+    - component.prerun
+- id: mitigation.refuse-default
+  name: Refuse is the default when the policy protects or hides files; report only when the caller chooses it by
+    name, recorded in the result and the receipt
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.report-mode-silent
+    status: required
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - component.prerun
+    - component.receipt
+- id: mitigation.typed-incomplete
+  name: Both walks count entries against a limit and treat any walk error as loss; past the limit or on loss the
+    result is a typed incomplete with how far it got, never a plain list
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.silent-partial
+    status: required
+    kind: detective
+    requirements:
+    - SR-004
+    touchpoints:
+    - component.prerun
+    - component.postrun
+requirements:
+- id: SR-001
+  statement: Before spawning, procage MUST find every file in a writable tree whose device and inode equal those
+    of a protected or hidden file, and in refuse mode the spawn MUST fail before the child runs, naming both paths.
+  priority: P1
+  mitigations:
+  - mitigation.inode-match
+  acceptance:
+  - given: a file in a writable tree hard-linked to a protected .git/config
+    then: the spawn fails naming the alias and the protected path, and the target never runs
+    when: the cage spawns in refuse mode, on macOS, Linux T1 and T2
+  - given: a hard link to a hidden file
+    then: the spawn fails the same way
+    when: the cage spawns in refuse mode
+  - given: a writable tree with hard links only between unprotected files
+    then: it runs and the audit has no link finding
+    when: the cage spawns
+  tasks: []
+- id: SR-002
+  statement: Refuse MUST be the default whenever the policy protects or hides files; report mode MUST be chosen
+    by the caller by name, and the mode and every link finding MUST be in the audit result and in the receipt when
+    receipts exist.
+  priority: P1
+  mitigations:
+  - mitigation.refuse-default
+  acceptance:
+  - given: a policy that protects files and no audit option set
+    then: the spawn is refused
+    when: a cage with an aliasing hard link spawns
+  - given: report mode chosen by the caller
+    then: the child runs, and the audit result and the receipt record report mode and list the link
+    when: the same cage spawns
+  tasks: []
+- id: SR-003
+  statement: The post-run audit MUST list each trust-handoff file created or modified, each symbolic link created
+    (with its target) and each repository metadata directory created in the writable trees exactly once, and MUST
+    detect a change by inode, size and status-change time, never by modification time alone.
+  priority: P1
+  mitigations:
+  - mitigation.ctime-snapshot
+  acceptance:
+  - given: a waived trust-handoff class and an existing .git/hooks/pre-commit
+    then: the audit lists it as modified
+    when: the child rewrites it with the same size and resets its modification time
+  - given: Linux T1 and a .vscode/settings.json that did not exist at spawn
+    then: the audit lists it as created
+    when: the child creates it
+  - given: a child that creates a symbolic link build pointing to the home directory and a nested .git directory
+    then: it lists the link with its target and the repository metadata, each once
+    when: the audit runs
+  - given: a run that touched nothing of these kinds
+    then: it is empty and complete
+    when: the audit runs
+  tasks: []
+- id: SR-004
+  statement: Both audits MUST stop at a walk limit and MUST return a typed incomplete result, with how far they
+    got, past the limit or when any entry cannot be read; an incomplete result MUST NOT be presentable as an empty
+    list.
+  priority: P1
+  mitigations:
+  - mitigation.typed-incomplete
+  acceptance:
+  - given: a child that creates more files than the walk limit
+    then: it returns incomplete with the count reached, within the time bound of SC-003 scaled to the limit
+    when: the post-run audit runs
+  - given: a child that makes a directory in the tree unreadable
+    then: the result is incomplete and names the directory
+    when: either audit runs
+  tasks: []
+- id: SR-005
+  statement: Audit walks MUST NOT follow symbolic links or cross to another device, and MUST read link targets without
+    resolving them.
+  priority: P1
+  mitigations:
+  - mitigation.nofollow-walk
+  acceptance:
+  - given: a child that creates a link loop pointing to its own directory and a link out pointing to the home directory
+    then: it terminates, lists both links with their targets, and lists nothing from the home directory
+    when: the post-run audit runs
+  - given: a protected file reachable only through a symbolic link in a writable tree
+    then: the link is not traversed and no file outside the tree is examined through it
+    when: the pre-run audit runs
+  tasks: []
+- id: SR-006
+  statement: The post-run audit MUST run only after the run is over (child reaped, every process of the run gone);
+    before that it MUST return incomplete with that reason.
+  priority: P2
+  mitigations:
+  - mitigation.after-run-only
+  acceptance:
+  - given: a detached run whose descendant still runs
+    then: it is incomplete because the run has not ended
+    when: the harness asks for the post-run audit
+  - given: a run with Lifetime::Run whose descendant writes a hook after the child exits
+    then: the descendant is gone and the hook is listed
+    when: the run ends and the audit runs
+  tasks: []
+- id: SR-007
+  statement: Findings MUST keep paths and link targets as exact bytes; their serialised form MUST round-trip them
+    and their display MUST escape control characters.
+  priority: P2
+  mitigations:
+  - mitigation.byte-paths
+  acceptance:
+  - given: a created file whose name holds a newline, an escape character and invalid UTF-8
+    then: the bytes are equal and the display shows the characters escaped
+    when: the finding is serialised, read back and displayed
+  tasks: []
+- id: SR-008
+  statement: Both audits MUST run in the parent, never between fork and exec in the child.
+  priority: P3
+  mitigations:
+  - mitigation.parent-only
+  acceptance:
+  - given: a multithreaded parent spawning many cages with both audits on
+    then: no spawn deadlocks and the child-side call sequence is unchanged
+    when: the spawn tests run
+  tasks: []
+- id: SR-009
+  statement: The threat model MUST change R-08's status only with non-ignored canaries on every lane, MUST record
+    R-07 as detected by the post-run audit and still a harness responsibility, and the docs MUST NOT present an
+    empty audit as proof that the trees are safe.
+  priority: P2
+  mitigations:
+  - mitigation.measured-status
+  acceptance:
+  - given: THREAT_MODEL, the crate docs and the site
+    then: R-08 names its canaries per lane, R-07 says the harness still reviews the trees, and no text calls an
+      empty audit proof
+    when: they describe R-07, R-08 and the audit
+  tasks: []
+verification: []
+decisions: []

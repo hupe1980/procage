@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "006-base-profile: macOS curated base profile per release vs `system.sb`; Linux minimal mount/Landlock base."
 

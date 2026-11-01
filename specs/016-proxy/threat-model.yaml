@@ -1,0 +1,1032 @@
+otmVersion: 0.2.0
+project:
+  id: 016-proxy
+  name: Egress proxy with a domain allowlist
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child, which crafts proxy requests and tries every route around the proxy
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that builds the allowlist and the proxy-only cage
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the proxy, the host parser or the network lowering
+    trust: semi-trusted
+  - id: actor.remote
+    name: Operator of a remote host or DNS zone, including one under an allowed name, who controls its DNS answers
+    trust: untrusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface; the proxy authenticates no client, injects no credentials and never terminates
+      TLS
+    technique: credential-theft
+  - disposition: no-threat-detected
+    reason: 'checked flow.request: the only identity that matters is which run a connection belongs to, covered
+      by threat.run-confusion and its open question'
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no store; the allowlist lives in memory and the proxy persists nothing
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage-proxy is a library that calls no model and runs no agent; LLM-written code is the adversary
+      inside the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:13:14Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: d95fe9b14fd2a30be1efd124d68d613df9830d398741a6be78aa32c99c6e288e
+  surfaces:
+  - external-input
+  - network-boundary
+  - authorization
+  - audit-relevant
+  - shared-tenant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness process, in which the proxy runs as a thread or task
+  risk:
+    trustRating: 90
+- id: tz.internet
+  name: Remote hosts and DNS servers on the internet
+  risk:
+    trustRating: 10
+- id: tz.kernel
+  name: The kernel (Seatbelt network rules on macOS, network namespace and Landlock on Linux)
+  risk:
+    trustRating: 95
+- id: tz.local-network
+  name: Loopback, private and link-local networks and cloud metadata services reachable from the host
+  risk:
+    trustRating: 40
+assets:
+- id: asset.allowlist
+  name: 'The allowlist: exact hosts, wildcard suffixes, optional ports and address ranges, and the decision it yields'
+  risk:
+    availability: 50
+    confidentiality: 10
+    integrity: 95
+  attributes:
+    type: capability
+    source: spec.md#Key-Entities
+    classification: internal
+- id: asset.harness
+  name: 'The harness process: threads, descriptors and memory the in-process proxy uses'
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#Clarifications
+    classification: internal
+- id: asset.host-data
+  name: The user's files, secrets and workspace content the child can read and could send out
+  risk:
+    availability: 10
+    confidentiality: 100
+    integrity: 30
+  attributes:
+    type: credential
+    source: spec.md#Input
+    classification: secret
+- id: asset.local-services
+  name: Services on loopback, private and link-local addresses and the cloud metadata endpoint (credentials, admin
+    APIs)
+  risk:
+    availability: 40
+    confidentiality: 90
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#FR-004
+    classification: secret
+- id: asset.payload
+  name: The bytes relayed between the child and an allowed host, usually TLS
+  risk:
+    availability: 30
+    confidentiality: 70
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#FR-007
+    classification: confidential
+- id: asset.record
+  name: The violations of the run, including refused host names, which the harness shows its user and may act on
+  risk:
+    availability: 30
+    confidentiality: 30
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#FR-005
+    classification: internal
+components:
+- id: component.allowlist
+  name: Allowlist builder and matcher (exact hosts, wildcard suffixes, ports, address ranges)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.cage-net
+  name: 'Proxy-only cage: Network::Proxy lowering on macOS, the network namespace on Linux T1, the capability gap
+    on T2'
+  type: library
+  description: '[NEEDS CLARIFICATION: how the parent provides the proxy listener inside the T1 network namespace
+    is left to the plan]'
+  parent:
+    trustZone: tz.kernel
+  attributes:
+    source: spec.md#FR-006
+- id: component.docs
+  name: THREAT_MODEL escape class for parser differentials, crate and site docs on what the allowlist proves
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-008
+- id: component.listener
+  name: procage-proxy listeners serving HTTP CONNECT, plain-HTTP absolute URIs and SOCKS5
+  type: service
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.parser
+  name: The one canonical host parser whose value is both checked and connected to
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.reporting
+  name: Refusal reporting into the violations of the requesting run
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-005
+- id: component.resolver
+  name: Resolution, the post-resolution address check and the outbound connect
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-004
+dataflows:
+- id: flow.check
+  name: The listener hands the parsed host to the allowlist and the resolver
+  source: component.listener
+  destination: component.resolver
+  assets:
+  - asset.allowlist
+  attributes:
+    crosses: []
+- id: flow.claims
+  name: The docs tell the consumer what a proxy-only cage and the allowlist prove
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.host-data
+  attributes:
+    crosses: []
+- id: flow.config
+  name: The harness builds the allowlist and the proxy-only cage
+  source: actor.consumer
+  destination: component.allowlist
+  assets:
+  - asset.allowlist
+  attributes:
+    crosses: []
+- id: flow.direct
+  name: The child tries to reach the network without the proxy (direct TCP, UDP, Fast Open, MPTCP, raw IP, DNS,
+    other ports)
+  source: tz.cage
+  destination: tz.internet
+  assets:
+  - asset.host-data
+  - asset.local-services
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.kernel
+    - tz.internet
+- id: flow.local
+  name: An outbound connect that lands on a loopback, private, link-local or metadata address
+  source: component.resolver
+  destination: tz.local-network
+  assets:
+  - asset.local-services
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.local-network
+- id: flow.refusal
+  name: A refusal is recorded in the violations of the run that made the request
+  source: component.listener
+  destination: component.reporting
+  assets:
+  - asset.record
+  attributes:
+    crosses: []
+- id: flow.request
+  name: The child sends a CONNECT, absolute-URI or SOCKS5 request to the proxy listener
+  source: tz.cage
+  destination: component.listener
+  assets:
+  - asset.allowlist
+  - asset.host-data
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+- id: flow.resolve
+  name: The resolver asks DNS for the addresses of an allowed name
+  source: component.resolver
+  destination: tz.internet
+  assets:
+  - asset.host-data
+  - asset.local-services
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.internet
+- id: flow.upstream
+  name: The proxy connects out and relays bytes between the child and the allowed host
+  source: component.resolver
+  destination: tz.internet
+  assets:
+  - asset.payload
+  - asset.host-data
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.internet
+threats:
+- id: threat.allowlist-fail-open
+  name: An empty allowlist, a bare wildcard or a single-label wildcard suffix (*.com) builds a proxy that allows
+    everything
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-636
+  risk:
+    impact: 90
+    impactComment: every host becomes reachable while the harness believes egress is confined
+    likelihood: 40
+    likelihoodComment: an empty allowlist allowing everything shipped in an agent sandbox (CVE-2025-66479)
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.allowlist
+    - asset.host-data
+    status: open
+    actor: actor.consumer
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.allowlist
+    - flow.config
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.allowlist-overclaim
+  name: The docs present the allowlist as preventing exfiltration, although an allowed host on shared infrastructure
+    (a CDN, a registry with user content) still carries data out
+  categories:
+  - Information Disclosure
+  - Repudiation
+  risk:
+    impact: 50
+    impactComment: the consumer allows a wildcard believing it confines data
+    likelihood: 40
+    likelihoodComment: domain fronting and user uploads to allowed registries are well known
+  attributes:
+    source: spec.md#Out-of-Scope
+    assets:
+    - asset.host-data
+    status: open
+    actor: actor.consumer
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.direct-egress
+  name: Caged code bypasses the proxy (ignoring the proxy variables, UDP, TCP Fast Open, MPTCP, raw IP, IPv6, the
+    system DNS resolver, other loopback ports) because the cage relies on Landlock port rules or misses a route
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  cwes:
+  - CWE-693
+  risk:
+    impact: 95
+    impactComment: unrestricted exfiltration of everything the child can read
+    likelihood: 60
+    likelihoodComment: TCP Fast Open and MPTCP bypass Landlock port rules on every kernel with them; programs ignore
+      proxy variables
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.host-data
+    - asset.local-services
+    status: open
+    actor: actor.caged-code
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.cage-net
+    - flow.direct
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.dns-exfil
+  name: The proxy resolves a requested name before checking it, so a refused request still carries data out in the
+    DNS query (secret.attacker.example)
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    impact: 60
+    impactComment: a slow but unlimited channel to any DNS zone
+    likelihood: 50
+    likelihoodComment: resolve-then-check is the obvious order for address checks
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.host-data
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.resolver
+    - flow.resolve
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.dns-rebinding
+  name: An allowed name resolves to a loopback, private, link-local or metadata address, directly, through an IPv4-mapped
+    or translated IPv6 form, or on a second lookup after the check, and the proxy connects there
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  cwes:
+  - CWE-350
+  - CWE-367
+  - CWE-918
+  risk:
+    impact: 85
+    impactComment: the cage reaches daemons and the metadata endpoint that hold credentials
+    likelihood: 50
+    likelihoodComment: the owner of an allowed zone, or a wildcard under shared hosting, controls the answer
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.local-services
+    status: open
+    actor: actor.remote
+    elements:
+    - component.resolver
+    - flow.resolve
+    - flow.local
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.ip-literal-bypass
+  name: Caged code names an IP literal in some notation (decimal, octal, hex, short IPv4, IPv6, IPv4-mapped, zone
+    id) that a domain allowlist does not recognise as an address, or that matches an allowed range only after a
+    different parse
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-20
+  risk:
+    impact: 85
+    impactComment: reaches any address, including local services
+    likelihood: 50
+    likelihoodComment: IP literals bypassing domain lists is a known failure of agent proxies
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.allowlist
+    - asset.local-services
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.parser
+    - component.allowlist
+    - flow.request
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.parser-differential
+  name: Caged code spells a host so that the allow check and the connect read it differently (NUL byte in SOCKS5,
+    percent-encoding, userinfo, Unicode or punycode, trailing dot, a plain-HTTP Host header unlike the URI) and
+    reaches a host not on the list
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  cwes:
+  - CWE-436
+  - CWE-20
+  risk:
+    impact: 90
+    impactComment: any host becomes reachable, so the allowlist protects nothing
+    likelihood: 60
+    likelihoodComment: the NUL-byte differential was found in an agent sandbox proxy in 2026; caged code will try
+      every spelling
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.allowlist
+    - asset.host-data
+    status: open
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.parser
+    - component.listener
+    - flow.request
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.payload-tampering
+  name: The proxy terminates TLS, alters payloads or forwards changed request bytes after the check
+  categories:
+  - Tampering
+  - Information Disclosure
+  risk:
+    impact: 70
+    impactComment: the harness process would see and could leak the child's traffic
+    likelihood: 10
+    likelihoodComment: excluded by the clarifications; only a contributor change introduces it
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.payload
+    status: open
+    actor: actor.contributor
+    elements:
+    - component.listener
+    - flow.upstream
+    profile: stride
+    severity: medium
+    technique: data-tampering-in-transit
+- id: threat.proxy-down-fallback
+  name: With the proxy stopped, crashed or never started, a connection or a spawn falls back to a direct route instead
+    of failing
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-636
+  risk:
+    impact: 90
+    impactComment: the cage has open network while the harness believes it is proxy-only
+    likelihood: 25
+    likelihoodComment: a convenience fallback is easy to add and hard to notice
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.host-data
+    status: open
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.cage-net
+    - component.listener
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.proxy-exhaustion
+  name: Caged code opens many or slow connections, or keeps them open past the run, and exhausts the harness's threads,
+    descriptors or memory
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-400
+  risk:
+    impact: 50
+    impactComment: the harness and its other runs stall
+    likelihood: 50
+    likelihoodComment: trivial for caged code; the proxy shares the harness process
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.harness
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.listener
+    - flow.request
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.record-spoof
+  name: A refused host name with control characters or terminal escapes, or a flood of refusals, misleads the harness
+    user or exhausts the record
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-117
+  risk:
+    impact: 40
+    impactComment: a misleading record may prompt a wrong grant
+    likelihood: 30
+    likelihoodComment: caged code chooses the refused name
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.record
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.reporting
+    - flow.refusal
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.run-confusion
+  name: A child reaches the listener of another run or proxy with a broader allowlist, or a refusal is recorded
+    in the wrong run
+  categories:
+  - Elevation of Privilege
+  - Repudiation
+  risk:
+    impact: 70
+    impactComment: a run gets another run's egress, and the record misattributes refusals
+    likelihood: 30
+    likelihoodComment: on macOS every localhost port is one rule away; a proxy serves several runs
+  attributes:
+    source: spec.md#Key-Entities
+    assets:
+    - asset.allowlist
+    - asset.record
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.listener
+    - component.reporting
+    - flow.request
+    profile: stride
+    severity: medium
+    technique: cross-tenant-leak
+- id: threat.run-identity-unspecified
+  name: '[NEEDS CLARIFICATION: how does the proxy tell which run a connection came from (a listener per run, a token,
+    the peer process), and can a child of one run connect to another run''s listener?]'
+  categories:
+  - Spoofing
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Key-Entities
+    assets:
+    - asset.allowlist
+    status: open
+    actor: actor.caged-code
+    disposition: needs-clarification
+    elements:
+    - component.listener
+    profile: stride
+    severity: unrated
+    technique: identity-spoofing
+- id: threat.t2-silent-downgrade
+  name: On Linux T2 a proxy-only cage is lowered to Landlock port rules or to no network rule instead of a capability
+    gap
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: direct egress through Fast Open or MPTCP while the receipt claims proxy-only
+    likelihood: 30
+    likelihoodComment: Landlock port rules look like the natural lowering on T2
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.host-data
+    status: open
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.cage-net
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.bounded-proxy
+  name: Per-run connection cap, handshake timeout, and every connection of a run closed when the run ends
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.proxy-exhaustion
+    status: required
+    kind: preventive
+    requirements:
+    - SR-011
+    touchpoints:
+    - component.listener
+- id: mitigation.check-resolved-connect-checked
+  name: Resolve once after the name check; refuse any non-public address (including mapped and translated IPv6 forms)
+    unless allowlisted; connect only to a checked address, never re-resolving
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.dns-rebinding
+    - threat.dns-exfil
+    status: required
+    kind: preventive
+    requirements:
+    - SR-003
+    - SR-004
+    touchpoints:
+    - component.resolver
+- id: mitigation.escaped-capped-record
+  name: Refused hosts are recorded escaped (no control bytes) and within the run's violation cap, the rest counted
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.record-spoof
+    status: required
+    kind: detective
+    requirements:
+    - SR-012
+    touchpoints:
+    - component.reporting
+- id: mitigation.honest-claims
+  name: THREAT_MODEL gains the parser-differential escape class with the suite as evidence; docs say the allowlist
+    binds host names, not content, and name shared-hosting and fronting residue
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.allowlist-overclaim
+    - threat.parser-differential
+    status: required
+    kind: detective
+    requirements:
+    - SR-013
+    touchpoints:
+    - component.docs
+- id: mitigation.kernel-boundary
+  name: macOS allows outbound to the proxy ports only; Linux T1 runs the child in a network namespace whose only
+    endpoint is the proxy listener; Landlock is never the sole boundary; direct-egress canaries on every proxy tier
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.direct-egress
+    - threat.proxy-down-fallback
+    status: required
+    kind: preventive
+    requirements:
+    - SR-006
+    - SR-007
+    touchpoints:
+    - component.cage-net
+    - flow.direct
+- id: mitigation.literal-as-address
+  name: Every IP literal notation parses to one address; literals are refused unless an allowlisted range contains
+    that address
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.ip-literal-bypass
+    status: required
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - component.parser
+    - component.allowlist
+- id: mitigation.no-allow-all
+  name: Construction fails on an empty allowlist, a bare wildcard or a single-label wildcard suffix; no allow-all
+    mode exists
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.allowlist-fail-open
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.allowlist
+- id: mitigation.one-canonical-host
+  name: One parser yields a canonical host (lower case, trailing dot stripped, IDNA to A-labels) and refuses NUL
+    and control bytes, percent-encoding, userinfo and invalid labels; the same value is checked and connected; a
+    plain-HTTP Host header must equal the URI host; table-driven suite plus fuzz target
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.parser-differential
+    status: required
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - component.parser
+    - component.listener
+- id: mitigation.opaque-relay
+  name: After CONNECT or the SOCKS5 reply the proxy relays bytes unchanged in both directions; no TLS code in the
+    crate
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.payload-tampering
+    status: required
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - component.listener
+- id: mitigation.run-bound-listener
+  name: Each connection belongs to exactly one run, whose allowlist decides it and whose violations record its refusals;
+    a child cannot reach another run's listener
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.run-confusion
+    status: required
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - component.listener
+    - component.cage-net
+    - component.reporting
+- id: mitigation.t2-gap
+  name: Proxy-only on T2 is a CapabilityGap at build time
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.t2-silent-downgrade
+    status: required
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - component.cage-net
+requirements:
+- id: SR-001
+  statement: The proxy MUST derive one canonical host per request and use that same value for the allowlist check
+    and the connect; it MUST refuse hosts with NUL or control bytes, percent-encoding, userinfo or invalid labels,
+    and a plain-HTTP request whose Host header differs from its URI host.
+  priority: P1
+  mitigations:
+  - mitigation.one-canonical-host
+  acceptance:
+  - given: allowed.com on the list and the SOCKS5 host allowed.com\0.evil.com
+    then: the proxy refuses it and opens no connection
+    when: the child requests it
+  - given: allowed.com on the list
+    then: it is treated as allowed.com and connects there
+    when: the child requests ALLOWED.COM. through CONNECT
+  - given: the table-driven spelling suite and the fuzz target
+    then: for every input the checked host equals the host connected to, with zero disagreements
+    when: they run in CI
+  tasks: []
+- id: SR-002
+  statement: The proxy MUST parse every IP literal notation to one address and MUST refuse a literal unless an explicitly
+    allowlisted address range contains that address.
+  priority: P1
+  mitigations:
+  - mitigation.literal-as-address
+  acceptance:
+  - given: a domain-only allowlist
+    then: every request is refused
+    when: the child requests 2130706433, 0x7f.1, 017700000001, [::ffff:127.0.0.1] and 127.1
+  - given: an allowlisted range 192.0.2.0/24
+    then: both connect to 192.0.2.10
+    when: the child requests 192.0.2.10 in decimal and dotted form
+  tasks: []
+- id: SR-003
+  statement: The proxy MUST resolve an allowed name once, MUST refuse loopback, private, link-local, unspecified
+    and metadata addresses (also in IPv4-mapped and translated IPv6 forms) unless allowlisted, and MUST connect
+    only to an address it checked.
+  priority: P1
+  mitigations:
+  - mitigation.check-resolved-connect-checked
+  acceptance:
+  - given: an allowed name resolving to 127.0.0.1, 169.254.169.254 or ::ffff:10.0.0.1
+    then: the proxy refuses it and the violation names the host and the address
+    when: the child requests it
+  - given: a test resolver answering a public address first and 127.0.0.1 on any later query
+    then: the proxy connects to the first, checked address and issues no second query
+    when: the child requests the name
+  tasks: []
+- id: SR-004
+  statement: The proxy MUST NOT send a DNS query for a name the allowlist refuses.
+  priority: P2
+  mitigations:
+  - mitigation.check-resolved-connect-checked
+  acceptance:
+  - given: a counting test resolver
+    then: the request is refused and the resolver saw no query
+    when: the child requests a host not on the list
+  tasks: []
+- id: SR-005
+  statement: Building a proxy MUST fail on an empty allowlist, a bare wildcard or a wildcard whose suffix is a single
+    label; there MUST be no allow-all mode.
+  priority: P1
+  mitigations:
+  - mitigation.no-allow-all
+  acceptance:
+  - given: an empty allowlist, '*' or '*.com'
+    then: construction returns a typed error
+    when: the proxy is built
+  tasks: []
+- id: SR-006
+  statement: When the proxy is stopped or was never started, a connection from a proxy-only child MUST fail; no
+    code path MAY fall back to a direct connection.
+  priority: P1
+  mitigations:
+  - mitigation.kernel-boundary
+  acceptance:
+  - given: a proxy-only cage on macOS and Linux T1 whose proxy has been stopped
+    then: both fail
+    when: the child connects to the proxy and to an allowed host directly
+  tasks: []
+- id: SR-007
+  statement: A proxy-only cage MUST block every direct route on macOS and Linux T1 by a kernel boundary (macOS outbound
+    to the proxy ports only; on T1 a network namespace whose only endpoint is the proxy listener); Landlock port
+    rules MUST NOT be the only boundary.
+  priority: P1
+  mitigations:
+  - mitigation.kernel-boundary
+  acceptance:
+  - given: a proxy-only cage on macOS and on Linux T1
+    then: every attempt fails, one escape-suite canary per route
+    when: the child tries direct TCP, UDP, TCP Fast Open, MPTCP, raw IP, IPv6, a DNS query and another loopback
+      port
+  tasks: []
+- id: SR-008
+  statement: On Linux T2 building a proxy-only cage MUST return a CapabilityGap; it MUST NOT be lowered to Landlock
+    port rules alone.
+  priority: P1
+  mitigations:
+  - mitigation.t2-gap
+  acceptance:
+  - given: Linux T2
+    then: it fails with CapabilityGap naming proxy-only networking
+    when: a proxy-only cage is built
+  tasks: []
+- id: SR-009
+  statement: Every proxy connection MUST be decided by the allowlist of exactly one run and its refusals recorded
+    in that run's violations; a child MUST NOT reach the listener of another run.
+  priority: P2
+  mitigations:
+  - mitigation.run-bound-listener
+  acceptance:
+  - given: two concurrent runs with different allowlists
+    then: the request fails and only run A's violations record it
+    when: the child of run A requests a host only run B allows, also by connecting to run B's listener
+  tasks: []
+- id: SR-010
+  statement: The proxy MUST NOT terminate TLS or alter payloads; after the CONNECT or SOCKS5 reply it MUST relay
+    bytes unchanged.
+  priority: P2
+  mitigations:
+  - mitigation.opaque-relay
+  acceptance:
+  - given: an allowed local test host that echoes and hashes what it receives
+    then: the hashes on both ends match
+    when: the child sends random bytes through CONNECT and SOCKS5
+  tasks: []
+- id: SR-011
+  statement: The proxy MUST bound each run's concurrent connections and handshake time, and MUST close every connection
+    of a run when the run ends.
+  priority: P2
+  mitigations:
+  - mitigation.bounded-proxy
+  acceptance:
+  - given: a child opening connections beyond the cap and one that never finishes its handshake
+    then: excess connections are refused, the stalled one is closed after the timeout, and other runs keep working
+    when: the run continues
+  - given: an open long-lived connection
+    then: the connection is closed
+    when: the run ends
+  tasks: []
+- id: SR-012
+  statement: A refusal MUST record the host escaped, without raw control bytes, and within the run's violation cap
+    with the rest counted.
+  priority: P2
+  mitigations:
+  - mitigation.escaped-capped-record
+  acceptance:
+  - given: a refused host containing an escape sequence and a newline
+    then: the host is shown escaped
+    when: the violation is read
+  - given: a child making more refused requests than the cap
+    then: it holds the cap and counts the rest
+    when: the record is read
+  tasks: []
+- id: SR-013
+  statement: THREAT_MODEL MUST list the allowlist parser-differential escape class with the parser suite as evidence
+    and direct-egress canaries per proxy tier, and the docs MUST state that the allowlist binds host names, not
+    content.
+  priority: P2
+  mitigations:
+  - mitigation.honest-claims
+  acceptance:
+  - given: THREAT_MODEL.md and the proxy docs
+    then: the class has evidence entries for the suite and canaries, and the docs name shared hosting and fronting
+      as residual risk
+    when: they are reviewed
+  tasks: []
+verification: []
+decisions: []

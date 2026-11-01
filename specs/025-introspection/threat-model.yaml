@@ -1,0 +1,695 @@
+otmVersion: 0.2.0
+project:
+  id: 025-introspection
+  name: Other processes stay opaque
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that picks a base and grants paths
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the base profiles, the Linux spawn path or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit; the feature changes rules, a namespace and a mount
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked the stored profiles: V1 to V3 stay frozen and byte-identical (SR-002); changes to V4 are threat.allowlist-widening'
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: no external-input surface; the feature parses no data the child provides
+    technique: injection
+  - disposition: not-applicable
+    reason: no external-input surface; orphan reaping inside the namespace is part of threat.pidns-lifetime
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: single user; other users' processes are already refused by the kernel (out of scope)
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:15:30Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: e928f3de45adde8ea2233814bc0a3c1a258d01bf24f1fb556a302b98c41d4e19
+  surfaces:
+  - authorization
+  - persistent-store
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and the run's descendants
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel (Seatbelt and sysctl on macOS; PID namespaces and /proc on Linux)
+  risk:
+    trustRating: 95
+- id: tz.others
+  name: The user's other processes (editor, agent, shell, the calling program)
+  risk:
+    trustRating: 70
+assets:
+- id: asset.base
+  name: The frozen macOS base profiles (V1 to V3 and the new V4) and the V4 sysctl allowlist
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#Key-Entities
+    classification: internal
+- id: asset.lifetime
+  name: 'The run-lifetime guarantee: no process of the run outlives it'
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#FR-003
+    classification: internal
+- id: asset.process-secrets
+  name: Command lines and environments of the user's other processes, which routinely hold tokens
+  risk:
+    availability: 0
+    confidentiality: 100
+    integrity: 0
+  attributes:
+    type: credential
+    source: spec.md#Input
+    classification: secret
+components:
+- id: component.base-v4
+  name: macOS base V4 (sysctl-read denied, named sysctl allows, process information only for the process itself)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.docs
+  name: THREAT_MODEL, crate docs and site on R-25
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-005
+- id: component.lifetime
+  name: Run-lifetime enforcement (the whole run is killed when it ends)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.pidns
+  name: Linux T1 PID namespace and fresh /proc for spawned runs
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.t2-gate
+  name: Linux T2 capability check for rules that reach /proc
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-004
+dataflows:
+- id: flow.claims
+  name: The docs tell the consumer which base and tier close R-25
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.process-secrets
+  attributes:
+    crosses: []
+- id: flow.confine-ns
+  name: The PID namespace and fresh /proc confine the child on T1
+  source: component.pidns
+  destination: tz.cage
+  assets:
+  - asset.process-secrets
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.confine-v4
+  name: The V4 base confines the child on macOS
+  source: component.base-v4
+  destination: tz.cage
+  assets:
+  - asset.base
+  - asset.process-secrets
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.exposure
+  name: The kernel hands other processes' arguments and environment to the child
+  source: tz.others
+  destination: tz.cage
+  assets:
+  - asset.process-secrets
+  attributes:
+    crosses:
+    - tz.others
+    - tz.cage
+- id: flow.kill
+  name: The harness kills every process of the run when it ends
+  source: component.lifetime
+  destination: tz.cage
+  assets:
+  - asset.lifetime
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.procfs
+  name: The child lists /proc and reads cmdline and environ of other processes
+  source: tz.cage
+  destination: tz.os
+  assets:
+  - asset.process-secrets
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.os
+- id: flow.sysctl
+  name: The child queries sysctls and process information of other processes (KERN_PROCARGS2, pidinfo)
+  source: tz.cage
+  destination: tz.os
+  assets:
+  - asset.process-secrets
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.os
+threats:
+- id: threat.allowlist-widening
+  name: A sysctl allow added by prefix or regular expression (or a broad process-info allow) to make a program work
+    re-admits KERN_PROCARGS2 on V4
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  risk:
+    comment: program-set failures push towards wildcards; one widened rule reopens the class
+    impact: 90
+    likelihood: 30
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.base
+    - asset.process-secrets
+    status: open
+    actor: actor.contributor
+    constitution: VII. A library, not a harness (presets are versioned and frozen)
+    elements:
+    - component.base-v4
+    - flow.confine-v4
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.nc-default-base
+  name: '[NEEDS CLARIFICATION: do the default presets move to the V4 base, or must callers opt in to it, leaving
+    R-25 open on macOS for every cage that does not?]'
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.process-secrets
+    - asset.base
+    status: open
+    actor: actor.consumer
+    disposition: needs-clarification
+    elements:
+    - component.base-v4
+    profile: stride
+    severity: unrated
+    technique: sensitive-data-exposure
+- id: threat.nc-pid-one
+  name: '[NEEDS CLARIFICATION: who is PID 1 of the new T1 namespace (the target or a minimal init prepared in the
+    parent), and how are orphans reaped and termination signals delivered to it?]'
+  categories:
+  - Denial of Service
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.lifetime
+    status: open
+    actor: actor.caged-code
+    disposition: needs-clarification
+    elements:
+    - component.pidns
+    - component.lifetime
+    profile: stride
+    severity: unrated
+    technique: broken-access-control
+- id: threat.pidns-lifetime
+  name: The PID namespace changes how the run is tracked and killed (namespace-relative pids, orphans reparented
+    inside it, signals to its init ignored), so a descendant outlives the run (R-23) or zombies pile up
+  categories:
+  - Elevation of Privilege
+  - Denial of Service
+  risk:
+    comment: an outliving descendant runs on after the harness believes the run ended
+    impact: 90
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.lifetime
+    status: open
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    elements:
+    - component.pidns
+    - component.lifetime
+    - flow.kill
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.procargs-variant
+  name: On the V4 base the child reads another process's arguments or environment through a query the rule does
+    not cover (KERN_PROCARGS, a numeric MIB, a pidinfo flavour), stealing tokens
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  - CWE-214
+  risk:
+    comment: the unmediated query is a known, one-call read; sibling queries are an obvious next try
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.process-secrets
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.base-v4
+    - flow.sysctl
+    - flow.exposure
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.stale-proc-view
+  name: 'On T1 the child still sees other processes: the target runs outside the new PID namespace (unshare without
+    a fork), /proc is mounted from the old namespace, or another proc mount stays reachable'
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    comment: the order of unshare, fork and mount is easy to get wrong; a leftover mount defeats it silently
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.process-secrets
+    status: open
+    actor: actor.caged-code
+    elements:
+    - component.pidns
+    - flow.confine-ns
+    - flow.procfs
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.status-overclaim
+  name: The docs or the threat model present R-25 as closed for the older bases, for T2, or for Cage::exec (no PID
+    namespace), so a consumer passes secrets in arguments it believes hidden
+  categories:
+  - Repudiation
+  risk:
+    comment: one status per class hides per-base and per-tier differences
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.process-secrets
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.t2-silent-proc
+  name: On T2 a policy whose rules reach /proc (literally or through an ancestor such as /) runs without the caller
+    accepting the approximation, so other processes' command lines are readable silently
+  categories:
+  - Information Disclosure
+  - Elevation of Privilege
+  risk:
+    comment: read grants on / are common; the exposure needs no effort from the child
+    impact: 80
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.process-secrets
+    status: open
+    actor: actor.consumer
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.t2-gate
+    - flow.procfs
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.unmeasured-release
+  name: The rule measured on macOS 26.6.2 does not hold on macOS 27, and V4 is frozen with the read still open there
+  categories:
+  - Information Disclosure
+  risk:
+    comment: Seatbelt mediation of sysctls has changed between releases before
+    impact: 90
+    likelihood: 30
+  attributes:
+    source: spec.md#Assumptions
+    assets:
+    - asset.process-secrets
+    - asset.base
+    status: open
+    actor: actor.caged-code
+    constitution: III. The kernel is the oracle
+    elements:
+    - component.base-v4
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+mitigations:
+- id: mitigation.deny-then-name
+  name: V4 denies sysctl-read and process-info-pidinfo explicitly, then allows named sysctls and the process's own
+    information; R-25 canaries read KERN_PROCARGS2, KERN_PROCARGS and pidinfo of another process, with a positive
+    control on the process itself
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.procargs-variant
+    status: required
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - component.base-v4
+- id: mitigation.fresh-proc
+  name: The target runs inside the new PID namespace and /proc is mounted fresh from inside it, over the old one;
+    the T1 canary checks /proc, a known outside pid and every proc mount in mountinfo
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.stale-proc-view
+    status: required
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - component.pidns
+- id: mitigation.lifetime-suite
+  name: The R-23 escape suite runs unchanged on T1 with the PID namespace, and a test checks that orphans are reaped
+    and that no process of the run survives its end
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.pidns-lifetime
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.pidns
+    - component.lifetime
+- id: mitigation.literal-allowlist
+  name: The V4 allowlist holds literal sysctl names only, each with the program that needed it; a lowering test
+    rejects prefix and regex forms; V1 to V3 fixtures stay byte-identical
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.allowlist-widening
+    status: required
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - component.base-v4
+- id: mitigation.measure-before-freeze
+  name: V4 is frozen only after the R-25 canaries and the base program set pass on the macOS 26 and 27 lanes; the
+    canaries fail, never skip
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.unmeasured-release
+    status: required
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - component.base-v4
+- id: mitigation.per-platform-status
+  name: THREAT_MODEL and docs give R-25 per platform, base and tier, with the T2 residual and the Cage::exec limit
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.status-overclaim
+    status: required
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - component.docs
+- id: mitigation.proc-gap
+  name: On T2 any rule whose reach includes /proc is a capability gap unless the caller accepts the approximation
+    by name, recorded in the receipt
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.t2-silent-proc
+    status: required
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - component.t2-gate
+requirements:
+- id: SR-001
+  statement: On the V4 base, reading the arguments, environment or process information of any process outside the
+    run (KERN_PROCARGS2, KERN_PROCARGS, pidinfo) MUST fail with EPERM, while the child's reads of its own MUST succeed.
+  priority: P1
+  mitigations:
+  - mitigation.deny-then-name
+  acceptance:
+  - given: a same-user process holding a token in its arguments and a child on the V4 base
+    then: each read fails with EPERM
+    when: the child reads that process's KERN_PROCARGS2, KERN_PROCARGS and pidinfo
+  - given: the same child
+    then: both succeed
+    when: it reads its own KERN_PROCARGS2 and pidinfo
+  tasks: []
+- id: SR-002
+  statement: The V4 sysctl allowlist MUST name each sysctl literally, with the program that needed it, and MUST
+    NOT contain a prefix or regular-expression form; V1 to V3 MUST compile byte-identical to before.
+  priority: P1
+  mitigations:
+  - mitigation.literal-allowlist
+  acceptance:
+  - given: the V4 base
+    then: every allow is a literal name with a recorded program, and a prefix or regex form fails the test
+    when: its sysctl rules are lowered
+  - given: the V1, V2 and V3 fixtures
+    then: they equal the frozen fixtures
+    when: they are compiled
+  tasks: []
+- id: SR-003
+  statement: V4 MUST NOT be frozen until the R-25 canaries and the base program set pass on the macOS 26 and 27
+    lanes, and the canaries MUST fail, never skip, when the read succeeds or the child is already sandboxed.
+  priority: P1
+  mitigations:
+  - mitigation.measure-before-freeze
+  acceptance:
+  - given: the macOS 26 and 27 lanes
+    then: the canaries are refused and every program works as on V3
+    when: the R-25 canaries and the base program set run on V4
+  - given: a lane where the read succeeds
+    then: it fails the lane
+    when: the canary runs
+  tasks: []
+- id: SR-004
+  statement: On Linux T1 every spawned run MUST run inside a new PID namespace with a /proc mounted from inside
+    it, and no proc mount showing processes outside the run MUST be reachable.
+  priority: P1
+  mitigations:
+  - mitigation.fresh-proc
+  acceptance:
+  - given: T1 and a same-user process outside the run
+    then: it sees only the run's processes and the read fails
+    when: the child lists /proc and reads that process's cmdline by its outside pid
+  - given: the same child
+    then: every proc mount shows only the run's processes
+    when: it lists the proc mounts in /proc/self/mountinfo
+  tasks: []
+- id: SR-005
+  statement: With the PID namespace, Lifetime::Run MUST still end every process of the run, orphans MUST be reaped,
+    and the R-23 escape suite MUST pass unchanged on T1.
+  priority: P1
+  mitigations:
+  - mitigation.lifetime-suite
+  acceptance:
+  - given: T1 and a double-forked descendant
+    then: the descendant is gone
+    when: the run ends
+  - given: a child that orphans many short-lived processes
+    then: no zombie of the run remains
+    when: the run proceeds
+  - given: the R-23 canaries
+    then: every canary holds
+    when: they run on T1 with the namespace
+  tasks: []
+- id: SR-006
+  statement: On Linux T2 a policy whose rules reach /proc, literally or through an ancestor, MUST be refused as
+    a capability gap unless the caller accepts the approximation by name, and the acceptance MUST be recorded in
+    the receipt; other processes' environ MUST stay unreadable.
+  priority: P1
+  mitigations:
+  - mitigation.proc-gap
+  acceptance:
+  - given: T2 and a policy that grants read on /
+    then: it is refused with a capability gap naming /proc
+    when: the cage spawns without the approximation
+  - given: the approximation accepted by name
+    then: cmdline is readable, environ is refused, and the receipt records the approximation
+    when: the child reads another process's cmdline and environ
+  tasks: []
+- id: SR-007
+  statement: THREAT_MODEL and the docs MUST give R-25's status per platform, base and tier, MUST state that V1 to
+    V3 and T2 leave command lines readable, and MUST state that Cage::exec gets no PID namespace.
+  priority: P2
+  mitigations:
+  - mitigation.per-platform-status
+  acceptance:
+  - given: THREAT_MODEL, the crate docs and the site
+    then: they name the closing base on macOS, T1's canary, the T2 residual and the Cage::exec limit
+    when: they describe R-25
+  tasks: []
+verification: []
+decisions: []

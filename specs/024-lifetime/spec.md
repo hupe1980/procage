@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-31
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "024-lifetime: Keep double-forked descendants inside the run: Linux session/group lock or PID namespace; macOS research (R-23)."
 

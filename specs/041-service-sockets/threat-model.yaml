@@ -1,0 +1,1078 @@
+otmVersion: 0.2.0
+project:
+  id: 041-service-sockets
+  name: No service handoff over Unix sockets
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that builds and fits policies
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the backends, the data classes or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: procage authenticates no one; the services trust the caged code's uid, which is the threat modelled
+      as handoff
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication surface in procage
+    technique: identity-spoofing
+  - disposition: no-threat-detected
+    reason: 'checked flow.connect: procage carries no data over these sockets, it only denies the connect'
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no store; the socket list is compiled-in data, its gaps are threat.list-gap
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: the class only adds denies; the disclosure paths are the handoff threats
+    technique: sensitive-data-exposure
+  - disposition: not-applicable
+    reason: single user
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: no configuration store added; planted user units are R-23
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:13:45Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: 12e0495f4cd032aa0a6aed781be3b40094764621b6f8454e222cc546c4c05676
+  surfaces:
+  - external-input
+  - authorization
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel (Landlock, mounts, Seatbelt)
+  risk:
+    trustRating: 95
+- id: tz.services
+  name: Unsandboxed services that run code as the user on request
+  risk:
+    trustRating: 60
+assets:
+- id: asset.harness
+  name: Runs that legitimately use a project socket or a container engine
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 30
+  attributes:
+    type: capability
+    source: spec.md#US2
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.policy
+  name: The hard-deny tier and its waivers, as compiled and recorded
+  risk:
+    availability: 30
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#FR-005
+    classification: internal
+- id: asset.record
+  name: The violation record the harness shows its user and may act on
+  risk:
+    availability: 30
+    confidentiality: 30
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#FR-006
+    classification: internal
+components:
+- id: component.canaries
+  name: Escape canaries with a private bus and fake engine sockets
+  type: test
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#US1
+- id: component.docs
+  name: Changelog, THREAT_MODEL escape class and preset fixtures
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-007
+- id: component.fit
+  name: 'fit: relaxes a class by name on hosts that cannot enforce it'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-008
+- id: component.linux-t1
+  name: 'Linux T1 backend: socket covers and abstract-socket scope'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.linux-t2
+  name: 'Linux T2 backend: spawn-time check and capability gap'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.macos
+  name: 'macOS backend: Seatbelt denies for engine sockets'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.policy
+  name: Hard-deny classes service-handoff (extended) and container-engines (new), waivers by name
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Key-Entities
+- id: component.services
+  name: User and system D-Bus, the user service manager, container engines
+  type: service
+  parent:
+    trustZone: tz.services
+  attributes:
+    source: spec.md#Context
+- id: component.socket-list
+  name: Frozen service socket list per system, home and runtime directories expanded at spawn
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Key-Entities
+- id: component.violations
+  name: Violation records with the class as reason
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-006
+dataflows:
+- id: flow.claims
+  name: The docs tell the consumer what changed and how to waive it
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
+- id: flow.confine
+  name: The backends confine the child
+  source: component.linux-t1
+  destination: tz.cage
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.connect
+  name: The child connects to a service socket
+  source: tz.cage
+  destination: component.services
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.services
+- id: flow.gap
+  name: T2 reports a capability gap to the consumer
+  source: component.linux-t2
+  destination: actor.consumer
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
+- id: flow.record
+  name: The record reaches the harness
+  source: component.violations
+  destination: tz.harness
+  assets:
+  - asset.record
+  attributes:
+    crosses: []
+- id: flow.waiver
+  name: The consumer waives a class by name
+  source: actor.consumer
+  destination: component.policy
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
+threats:
+- id: threat.abstract-bus
+  name: A bus listening on an abstract address (older systems) is reached because path rules and mount covers do
+    not apply to abstract sockets, and the kernel cannot scope them or the scope is not applied
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    impactComment: same handoff as the user bus
+    likelihood: 35
+    likelihoodComment: abstract bus addresses remain on older distributions
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.linux-t1
+    - component.linux-t2
+    - flow.connect
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.alias-path
+  name: 'Caged code reaches a listed socket under another name: a symbolic link, /var/run instead of /run, a differently
+    spelled runtime directory, or a hard link it makes to the socket inside a writable tree'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: the deny matches nothing and the handoff succeeds
+    likelihood: 30
+    likelihoodComment: the aliases are standard on Linux; macOS rules match connect paths
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.linux-t1
+    - component.macos
+    - flow.connect
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.engine-handoff
+  name: Caged code connects to a container engine socket (Docker, Podman, containerd, Colima, OrbStack) and starts
+    a container that mounts the home directory, on Linux or macOS
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-269
+  risk:
+    impact: 95
+    impactComment: the container reads and writes the whole home outside every path rule
+    likelihood: 70
+    likelihoodComment: engines are common on developer hosts; one HTTP request starts a container
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    constitution: II. Every policy emits the hard-deny tier last
+    disposition: threat
+    elements:
+    - component.linux-t1
+    - component.macos
+    - component.services
+    - flow.connect
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.list-gap
+  name: The frozen socket list misses a variant in use (rootless containerd, a Podman machine, Colima or Lima profiles,
+    a new engine), so that engine stays reachable
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 85
+    impactComment: a missing path is an open handoff
+    likelihood: 45
+    likelihoodComment: engine socket locations vary by tool and version
+  attributes:
+    source: spec.md#Assumptions
+    assets:
+    - asset.host
+    status: open
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.socket-list
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.over-deny
+  name: A pattern also matches a project's own socket under a granted writable tree, or the abstract-socket scope
+    cuts unrelated local services, so legitimate runs fail and consumers waive whole classes to get work done
+  categories:
+  - Denial of Service
+  risk:
+    impact: 45
+    impactComment: broken builds push consumers to a wide waiver
+    likelihood: 45
+    likelihoodComment: directory patterns and the abstract scope are broader than single paths
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.harness
+    - asset.policy
+    status: open
+    actor: actor.consumer
+    disposition: threat
+    elements:
+    - component.socket-list
+    - component.linux-t1
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.post-spawn-socket
+  name: A bus or engine socket created after spawn (an engine started later, a restarted bus) is not covered on
+    T1 because the covers are made from the file system at spawn
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: the handoff opens mid-run without a gap
+    likelihood: 35
+    likelihoodComment: engines and buses restart during long agent runs
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.linux-t1
+    - flow.confine
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.q-abstract-scope
+  name: '[NEEDS CLARIFICATION: the Landlock abstract-socket scope refuses every abstract socket outside the cage,
+    not only the bus; is that accepted when service-handoff is not waived, and is it waivable separately?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.harness
+    status: open
+    actor: actor.consumer
+    disposition: needs-clarification
+    elements:
+    - component.linux-t1
+    profile: stride
+    severity: unrated
+- id: threat.q-engine-from-env
+  name: '[NEEDS CLARIFICATION: are engine sockets named by DOCKER_HOST, CONTAINER_HOST or a tool profile at a path
+    outside the frozen list in scope, expanded from the harness environment at spawn, or a documented harness responsibility?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#Key-Entities
+    assets:
+    - asset.host
+    status: open
+    actor: actor.consumer
+    disposition: needs-clarification
+    elements:
+    - component.socket-list
+    profile: stride
+    severity: unrated
+- id: threat.q-linux-report
+  name: '[NEEDS CLARIFICATION: Linux records only system calls the seccomp filter refuses; how does a connect stopped
+    by a mount cover or a Landlock scope reach the record with the class as its reason (FR-006)?]'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.record
+    status: open
+    actor: actor.consumer
+    disposition: needs-clarification
+    elements:
+    - component.violations
+    profile: stride
+    severity: unrated
+- id: threat.runtime-dir-expansion
+  name: The runtime or home directory is expanded from a variable that is unset or points elsewhere in the harness
+    (sudo, a container, a service), so the real bus or engine socket is not covered
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: the class is applied to the wrong directory and the real socket stays reachable
+    likelihood: 40
+    likelihoodComment: harnesses often run without a login session environment
+  attributes:
+    source: spec.md#Key-Entities
+    assets:
+    - asset.host
+    status: open
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.socket-list
+    - flow.confine
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.silent-tightening
+  name: Policies and frozen presets become stricter without a Security entry or a fixture review, so harnesses break
+    unexplained, or a fixture diff hides an unrelated loosening
+  categories:
+  - Repudiation
+  risk:
+    impact: 40
+    impactComment: lost trust, or a loosening shipped inside a tightening
+    likelihood: 30
+    likelihoodComment: regenerated fixtures are easy to accept wholesale
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.policy
+    status: open
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.system-bus-handoff
+  name: Caged code reaches the system bus and asks a service for an action that polkit allows for an active local
+    session, so the action runs outside the sandbox
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 85
+    impactComment: a privileged service acts for the child
+    likelihood: 35
+    likelihoodComment: needs a service and a polkit rule that allow the action for the session
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.linux-t1
+    - component.services
+    - flow.connect
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.t2-silent-reach
+  name: On T2, which cannot deny one socket inside an allowed tree, a service socket present at spawn stays reachable
+    and the cage is made without a capability gap
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    impactComment: the handoff escapes stay open while the consumer believes the class holds
+    likelihood: 40
+    likelihoodComment: every desktop session has a user bus; the default T2 path today raises nothing
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.host
+    - asset.policy
+    status: open
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.linux-t2
+    - flow.gap
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.user-bus-handoff
+  name: With the network on, caged code connects to the user bus or the user service manager on Linux and starts
+    a transient unit (systemd-run --user, StartTransientUnit) that runs as the user outside the sandbox
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-269
+  risk:
+    impact: 95
+    impactComment: 'full escape: arbitrary code as the user with no cage'
+    likelihood: 70
+    likelihoodComment: one command on the most common agent policy shape; the escape suite's own control shows the
+      socket reachable
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    status: open
+    actor: actor.caged-code
+    constitution: II. Every policy emits the hard-deny tier last
+    disposition: threat
+    elements:
+    - component.linux-t1
+    - component.services
+    - flow.connect
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.vacuous-canary
+  name: 'The canaries pass without proving the deny: the fake service does not listen at the expanded path, the
+    test skips without a user session, or it never runs with the network on'
+  categories:
+  - Repudiation
+  risk:
+    impact: 80
+    impactComment: a false green leaves the escape open in the released tiers
+    likelihood: 40
+    likelihoodComment: CI runners and containers have no user session or real engine
+  attributes:
+    source: spec.md#Assumptions
+    assets:
+    - asset.host
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.canaries
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.waiver-broadens
+  name: Waiving container-engines (or service-handoff) drops more than that class's denies, waives the other class
+    too, matches a waiver by a string pattern, or is not recorded
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: a build tool's waiver silently opens the service manager
+    likelihood: 20
+    likelihoodComment: two classes now share one socket mechanism and one lowering path
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.policy
+    - asset.host
+    status: open
+    actor: actor.contributor
+    constitution: II. Every policy emits the hard-deny tier last. It can be waived only by class name, and every
+      waiver is recorded
+    disposition: threat
+    elements:
+    - component.policy
+    - flow.waiver
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.wrong-reason
+  name: A refused connect is recorded as not granted or as network, not as the class, so the harness asks the user
+    for a grant that does not help or opens the network
+  categories:
+  - Repudiation
+  risk:
+    impact: 50
+    impactComment: a misleading record steers the next grant
+    likelihood: 35
+    likelihoodComment: two classes share the socket path; the network rules sit next to them
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.record
+    status: open
+    actor: actor.consumer
+    disposition: threat
+    elements:
+    - component.violations
+    - flow.record
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.abstract-scope
+  name: Abstract service addresses found at spawn are scoped on Landlock ABI 6 and above, otherwise a gap naming
+    the address
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.abstract-bus
+    status: required
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - component.linux-t1
+    - component.linux-t2
+- id: mitigation.class-reason
+  name: A refused connect to a listed socket is recorded with the class as its reason
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.wrong-reason
+    status: required
+    kind: detective
+    requirements:
+    - SR-011
+    touchpoints:
+    - component.violations
+- id: mitigation.class-scoped-waiver
+  name: Each class is a typed name; a waiver removes exactly that class's denies and is recorded in the receipt
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.waiver-broadens
+    status: required
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - component.policy
+    - component.fit
+- id: mitigation.cover-directories
+  name: On T1 the runtime-directory entries of the classes are covered as names, so a socket made after spawn at
+    a listed path is unreachable; what cannot be covered is documented as the spawn-snapshot approximation
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.post-spawn-socket
+    status: required
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - component.linux-t1
+    - component.docs
+- id: mitigation.engine-deny
+  name: container-engines denies every listed engine socket on Linux and macOS under every network setting
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.engine-handoff
+    status: required
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - component.linux-t1
+    - component.macos
+    - component.policy
+- id: mitigation.exact-patterns
+  name: Patterns match only listed names under the expanded directories; a granted project socket stays reachable
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.over-deny
+    status: required
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - component.socket-list
+    - component.linux-t1
+- id: mitigation.linux-bus-deny
+  name: Linux service-handoff covers the user bus, the system bus and the service-manager sockets on T1 under every
+    network setting
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.user-bus-handoff
+    - threat.system-bus-handoff
+    status: required
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - component.linux-t1
+    - component.policy
+- id: mitigation.paired-canaries
+  name: Escape canaries with a private bus and fake engine sockets at the expanded paths, network on, T1, T2 and
+    macOS, each paired with a waived positive control; they fail, never skip
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.vacuous-canary
+    - threat.user-bus-handoff
+    - threat.engine-handoff
+    status: required
+    kind: detective
+    requirements:
+    - SR-012
+    touchpoints:
+    - component.canaries
+- id: mitigation.resolved-object
+  name: 'Denies apply to the socket object: T1 covers the resolved socket, macOS rules name the resolved path and
+    refuse hard links to listed sockets'
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.alias-path
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.linux-t1
+    - component.macos
+- id: mitigation.reviewed-fixtures
+  name: Security entry in the changelog, the escape class in the threat model, and regenerated preset fixtures whose
+    diff is only the new denies
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.silent-tightening
+    status: required
+    kind: detective
+    requirements:
+    - SR-013
+    touchpoints:
+    - component.docs
+    - component.policy
+- id: mitigation.t2-gap
+  name: T2 checks the expanded list at spawn and fails with a capability gap naming the class and each socket found,
+    unless the class is waived; fit relaxes by name
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.t2-silent-reach
+    status: required
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - component.linux-t2
+    - component.fit
+- id: mitigation.uid-expansion
+  name: The runtime directory is expanded from the variable and from /run/user/<uid>; the home from the variable
+    and the account; both spellings are denied
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.runtime-dir-expansion
+    status: required
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - component.socket-list
+- id: mitigation.versioned-list
+  name: The socket list is versioned data with its sources, covered by a table test, and the docs name what it does
+    not cover
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.list-gap
+    status: required
+    kind: detective
+    requirements:
+    - SR-007
+    touchpoints:
+    - component.socket-list
+    - component.docs
+requirements:
+- id: SR-001
+  statement: On Linux T1, the service-handoff class MUST make a connect from the caged child to the user bus, the
+    system bus and the user service-manager sockets fail under every network setting, unless the class is waived.
+  priority: P1
+  mitigations:
+  - mitigation.linux-bus-deny
+  acceptance:
+  - given: T1, Network::All and a private bus at $XDG_RUNTIME_DIR/bus and a fake socket at $XDG_RUNTIME_DIR/systemd/private
+    then: every connect fails and the fake services record no connection
+    when: the child connects to each, and to a fake system bus socket at its path
+  - given: the same setup with Network::None
+    then: every connect fails
+    when: the child connects
+  tasks: []
+- id: SR-002
+  statement: The container-engines class MUST make a connect to every listed engine socket fail on Linux (T1) and
+    macOS under every network setting, unless the class is waived.
+  priority: P1
+  mitigations:
+  - mitigation.engine-deny
+  acceptance:
+  - given: macOS, Network::All and fake engine sockets at each listed home-directory path
+    then: every connect is denied and no fake engine records a connection
+    when: the child connects to each
+  - given: Linux T1 in a container lane with fake sockets at each listed system and runtime path
+    then: every connect fails
+    when: the child connects to each
+  tasks: []
+- id: SR-003
+  statement: On T2, if a socket of an unwaived class exists at spawn, making the cage MUST fail with a capability
+    gap naming the class and every such socket path; fit MUST relax the class by name and say what lifts the gap.
+  priority: P1
+  mitigations:
+  - mitigation.t2-gap
+  acceptance:
+  - given: T2 and a socket at $XDG_RUNTIME_DIR/bus
+    then: it fails with a gap naming service-handoff and that path
+    when: the cage is made
+  - given: the same host and fit
+    then: it relaxes service-handoff by name and states what would lift the gap
+    when: fit runs
+  - given: T2 and no listed socket
+    then: it succeeds unchanged
+    when: the cage is made
+  tasks: []
+- id: SR-004
+  statement: An abstract address of a service-handoff bus found at spawn MUST be scoped where the kernel supports
+    abstract-socket scoping (Landlock ABI 6), and otherwise MUST fail the cage with a gap naming the address.
+  priority: P1
+  mitigations:
+  - mitigation.abstract-scope
+  acceptance:
+  - given: a fake bus on an abstract address and Landlock ABI 6
+    then: the connect fails
+    when: the child connects
+  - given: the same bus and a kernel below ABI 6
+    then: it fails with a gap naming the address
+    when: the cage is made
+  tasks: []
+- id: SR-005
+  statement: 'A deny MUST hold for the socket object, not its spelling: a connect through a symbolic link, /var/run
+    instead of /run, or a hard link made inside the cage to a listed socket MUST fail like the direct path.'
+  priority: P1
+  mitigations:
+  - mitigation.resolved-object
+  acceptance:
+  - given: a writable workspace with a symbolic link to a listed fake socket
+    then: the connect fails on T1 and macOS
+    when: the child connects through it
+  - given: a listed fake socket
+    then: the link or the connect fails
+    when: the child makes a hard link to it in the workspace and connects
+  tasks: []
+- id: SR-006
+  statement: The runtime and home directories MUST be expanded both from the environment and from the account (/run/user/<uid>,
+    the account's home), and the listed sockets denied under each spelling.
+  priority: P1
+  mitigations:
+  - mitigation.uid-expansion
+  acceptance:
+  - given: a harness with XDG_RUNTIME_DIR unset and a fake bus at /run/user/<uid>/bus
+    then: the connect fails
+    when: the child connects
+  - given: HOME pointing to another directory
+    then: the connect is denied
+    when: the child connects to the engine socket under the account's home
+  tasks: []
+- id: SR-007
+  statement: The service socket list MUST be versioned data with a source per entry, and the docs MUST list each
+    path and directory pattern it covers and say that sockets outside it are not covered.
+  priority: P1
+  mitigations:
+  - mitigation.versioned-list
+  acceptance:
+  - given: the list and the docs
+    then: every entry appears in both with its version
+    when: a table test compares them
+  tasks: []
+- id: SR-008
+  statement: On T1 a socket created after spawn at a listed runtime-directory path MUST be unreachable; any listed
+    path that cannot be covered that way MUST be documented as the spawn-snapshot approximation.
+  priority: P1
+  mitigations:
+  - mitigation.cover-directories
+  acceptance:
+  - given: T1, no bus socket at spawn
+    then: the connect fails, or the path is listed as a snapshot approximation in the docs
+    when: a fake bus is bound at $XDG_RUNTIME_DIR/bus after spawn and the child connects
+  tasks: []
+- id: SR-009
+  statement: Each class MUST be waivable only by its typed name; a waiver MUST remove exactly that class's denies
+    and MUST be recorded in the receipt.
+  priority: P1
+  mitigations:
+  - mitigation.class-scoped-waiver
+  acceptance:
+  - given: a policy compiled with and without the container-engines waiver
+    then: they differ only in the engine denies, service-handoff still holds, and the receipt lists the waiver
+    when: the outputs are compared
+  - given: container-engines waived
+    then: it succeeds and a connect to the fake bus still fails
+    when: the child connects to a fake engine
+  tasks: []
+- id: SR-010
+  statement: Patterns MUST match only listed names under the expanded directories; a socket under a granted writable
+    tree that matches no pattern MUST stay reachable.
+  priority: P2
+  mitigations:
+  - mitigation.exact-patterns
+  acceptance:
+  - given: a project's own server socket in the writable workspace
+    then: it succeeds on T1, T2 and macOS
+    when: the child connects
+  tasks: []
+- id: SR-011
+  statement: With reporting on, a refused connect to a listed socket MUST be recorded with the class name as its
+    reason.
+  priority: P2
+  mitigations:
+  - mitigation.class-reason
+  acceptance:
+  - given: macOS, reporting on and a fake engine socket
+    then: the record holds a violation with reason container-engines
+    when: the child connects
+  tasks: []
+- id: SR-012
+  statement: The escape suite MUST hold a canary per class with the network on, on T1, T2 and macOS, each paired
+    with a positive control (class waived, connect succeeds) and failing, never skipping, when the setup is missing.
+  priority: P1
+  mitigations:
+  - mitigation.paired-canaries
+  acceptance:
+  - given: each lane
+    then: 'the connect is refused (T2: the gap), and the waived control connects'
+    when: the canary runs
+  - given: a lane where the private bus cannot start
+    then: it fails
+    when: the canary runs
+  tasks: []
+- id: SR-013
+  statement: The change MUST ship with a Security entry in the changelog and the escape class in the threat model,
+    and the regenerated preset fixtures MUST differ only by the new denies.
+  priority: P2
+  mitigations:
+  - mitigation.reviewed-fixtures
+  acceptance:
+  - given: the fixture diff
+    then: every changed line is a service-handoff or container-engines deny
+    when: it is reviewed
+  - given: the changelog and the threat model
+    then: both name container-engines, the extended service-handoff and the canaries
+    when: they are read
+  tasks: []
+verification: []
+decisions: []

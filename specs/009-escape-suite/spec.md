@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "009-escape-suite: Feature `escape-suite`: one canary per escape class, both OSes, every CI lane."
 

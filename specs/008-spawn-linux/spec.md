@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "008-spawn-linux: Tier probe, T1/T2 plans built in the parent, mounts + Landlock + seccomp in-process, grants via rule fds, netns; must implement the data-driven hard-deny classes `secrets`, `trust-handoff`, `persistence` (T1 masks at spawn; T2 gap when a grant covers them) before Linux spawning ships."
 

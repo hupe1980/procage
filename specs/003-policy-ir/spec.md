@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "003-policy-ir: `procage-policy`: intent layer, backend layers, `AbsPath`, glob compiler, escaper, SBPL lowering, Linux plan lowering, `CapabilityGap`, limits guard, serde schema, fuzz targets; lowering table as fixtures."
 

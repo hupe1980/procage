@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-31
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "026-consumer-api: Pre-freeze API changes from consumer feedback: environment decision that cannot leak, a portable backend surface, keeping a caged child in the caller's group or a self-confine-then-exec entry for helpers, Unix sockets under trees, the \"read everything except\" case and approximations."
 

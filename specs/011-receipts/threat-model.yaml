@@ -1,0 +1,839 @@
+otmVersion: 0.2.0
+project:
+  id: 011-receipts
+  name: Receipts, evidence of how a run was caged
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child, and in later caged runs of the same harness
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that spawns cages and stores their receipts
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the receipt builder, the encoder, the format or the docs
+    trust: semi-trusted
+  - id: actor.reviewer
+    name: Auditor or pull-request reviewer who reads a stored receipt after the run
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface; a receipt is handed to the caller in-process
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary; procage never sends a receipt anywhere
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit; the receipt is returned to the caller's own process
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked flow.child-output: the only child-controlled inputs are the exit status and the violation record;
+      covered by threat.child-shaped-fields'
+    technique: injection
+  - disposition: not-applicable
+    reason: single user; a receipt belongs to the run of the caller that spawned it
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: no principals; procage authorises nothing when it builds or reads a receipt
+    technique: broken-access-control
+  - disposition: no-threat-detected
+    reason: 'checked component.format: reading a receipt never configures or relaxes a cage; a receipt is output
+      only'
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T21:13:40Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: spec.md
+    sha256: fdec05b389fb45bb0b32103b495fd120254320c66a10eb6236483fb450aa0f13
+  surfaces:
+  - external-input
+  - audit-relevant
+  - persistent-store
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness process that builds cages and receives receipts
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel and the unified log (exit status, tier facts, violation reports)
+  risk:
+    trustRating: 95
+- id: tz.store
+  name: Where the harness keeps receipts (logs, pull requests, audit trails)
+  risk:
+    trustRating: 50
+assets:
+- id: asset.digest
+  name: The policy digest, the identity a reviewer uses to tell two policies apart
+  risk:
+    availability: 20
+    confidentiality: 10
+    integrity: 95
+  attributes:
+    type: capability
+    source: spec.md#FR-002
+    classification: internal
+- id: asset.receipt
+  name: The per-run receipt a reviewer reads to decide how a command was caged
+  risk:
+    availability: 30
+    confidentiality: 30
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#Key-Entities
+    classification: internal
+- id: asset.secrets
+  name: Environment values, file contents, policy paths and violation paths the caller did not ask to log
+  risk:
+    availability: 0
+    confidentiality: 90
+    integrity: 20
+  attributes:
+    type: credential
+    source: spec.md#FR-004
+    classification: secret
+- id: asset.spawn
+  name: The child's call sequence between fork and exec
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 70
+  attributes:
+    type: capability
+    source: spec.md#FR-005
+    classification: internal
+components:
+- id: component.builder
+  name: Receipt builder in the parent (plan, tier, kernel, violation summary, exit)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.docs
+  name: Receipt docs (crate and site) on what a receipt proves
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-006
+- id: component.encoder
+  name: Canonical policy encoder and digest (policy crate)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Assumptions
+- id: component.format
+  name: Versioned receipt format (writer and reader)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.record
+  name: The run's violation record and reaped exit status (existing)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Edge-Cases
+- id: component.spawn
+  name: Child-side spawn path between fork and exec (existing)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-005
+dataflows:
+- id: flow.child-output
+  name: Caged code shapes its exit status and the violations it causes
+  source: tz.cage
+  destination: component.record
+  assets:
+  - asset.receipt
+  - asset.secrets
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+- id: flow.claims
+  name: The docs tell the reviewer what a receipt proves
+  source: component.docs
+  destination: actor.reviewer
+  assets:
+  - asset.receipt
+  attributes:
+    crosses: []
+- id: flow.digest
+  name: The encoder hands the policy digest to the builder
+  source: component.encoder
+  destination: component.builder
+  assets:
+  - asset.digest
+  attributes:
+    crosses: []
+- id: flow.read
+  name: A reviewer reads a stored receipt
+  source: tz.store
+  destination: actor.reviewer
+  assets:
+  - asset.receipt
+  - asset.digest
+  attributes:
+    crosses:
+    - tz.store
+- id: flow.run-facts
+  name: The kernel reports exit status, tier and release facts and violations
+  source: tz.os
+  destination: component.record
+  assets:
+  - asset.receipt
+  attributes:
+    crosses:
+    - tz.os
+    - tz.harness
+- id: flow.serialise
+  name: The builder serialises the receipt through the format
+  source: component.builder
+  destination: component.format
+  assets:
+  - asset.receipt
+  - asset.digest
+  - asset.secrets
+  attributes:
+    crosses: []
+- id: flow.store
+  name: The harness stores the serialised receipt
+  source: component.format
+  destination: tz.store
+  assets:
+  - asset.receipt
+  - asset.secrets
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.store
+- id: flow.summary
+  name: The record hands its summary and the exit to the builder
+  source: component.record
+  destination: component.builder
+  assets:
+  - asset.receipt
+  - asset.secrets
+  attributes:
+    crosses: []
+threats:
+- id: threat.child-shaped-fields
+  name: Caged code shapes receipt fields beyond its exit status (process names, paths or forged reports), changing
+    what the receipt says about the cage
+  categories:
+  - Tampering
+  cwes:
+  - CWE-74
+  risk:
+    impact: 55
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.caged-code
+    elements:
+    - flow.child-output
+    - component.record
+    profile: stride
+    severity: low
+    technique: injection
+- id: threat.digest-collision
+  name: A non-canonical encoding (rule order, a path as text or as bytes, omitted defaults) or a weak hash gives
+    two different policies the same digest, so a reviewer reads a loosened policy as the reviewed one
+  categories:
+  - Tampering
+  cwes:
+  - CWE-328
+  - CWE-180
+  risk:
+    impact: 85
+    likelihood: 35
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.digest
+    status: open
+    actor: actor.contributor
+    elements:
+    - component.encoder
+    - flow.digest
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.final-state-misstated
+  name: The receipt claims a state the run did not reach, a partial view taken while it runs read as final, or a
+    kill, signal or timeout recorded as a normal exit
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-778
+  risk:
+    impact: 55
+    likelihood: 30
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.consumer
+    elements:
+    - component.builder
+    - component.record
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.fork-exec-work
+  name: Receipt bookkeeping adds allocation or locking to the child between fork and exec, so a multithreaded parent's
+    child can deadlock or run unconfined code paths
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-667
+  risk:
+    impact: 70
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.spawn
+    status: open
+    actor: actor.contributor
+    constitution: IV. Syscalls only between fork and exec
+    elements:
+    - component.spawn
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.grants-unrecorded
+  name: '[NEEDS CLARIFICATION: does the receipt record the per-spawn grants (as a digest, a count, or paths on request)?
+    FR-002 does not list them, and without them two runs with equal policy digests may have reached different paths]'
+  categories:
+  - Repudiation
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.reviewer
+    disposition: needs-clarification
+    elements:
+    - component.builder
+    profile: stride
+    severity: unrated
+    technique: missing-audit-trail
+- id: threat.lowering-version-unrecorded
+  name: '[NEEDS CLARIFICATION: does the receipt name the procage version or a digest of the lowered plan? Equal
+    policy, preset and base versions lowered by different procage releases may be enforced differently]'
+  categories:
+  - Repudiation
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.receipt
+    - asset.digest
+    status: open
+    actor: actor.reviewer
+    disposition: needs-clarification
+    elements:
+    - component.builder
+    profile: stride
+    severity: unrated
+    technique: missing-audit-trail
+- id: threat.not-observed-as-none
+  name: With reporting off or unavailable, or a lossy macOS record, the receipt's violation summary reads as zero
+    denials, and a reviewer concludes nothing was denied
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-778
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.reviewer
+    elements:
+    - component.builder
+    - flow.summary
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.receipt-as-attestation
+  name: A later caged run, or anyone who can write where receipts are kept, rewrites a stored receipt, and a reviewer
+    who reads the unsigned receipt as an attestation trusts the forgery
+  categories:
+  - Tampering
+  cwes:
+  - CWE-345
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.caged-code
+    elements:
+    - flow.store
+    - flow.read
+    - component.docs
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.receipt-leaks-secrets
+  name: The receipt carries environment values, command arguments, policy paths or violation paths into a log or
+    pull request the caller did not mean to expose
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-532
+  - CWE-200
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.secrets
+    status: open
+    actor: actor.consumer
+    elements:
+    - component.builder
+    - flow.serialise
+    - flow.store
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.relaxation-omitted
+  name: The receipt leaves out an accepted approximation, a fit relaxation or a waived hard-deny class, so a relaxed
+    run reads as fully enforced
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-778
+  risk:
+    impact: 80
+    likelihood: 35
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker (every degradation is recorded in the receipt)
+    elements:
+    - component.builder
+    - flow.serialise
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.unknown-field-dropped
+  name: A reader that ignores a field it does not know (a new relaxation kind written by a newer version) reports
+    the run as fully enforced
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-778
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.reviewer
+    elements:
+    - component.format
+    - flow.read
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.unknown-field-rule
+  name: '[NEEDS CLARIFICATION: does a reader refuse unknown fields like the policy format (FR-003), or preserve
+    or ignore them (US3)? The two requirements disagree]'
+  categories:
+  - Repudiation
+  risk:
+    impact: 0
+    likelihood: 0
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.receipt
+    status: open
+    actor: actor.reviewer
+    disposition: needs-clarification
+    elements:
+    - component.format
+    profile: stride
+    severity: unrated
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.canonical-digest
+  name: One canonical encoding (fixed field order, sets sorted, paths as bytes, defaults explicit) hashed with SHA-256
+    under a format tag and version; property tests and a pinned fixture digest
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.digest-collision
+    status: required
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - component.encoder
+- id: mitigation.fail-closed-reader
+  name: The reader refuses newer versions and never derives enforced-as-written when it meets a field or value it
+    does not know
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.unknown-field-dropped
+    status: required
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - component.format
+- id: mitigation.field-allowlist
+  name: The receipt holds only the FR-002 fields, counts instead of violation contents; the policy only on request;
+    canary test over every field
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.receipt-leaks-secrets
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - component.builder
+    - component.format
+- id: mitigation.final-after-reap
+  name: The final receipt exists only after reaping and a closed record; the partial view is a separate type; exit
+    is a typed cause
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.final-state-misstated
+    status: required
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - component.builder
+    - component.record
+- id: mitigation.honest-docs
+  name: The docs state that a receipt is the caller's unsigned record, where to keep it, what an empty record does
+    not prove, and that exec yields none
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.receipt-as-attestation
+    - threat.not-observed-as-none
+    status: required
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - component.docs
+- id: mitigation.parent-only-facts
+  name: Every field comes from the parent's plan, the kernel's reports and the reaped status; child-controlled strings
+    stay out; the child path is unchanged
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.child-shaped-fields
+    - threat.fork-exec-work
+    status: required
+    kind: preventive
+    requirements:
+    - SR-006
+    - SR-007
+    touchpoints:
+    - component.builder
+    - component.spawn
+- id: mitigation.plan-is-the-source
+  name: The relaxation, approximation and waiver lists are copied from the cage's own plan, with one enforced-as-written
+    field derived from them
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.relaxation-omitted
+    status: required
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - component.builder
+- id: mitigation.typed-coverage
+  name: The violation summary is typed by coverage (not observed, unavailable with reason, observed with completeness
+    and dropped count); not observed has no count
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.not-observed-as-none
+    status: required
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - component.builder
+    - component.record
+requirements:
+- id: SR-001
+  statement: The policy digest MUST be SHA-256 over one canonical encoding of the policy (fixed field order, sets
+    sorted, order kept only where it changes meaning, every path as its bytes, no omitted defaults) prefixed by
+    a format tag and version; equal policies MUST have equal digests however they were built, and policies that
+    differ in any rule, waiver, base or preset tag MUST have different digests.
+  priority: P1
+  mitigations:
+  - mitigation.canonical-digest
+  acceptance:
+  - given: two equal policies built with their sets in a different order
+    then: the digests are equal
+    when: both are digested
+  - given: a policy and a copy that differs in one path byte, one waiver, the base or the preset tag
+    then: the digests differ
+    when: both are digested
+  - given: a fixture policy with a pinned digest
+    then: the digest equals the pinned value
+    when: it is digested on every CI lane and after a round trip through the serialised form
+  tasks: []
+- id: SR-002
+  statement: The receipt MUST list every accepted approximation by construct, every fit relaxation with its lift
+    and every waived hard-deny class held by the cage's plan, and MUST carry one field that says enforced as written
+    only when all three lists are empty.
+  priority: P1
+  mitigations:
+  - mitigation.plan-is-the-source
+  acceptance:
+  - given: a fitted cage with relaxations, a cage with an accepted approximation and a cage with each waivable class
+      waived
+    then: the receipt lists exactly the plan's entries and enforced as written is false
+    when: a run of each ends
+  - given: a cage with none of them
+    then: the three lists are empty and enforced as written is true
+    when: a run ends
+  tasks: []
+- id: SR-003
+  statement: A receipt reader MUST refuse a receipt of a newer format version with a typed error, and MUST NOT report
+    a run as enforced as written when the receipt holds a field or value it does not know.
+  priority: P1
+  mitigations:
+  - mitigation.fail-closed-reader
+  acceptance:
+  - given: a receipt with an added relaxation kind the reader does not know
+    then: it is refused, or read with enforced as written false or unknown, never true
+    when: it is read
+  - given: a receipt of the next format version
+    then: the reader returns an unsupported-version error
+    when: it is read
+  - given: a receipt of the previous format version
+    then: it parses with every field intact
+    when: it is read
+  tasks: []
+- id: SR-004
+  statement: The violation summary MUST carry the record's coverage, completeness and dropped count; with reporting
+    off or unavailable it MUST say not observed (with the reason) and MUST NOT carry a violation count.
+  priority: P1
+  mitigations:
+  - mitigation.typed-coverage
+  acceptance:
+  - given: a run with reporting off, and a run where reporting was unavailable
+    then: the summary is not observed (unavailable naming the reason) and holds no count, so no reader can read
+      zero
+    when: their receipts are serialised
+  - given: a macOS run whose record dropped reports
+    then: the summary carries coverage observed, the dropped count and completeness as the record reports them
+    when: its receipt is built
+  tasks: []
+- id: SR-005
+  statement: Without the caller asking for the policy, the receipt MUST NOT contain environment values, command
+    arguments, file contents, policy paths, violation paths or process names; asking for the policy MUST add only
+    the policy.
+  priority: P2
+  mitigations:
+  - mitigation.field-allowlist
+  acceptance:
+  - given: a canary string in an environment value, an argument, a policy path, a file the child reads and a path
+      the child is denied
+    then: no canary bytes appear in it
+    when: the run's receipt is serialised
+  - given: the same run with the policy requested
+    then: only the policy-path canary appears
+    when: the receipt is serialised
+  tasks: []
+- id: SR-006
+  statement: Every receipt field MUST come from the parent's cage and plan, the kernel's reports and the reaped
+    exit status; strings the caged code controls MUST NOT appear in a receipt.
+  priority: P2
+  mitigations:
+  - mitigation.parent-only-facts
+  acceptance:
+  - given: a child that names itself and its paths with format-breaking bytes and exits with a chosen code
+    then: the exit code is recorded, none of its strings appear, and every other field equals the cage's own values
+    when: its receipt is read back
+  tasks: []
+- id: SR-007
+  statement: The child's call sequence between fork and exec MUST be identical with and without receipts; the receipt
+    MUST be built in the parent only.
+  priority: P2
+  mitigations:
+  - mitigation.parent-only-facts
+  acceptance:
+  - given: the multithreaded spawn tests on every lane
+    then: they pass, and the child-side code holds no receipt state
+    when: they run with receipts
+  - given: the spawn benchmark
+    then: spawn latency is unchanged within noise
+    when: it runs with and without receipts
+  tasks: []
+- id: SR-008
+  statement: A final receipt MUST be available only after the child was reaped and its violation record is complete
+    or closed as interrupted; the partial view MUST be a distinct type that cannot be serialised as a final receipt;
+    the exit MUST distinguish an exit code, a signal and a kill by the caller, a timeout or the end of the run.
+  priority: P2
+  mitigations:
+  - mitigation.final-after-reap
+  acceptance:
+  - given: a running child
+    then: only the partial view is returned, and it serialises marked partial
+    when: the receipt is asked for
+  - given: runs ended by a normal exit, a signal, a caller kill and a timeout
+    then: each exit field names its cause
+    when: their receipts are read
+  tasks: []
+- id: SR-009
+  statement: The receipt docs MUST state that a receipt is the caller's own unsigned record and not an attestation,
+    that whoever can write where it is kept can change it (so keep it outside every path a later run may write),
+    that an empty complete record does not prove nothing was denied, and that `Cage::exec` produces no receipt.
+  priority: P1
+  mitigations:
+  - mitigation.honest-docs
+  acceptance:
+  - given: the crate docs and the site page on receipts
+    then: each states all four points, and no text calls a receipt proof, attestation or signature
+    when: they describe what a receipt proves
+  tasks: []
+verification: []
+decisions: []

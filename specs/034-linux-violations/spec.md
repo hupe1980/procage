@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "Keep going. Run the full spec kit workflow, include analyze. We want best-in-class/state-of-the-art." Follows 010-violations (macOS reporting).
 

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Shipped in 0.1.0 (2026-11-01)
 
 **Input**: User description: "002-threat-model: Publish procage's threat model as part of the published crate (README section plus a rustdoc page). It states adversary, assets, trusted components, in-scope and out-of-scope classes, sandbox strength versus microVMs, private-interface dependencies (libsandbox symbols, Linux tiers) and non-goals. The escape-class list (R-02…R-12, R-21…R-26, R-28…R-30) is published with stable ids, each with a disposition (mitigated / detected / harness-side) and a status that is honest about the current release: no class may be marked mitigated without a named kernel test as evidence. The list is the contract the escape suite (spec 009) must satisfy: a gate checks the catalog's structure, id stability and evidence rule. The README and crate docs must stop claiming enforcement the release does not ship. Published files never cite local planning paths."
 
