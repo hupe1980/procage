@@ -1,0 +1,424 @@
+otmVersion: 0.2.0
+project:
+  id: 032-fit
+  name: Fitting a policy to the host
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that fits policies
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits fitting or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network-boundary surface
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'evaluated: waiving the secrets class is a named relaxation the caller must choose; covered by threat.silent-relaxation'
+    technique: credential-theft
+  - disposition: no-threat-detected
+    reason: 'evaluated: fitting changes only the policy the caller passes, by named relaxations; weaker results
+      are threat.silent-relaxation'
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.fit: bounded rounds; lift search lowers at most a dozen targets'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Relax
+    reason: part of component.fit
+  extends: null
+  generated: '2026-11-01T17:26:13Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 826b72eafa7b43e77be289946f98e303335ad8605cdf8ffbc3801babf483dfee
+  - path: spec.md
+    sha256: 50a1eaa4c5aa2b0c6504e4307e902f2d7c66a2c6833becc71a0d61e899a544a5
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+assets:
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.report
+  name: The list of relaxations and their lifts the harness shows its user
+  risk:
+    availability: 0
+    confidentiality: 0
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#US2
+    classification: internal
+components:
+- id: component.docs
+  name: Crate docs and THREAT_MODEL on fitting
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-006
+- id: component.fit
+  name: Relax and the lift search in the policy crate; Cage::fit on both backends
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.confine
+  name: The fitted cage confines the child
+  source: component.fit
+  destination: tz.cage
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.report
+  name: The relaxation list reaches the harness user
+  source: component.fit
+  destination: tz.harness
+  assets:
+  - asset.report
+  attributes:
+    crosses: []
+threats:
+- id: threat.fit-escape
+  name: A fitted cage fails to confine what was not relaxed (writes outside, network) because a relaxed policy lowers
+    differently than expected
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 20
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.confine
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.silent-relaxation
+  name: Fitting relaxes a construct the caller did not name, or an approximation, or more rules than the gap names,
+    so the cage is weaker than the caller believes
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.fit
+    - flow.confine
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.unreported-relaxation
+  name: A relaxation is applied but missing from the list, so the harness user is not told
+  categories:
+  - Repudiation
+  risk:
+    impact: 70
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.report
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.fit
+    - flow.report
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.wrong-lift
+  name: The lift names the wrong fix (T1 for an ABI limit or the reverse), so users apply a fix that changes nothing
+    and trust the result
+  categories:
+  - Repudiation
+  risk:
+    impact: 40
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.report
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.fit
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.caged-fit-tests
+  name: Caged tests spawn fitted cages and check the unrelaxed rules on T1/T2
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.fit-escape
+    status: verified
+    kind: detective
+    requirements:
+    - SR-004
+    touchpoints:
+    - tests/spawn_linux.rs
+    - tests/spawn_macos.rs
+- id: mitigation.named-only
+  name: Only unsupported gaps whose relaxation the caller named are relaxed, by the gap subject; otherwise nothing
+    is applied and all remaining gaps are returned
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.silent-relaxation
+    - threat.unreported-relaxation
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/fit.rs
+    - src/linux/mod.rs
+    - src/macos/mod.rs
+- id: mitigation.relower-lift
+  name: Lifts come from lowering the original policy for T1 and newer ABIs, capped at the backend maximum
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.wrong-lift
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/fit.rs
+requirements:
+- id: SR-001
+  statement: Fitting MUST relax only unsupported gaps whose relaxation the caller named, and only the rule the gap
+    names; any other gap MUST fail the cage with every remaining gap and no change applied.
+  priority: P1
+  mitigations:
+  - mitigation.named-only
+  acceptance:
+  - given: gaps of which one has no named relaxation
+    then: it returns the unrelaxable gaps and the policy is unchanged
+    when: the relaxation is applied
+  - given: an approximation gap of a relaxable construct
+    then: it is not relaxed
+    when: the relaxation is applied
+  - given: two protect rules and a gap for one
+    then: only that rule is removed
+    when: the relaxation is applied
+  tasks: []
+- id: SR-002
+  statement: Every relaxation applied MUST appear in the returned list with its gap and effect.
+  priority: P1
+  mitigations:
+  - mitigation.named-only
+  acceptance:
+  - given: T2 and four relaxations
+    then: the list has exactly the four entries
+    when: Cage::fit runs
+  tasks: []
+- id: SR-003
+  statement: The lift of each relaxed gap MUST be derived by lowering the original policy for tier T1 and for newer
+    Landlock ABIs up to the backend maximum, and be unknown when neither lifts it.
+  priority: P2
+  mitigations:
+  - mitigation.relower-lift
+  acceptance:
+  - given: the signal gap at ABI 5 on T2
+    then: it is ABI 6 without T1
+    when: the lift is computed
+  - given: a protect gap on T2
+    then: it is T1
+    when: the lift is computed
+  - given: unix sockets on T2 with maximum ABI 8
+    then: it is T1 only
+    when: the lift is computed
+  tasks: []
+- id: SR-004
+  statement: A fitted cage MUST still enforce every part of the policy that was not relaxed.
+  priority: P1
+  mitigations:
+  - mitigation.caged-fit-tests
+  acceptance:
+  - given: a cage fitted on T2
+    then: both fail
+    when: the child writes outside the workspace and opens an IP socket
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: test
+  evidence: crates/procage-policy/tests/fit.rs::a_gap_without_a_named_relaxation_changes_nothing
+  result: pass
+  verdict: verified
+  justification: Unnamed gaps are returned and the policy is unchanged; approximations_are_never_relaxed and only_the_rule_the_gap_names_is_left_out
+    cover the other two scenarios (a stray subject relaxes nothing); tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named
+    shows Cage::fit failing with exactly the signal gap when its relaxation is missing.
+  verified_at: '2026-11-01T00:38:03Z'
+  commit: 313b15d
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named
+  result: pass
+  verdict: verified
+  justification: On T2 the list holds exactly the four relaxations applied (five below ABI 6), and Cage::fit builds
+    the list from every applied relaxation (src/linux/mod.rs, src/macos/mod.rs).
+  verified_at: '2026-11-01T00:38:03Z'
+  commit: 313b15d
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-policy/tests/fit.rs::lifts_come_from_lowering
+  result: pass
+  verdict: verified
+  justification: Signals at ABI 5 lift at ABI 6 without T1; protect lifts with T1; sockets lift with T1 only at
+    maximum 8 and at ABI 9 with maximum 12; macOS and unreported gaps are unknown; the Linux caged test asserts
+    the same lifts through Cage::fit.
+  verified_at: '2026-11-01T00:38:03Z'
+  commit: 313b15d
+- id: verification.sr-004.2026-11-01
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named
+  result: pass
+  verdict: verified
+  justification: The fitted T2 cage refuses an outside write (EACCES) and any socket (EPERM) while the relaxed .git
+    is writable and .env readable.
+  verified_at: '2026-11-01T00:38:03Z'
+  commit: 313b15d
+decisions: []

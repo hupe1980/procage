@@ -1,0 +1,675 @@
+otmVersion: 0.2.0
+project:
+  id: 010-violations
+  name: 'Violations: what the sandbox denied, and why'
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that fits policies
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits reporting, lowering or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: no-threat-detected
+    reason: 'checked flow.log: the helper reads the local unified log over a pipe from /usr/bin/log; forged lines
+      are threat.forged-attribution'
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'evaluated: the record holds paths the caged code tried, which the harness already passed or the code
+      chose; no secret content is read'
+    technique: credential-theft
+  - disposition: no-threat-detected
+    reason: 'evaluated: the only profile change is messages on deny rules; a changed allow/deny is threat.profile-drift'
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T17:26:10Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: be96bc9e0db18c13165f80b0de405fc6694a5cf9be1edbe1cbe18a01d90e9139
+  - path: spec.md
+    sha256: 945aeff8ce02ded9e641299318949854f30a793e363f72075f986420c5fd70c4
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel and the unified log (logd, /usr/bin/log)
+  risk:
+    trustRating: 95
+assets:
+- id: asset.harness
+  name: 'The harness process: memory, threads, the time wait and violations() take'
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#FR-005
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.record
+  name: The violation record the harness shows its user and may act on (e.g. ask for a grant)
+  risk:
+    availability: 30
+    confidentiality: 30
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#US1
+    classification: internal
+components:
+- id: component.docs
+  name: Crate docs, README and THREAT_MODEL on reporting
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-009
+- id: component.lowering
+  name: Deny-rule messages rendered from a lowering option (procage-policy sbpl/lower)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.monitor
+  name: 'The process-wide monitor: log stream helper, watchdog, parser, router, fences'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.record
+  name: Child::violations, the receiver and slot release
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-005
+dataflows:
+- id: flow.confine
+  name: The tagged profile confines the child
+  source: component.lowering
+  destination: tz.cage
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.denial
+  name: The caged child causes denials; the kernel logs them with the rule message
+  source: tz.cage
+  destination: tz.os
+  assets:
+  - asset.record
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.os
+- id: flow.log
+  name: log stream delivers matching lines to the monitor
+  source: tz.os
+  destination: component.monitor
+  assets:
+  - asset.record
+  attributes:
+    crosses:
+    - tz.os
+    - tz.harness
+- id: flow.record
+  name: The record reaches the harness
+  source: component.record
+  destination: tz.harness
+  assets:
+  - asset.record
+  attributes:
+    crosses: []
+threats:
+- id: threat.enforcement-claim
+  name: Docs present reporting as a control or as complete, so harnesses rely on it for security decisions
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-009
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.docs
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.false-complete
+  name: The record says complete (or the harness reads an empty list as no denial) when the stream was down, the
+    fence timed out or lines were dropped
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.record
+    - component.docs
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.forged-attribution
+  name: Caged code makes a denial whose path holds a newline and a fake tag or kind, so the monitor attributes it
+    to another run or reports a wrong reason the harness acts on
+  categories:
+  - Spoofing
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.denial
+    - flow.log
+    - component.monitor
+    profile: stride
+    severity: high
+    technique: identity-spoofing
+- id: threat.helper-leak
+  name: The log stream helper outlives the harness, inherits its descriptors or environment, or runs a replaced
+    or PATH-found binary
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 50
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.monitor
+    profile: stride
+    severity: low
+    technique: privilege-escalation-via-config
+- id: threat.profile-drift
+  name: Adding messages changes what the profile allows or denies (a message on the marker block, a dropped rule,
+    a different profile without reporting), weakening confinement
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.lowering
+    - flow.confine
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.record-flood
+  name: Caged code causes millions of distinct denials and exhausts the harness memory through the record or the
+    receiver
+  categories:
+  - Denial of Service
+  risk:
+    impact: 50
+    likelihood: 50
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.monitor
+    - component.record
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.slot-reuse
+  name: A denial still in transit when the run ends is attributed to the next run that gets the slot
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.record
+    - component.monitor
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.wait-hang
+  name: violations() or slot release blocks forever when the helper is down or slow, hanging the harness
+  categories:
+  - Denial of Service
+  risk:
+    impact: 50
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.record
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+mitigations:
+- id: mitigation.bounded-waits
+  name: Ready, fence and release waits have time limits; a timeout marks the record incomplete
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.wait-hang
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage/src/macos/violations.rs
+- id: mitigation.cap
+  name: Per-run cap with a dropped count; bounded receiver queue
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.record-flood
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage/src/violation.rs
+- id: mitigation.fence-before-free
+  name: A slot is freed only after a fence passed after its last process ended
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.slot-reuse
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage/src/macos/child.rs
+    - crates/procage/src/macos/violations.rs
+- id: mitigation.honest-record
+  name: complete only after a fence; coverage states off, unavailable (reason) or not observed; docs say best-effort
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.false-complete
+    - threat.enforcement-claim
+    status: verified
+    kind: detective
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage/src/violation.rs
+    - crates/procage/src/lib.rs
+    - crates/procage/THREAT_MODEL.md
+- id: mitigation.identical-off
+  name: Without reporting the profile is byte-identical; with it only messages differ; the marker block has none;
+    escape suite runs with reporting on
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.profile-drift
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/sbpl.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage/tests/escape_macos.rs
+- id: mitigation.last-line
+  name: Attribute only by the exact marker of a live run on the last line (kernel-written, after the target); the
+    target is everything between the operation and that line
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.forged-attribution
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage/src/violation.rs
+    - crates/procage/src/macos/violations.rs
+- id: mitigation.watchdog
+  name: Absolute /usr/bin/log and /bin/sh checked root-owned, not writable by others, on a read-only volume; empty
+    environment, close-on-exec, stdin watchdog ends the helper with the process
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.helper-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - crates/procage/src/macos/violations.rs
+requirements:
+- id: SR-001
+  statement: A violation MUST be attributed only by the exact marker of a live run of this process on the last line
+    of the message; a path containing a newline and another tag MUST stay with the run that caused it.
+  priority: P1
+  mitigations:
+  - mitigation.last-line
+  acceptance:
+  - given: two runs and a path containing a newline followed by the other run's marker
+    then: the violation is in the first run's record with the full path, and not in the other's
+    when: the first run is denied that path
+  - given: a message whose last line is no live marker
+    then: it is ignored
+    when: it is parsed
+  tasks: []
+- id: SR-002
+  statement: A run slot MUST NOT be freed before a fence passed after the run ended.
+  priority: P1
+  mitigations:
+  - mitigation.fence-before-free
+  acceptance:
+  - given: a run denied just before it ends
+    then: the denial is in the first record and not in the second
+    when: its slot is reused by the next run
+  tasks: []
+- id: SR-003
+  statement: Without reporting the rendered profile MUST equal the lowering fixtures recorded before this feature;
+    with reporting only rule messages MUST differ, the run-marker block MUST carry none, and the escape suite MUST
+    pass with reporting on.
+  priority: P1
+  mitigations:
+  - mitigation.identical-off
+  acceptance:
+  - given: every lowering fixture
+    then: removing the messages gives the same text, and without reporting it equals the fixture
+    when: rendered with and without reporting
+  - given: the macOS escape suite
+    then: every canary still holds
+    when: run with reporting on
+  tasks: []
+- id: SR-004
+  statement: A run record MUST keep at most a fixed number of violations and count the rest; the receiver MUST be
+    bounded.
+  priority: P2
+  mitigations:
+  - mitigation.cap
+  acceptance:
+  - given: more distinct denials than the cap
+    then: it holds the cap and counts the dropped ones
+    when: the record is read
+  tasks: []
+- id: SR-005
+  statement: A record MUST say complete only after a fence passed after the child exited, and MUST state its coverage
+    (off, unavailable with reason, not observed on this platform); docs MUST call reporting best-effort and diagnostic.
+  priority: P1
+  mitigations:
+  - mitigation.honest-record
+  acceptance:
+  - given: a running child
+    then: it is not complete
+    when: the record is read
+  - given: a cage without reporting, or Linux
+    then: coverage says off or not observed, never complete with zero violations as a claim
+    when: the record is read
+  tasks: []
+- id: SR-006
+  statement: The helper MUST run absolute /usr/bin/log under /bin/sh, both passing the integrity check (owned by
+    root, not group- or world-writable, on a read-only volume), with an empty environment and no inherited descriptors,
+    and MUST end when the process that started it dies.
+  priority: P2
+  mitigations:
+  - mitigation.watchdog
+  acceptance:
+  - given: a process that started the helper
+    then: no helper of it remains within a second
+    when: it is killed with SIGKILL
+  - given: a helper path that fails the integrity check
+    then: it runs nothing and coverage is unavailable with the reason
+    when: the monitor starts
+  tasks: []
+- id: SR-007
+  statement: Waiting for the helper, a fence or a slot release MUST be bounded; a timeout MUST leave the record
+    incomplete instead of blocking.
+  priority: P2
+  mitigations:
+  - mitigation.bounded-waits
+  acceptance:
+  - given: a helper that never answers
+    then: it returns within the limit, incomplete
+    when: violations() is called after exit
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/src/violation.rs::a_newline_in_the_target_cannot_move_the_violation; crates/procage/tests/spawn_macos.rs::a_newline_in_a_path_stays_with_its_run
+  result: pass
+  verdict: verified
+  justification: The unit test feeds a target containing a newline and another run's marker plus a code and asserts
+    the marker is the kernel's last line, the full target is kept and the kind stays NotGranted; other_messages_are_ignored
+    rejects messages without a marker line. The caged test is denied a real file named with a newline and a fake
+    marker and finds the violation in its own record. The reader routes only to registered markers (violations.rs
+    read()).
+  verified_at: '2026-11-01T05:41:57Z'
+  commit: 7b50b8c
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::runs_keep_their_own_violations; crates/procage-kernel-facts/tests/kernel_facts.rs::KF-M29
+  result: pass
+  verdict: verified
+  justification: Two concurrent runs keep only their own denials; after both are dropped (kill_all fences before
+    freeing the slot, child.rs finish_record) the next run on a freed slot sees none of them. KF-M29 pins the ordering
+    the fence relies on (a later process's denial arrives after a run's), 10/10 idle and 8/8 under full CPU load.
+    A failed fence retires the slot instead of freeing it.
+  verified_at: '2026-11-01T05:41:57Z'
+  commit: 7b50b8c
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-policy/tests/violations.rs::reporting_adds_only_messages; crates/procage-policy/tests/violations.rs::the_run_marker_block_carries_no_message;
+    crates/procage/tests/escape_macos.rs (PROCAGE_ESCAPE_VIOLATIONS=1)
+  result: pass
+  verdict: verified
+  justification: For every reference policy the profile without reporting has no message, and the reporting profile
+    with messages stripped equals it; the preset fixtures and lowering table still pass unchanged; the marker block
+    has no message; every reference profile compiles with reporting (policy_compiles); the escape suite passes 23/23
+    with reporting on (just escape and a CI step).
+  verified_at: '2026-11-01T05:41:57Z'
+  commit: 7b50b8c
+- id: verification.sr-004.2026-11-01
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/src/violation.rs::the_record_keeps_the_cap_and_counts_the_rest; crates/procage/src/violation.rs::the_receiver_is_bounded_and_never_blocks
+  result: pass
+  verdict: verified
+  justification: With a cap of 3, five pushes keep 3 and count 2 dropped; the receiver holds at most 1,024 and pushing
+    past it or after the receiver is dropped never blocks.
+  verified_at: '2026-11-01T05:41:57Z'
+  commit: 7b50b8c
+- id: verification.sr-005.2026-11-01
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::violations_arrive_while_the_child_runs; crates/procage/tests/spawn_macos.rs::reporting_is_off_by_default;
+    crates/procage/tests/native.rs::violation_records_have_the_same_shape
+  result: pass
+  verdict: verified
+  justification: A running child's record is not complete and becomes complete only after kill_all fenced; a cage
+    without the option reports Off, empty and not complete; the native test asserts Observed or NotObserved on each
+    OS (Linux lane). Crate docs, THREAT_MODEL limits and the site page call reporting diagnostic and best-effort.
+  verified_at: '2026-11-01T05:41:57Z'
+  commit: 7b50b8c
+- id: verification.sr-006.2026-11-01
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::the_helper_ends_with_its_process; crates/procage/src/macos/violations.rs::user_files_are_not_trusted
+  result: pass
+  verdict: verified
+  justification: A process that started the helper is SIGKILLed and no helper carrying its prefix remains within
+    2 s; a user-owned file fails the integrity check (system binaries pass), and start() returns that reason, which
+    ensure() turns into Coverage::Unavailable. The helper runs absolute /bin/sh and /usr/bin/log with env_clear
+    and std's close-on-exec descriptors.
+  verified_at: '2026-11-01T05:41:57Z'
+  commit: 7b50b8c
+- id: verification.sr-007.2026-11-01
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/src/macos/violations.rs::a_silent_helper_times_out; crates/procage/tests/spawn_macos.rs::a_dead_helper_is_reported_and_restarted
+  result: pass
+  verdict: verified
+  justification: A monitor whose helper never delivers the fence returns None after the 200 ms limit, so violations()
+    returns an incomplete record; a helper killed mid-run marks the record Unavailable and incomplete, and the next
+    spawn restarts it. violations_of asserts violations() returns within 1 s after exit.
+  verified_at: '2026-11-01T05:41:57Z'
+  commit: 7b50b8c
+decisions: []

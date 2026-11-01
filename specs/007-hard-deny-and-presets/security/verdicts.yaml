@@ -1,0 +1,37 @@
+verdicts:
+  - requirement: SR-001
+    verdict: verified
+    method: test
+    evidence: tests/spawn_macos.rs::hard_deny_secrets
+    result: pass
+    justification: With a read grant on HOME, listing HOME succeeds while listing ~/.ssh, ~/.aws and ~/.gnupg is refused by the kernel. With secrets waived, ~/.ssh is listable and the plan lists the waiver. Dropping .ssh from the list fails this test and the pinned fixtures.
+  - requirement: SR-002
+    verdict: verified
+    method: test
+    evidence: tests/spawn_macos.rs::hard_deny_trust_handoff; tests/spawn_macos.rs::preset_agent_workspace
+    result: pass
+    justification: In a writable workspace with .git, the child cannot create .git/hooks/pre-commit, .git/config, .gitmodules, .zshrc, .envrc or src/.bashrc, cannot mkdir .vscode, and cannot rename .git; src/main.rs, .git/objects/ab and notes.txt are writable. Waiving trust-handoff allows the hook. Removing the .git unlink deny fails the test.
+  - requirement: SR-003
+    verdict: verified
+    method: test
+    evidence: tests/spawn_macos.rs::hard_deny_persistence
+    result: pass
+    justification: With an explicit write grant on ~/Library/LaunchAgents, creating a plist there is refused and nothing is created. The persistence class is last in the profile, so it wins over the grant.
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: tests/spawn_macos.rs::hard_deny_secrets; tests/spawn_macos.rs::hard_deny_trust_handoff; crates/procage-policy/src/glob.rs::tests::folding
+    result: pass
+    justification: ~/.SSH is refused, and so are .ZSHRC and .GIT/HOOKS/post-checkout. The patterns are emitted case-folded (unit test). The kernel also matches case-insensitively on this APFS volume (research R1), so the folding is a second guard.
+  - requirement: SR-005
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/presets.rs::every_preset_is_pinned; crates/procage-policy/tests/presets.rs::the_class_lists_are_pinned; crates/procage-policy/tests/presets.rs::presets_round_trip_with_their_tag
+    result: pass
+    justification: The lowered macOS profile of each preset V1 (workspace /work) equals its fixture, which includes the full class lists. The list sizes and key patterns are asserted, and the presets round-trip with their name and version tag. Injected list and preset changes failed these tests.
+  - requirement: SR-006
+    verdict: verified
+    method: review
+    evidence: crates/procage-policy/src/lowering.md; crates/procage-policy/src/presets.rs:1; THREAT_MODEL.md#Release-status
+    result: pass
+    justification: The lowering table marks hd-secrets, hd-trust-handoff and hd-persistence as n/a on Linux with the note that the Linux spawn backend must implement them before it ships. The presets module docs and the threat-model release status say the same, and the 008 spec carries the requirement. Escape-class statuses are unchanged and the catalog gate passes.

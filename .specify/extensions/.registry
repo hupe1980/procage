@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "extensions": {
+    "threatspec": {
+      "version": "0.1.0",
+      "source": "local",
+      "manifest_hash": "sha256:620c18dc5895c9e7e8ea55d6ba06b30ea6e21219e0d54383828760a63aa2cb9c",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.threatspec.model",
+          "speckit.threatspec.check",
+          "speckit.threatspec.converge"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-10-29T18:58:15.259899+00:00"
+    }
+  }
+}

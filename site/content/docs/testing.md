@@ -44,3 +44,7 @@ just fuzz-all      # fuzz the policy crate (nightly, cargo-fuzz)
 ## Where they have run
 
 The escape suite's evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2. Older Landlock ABIs are exercised through `CageOptions::with_landlock_abi`. That is a narrow base: more kernels, x86_64 hosts and later macOS releases are what moves procage toward 0.1.0. Reports from other systems are welcome.
+
+## Design records
+
+Each change to procage has a public design record: its specification, the measurements behind it, a threat model with security requirements, and how each requirement was verified (made with Spec Kit and its ThreatSpec extension). See the [design records](https://github.com/hupe1980/procage/tree/main/specs) on GitHub.

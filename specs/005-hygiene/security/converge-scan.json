@@ -1,0 +1,470 @@
+{
+  "feature": "005-hygiene",
+  "commit": "1fd636f",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "Every descriptor >= 3 not named for the spawn MUST be unusable in the child after exec, including descriptors the caller left without close-on-exec, using only system calls on parent-prepared data.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the caller holds a descriptor to a denied file without close-on-exec",
+          "then": "it does not exist (EBADF)",
+          "when": "the caged child checks that descriptor number"
+        },
+        {
+          "given": "the caller holds 1,000 extra descriptors",
+          "then": "none remain",
+          "when": "the child counts its descriptors >= 3"
+        }
+      ],
+      "mitigations": [
+        "mitigation.cloexec-sweep"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-003] Extend `src/macos/sys.rs`:"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] Add `Step::Fds`, `SpawnError::Fd { fd }`, and `Cage::spawn_with_fds(cmd, grants, &[BorrowedFd])` in `src/macos/mod.rs`, with named fds validated by `fd_is_open`. Size the buffer in the parent and pass the keep list into `ChildPlan`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-003] Add tests to `tests/spawn_macos.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "A descriptor named for a spawn MUST be usable in the child; a named descriptor that is not open MUST fail the spawn with a typed error; the sweep MUST stay fast under a very large descriptor limit.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a named descriptor",
+          "then": "it succeeds",
+          "when": "the child reads it"
+        },
+        {
+          "given": "a named descriptor number that is not open",
+          "then": "it fails with a typed error and no child runs",
+          "when": "spawn runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.cloexec-sweep"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] Add `Step::Fds`, `SpawnError::Fd { fd }`, and `Cage::spawn_with_fds(cmd, grants, &[BorrowedFd])` in `src/macos/mod.rs`, with named fds validated by `fd_is_open`. Size the buffer in the parent and pass the keep list into `ChildPlan`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-003] Add tests to `tests/spawn_macos.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "A failed in-child step MUST still reach the parent as a typed error after the descriptor sweep.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a child whose rlimit step fails after the sweep ran",
+          "then": "it is Apply with step Rlimit, not success",
+          "when": "spawn returns"
+        }
+      ],
+      "mitigations": [
+        "mitigation.mark-not-close"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-003] Extend `src/macos/sys.rs`:"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-003] Add tests to `tests/spawn_macos.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Dropping or killing the handle MUST kill the child's process group and every descendant reachable from the child, including descendants in a new session, and reap the child; a detached handle MUST NOT kill.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a caged child with a grandchild in its group and one that called setsid",
+          "then": "both are gone within 1 s",
+          "when": "the handle is dropped"
+        },
+        {
+          "given": "a detached handle",
+          "then": "the child keeps running",
+          "when": "it is dropped"
+        }
+      ],
+      "mitigations": [
+        "mitigation.group-and-tree-kill"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US2] [SR-004] Create `src/macos/child.rs`: `Child` (Deref/DerefMut to `std::process::Child`) with `kill_all()` (descendant walk, SIGKILL, `killpg`, wait), `detach()`, `dropped_env()`, `tmpdir()`, and `Drop`. `Cage::spawn` returns `Child`; `Tty::Inherit` uses `Group::ProcessGroup`."
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-004] Add tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "Under passthrough the child MUST NOT receive DYLD_*, LD_PRELOAD, LD_LIBRARY_PATH, SSH_AUTH_SOCK, *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY or AWS_* variables unless set explicitly on the command, and the handle MUST list each dropped name.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a caller with GITHUB_TOKEN, SSH_AUTH_SOCK and DYLD_INSERT_LIBRARIES set",
+          "then": "none is present and all three are reported dropped",
+          "when": "a passthrough child prints its environment"
+        },
+        {
+          "given": "GITHUB_TOKEN set explicitly on the command",
+          "then": "it is present",
+          "when": "the child prints its environment"
+        }
+      ],
+      "mitigations": [
+        "mitigation.env-denylist"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-005] Create `src/hygiene.rs` (all OSes, exported as `pub mod hygiene`). It holds the denylist constants (prefixes `DYLD_`, `AWS_`; names `LD_PRELOAD`, `LD_LIBRARY_PATH`, `SSH_AUTH_SOCK`; suffixes `_TOKEN`, `_SECRET`, `_PASSWORD`, `_API_KEY`), `EnvDecision`, and the pure `environment(caller, policy, explicit)`, plus unit tests: allowlist as written; passthrough drops each pattern and reports it; explicit variables win; explicit removals remove."
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US3] [SR-005] Route `src/macos/spawn.rs::environment` through `hygiene::environment`; the handle carries `dropped`."
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US3] [SR-005] [SR-006] Add tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/hygiene.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "A policy grant named tmpdir MUST be bound per spawn to a fresh directory accessible only to the user, TMPDIR MUST point to it, and dropping the handle MUST remove it.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a policy with a tmpdir grant",
+          "then": "their TMPDIRs differ, each child writes its own, and each directory is gone after its handle is dropped",
+          "when": "two children run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.private-tmpdir"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US3] [SR-006] Add the per-spawn tmpdir in `src/macos/mod.rs`/`child.rs`: if the policy declares grant `tmpdir`, create a 0700 directory under the canonical temp dir, bind the grant, and set `TMPDIR` unless explicit. A caller binding `tmpdir` is `GrantError::Reserved`. Drop removes the directory."
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US3] [SR-005] [SR-006] Add tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Docs and the threat-model release status MUST state the macOS double-fork escape from lifetime control, keep pseudo-terminals and Linux as open gaps, and leave escape-class statuses unchanged.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the macos module docs, README and threat model",
+          "then": "the double-fork gap is stated and no closed gap is still listed as open",
+          "when": "they are reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.group-and-tree-kill"
+      ],
+      "tasks": [
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[SR-007] Docs: the `src/macos/mod.rs` \"observed\" list gains fds, lifetime, environment denylist and tmpdir; \"not done\" keeps double fork, pty (022) and Linux. Update the crate docs, the README status and the `THREAT_MODEL.md` release status; statuses stay unchanged."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.env-secret-passthrough",
+    "threat.inherited-fd",
+    "threat.outliving-descendants",
+    "threat.overclaimed-hygiene",
+    "threat.shared-tmpdir",
+    "threat.sweep-breaks-reporting",
+    "threat.sweep-unbounded"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 7,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 7
+    },
+    "threats_by_severity": {
+      "critical": 2,
+      "high": 3,
+      "medium": 2
+    },
+    "mitigations": 5,
+    "requirements": 7,
+    "requirements_with_tasks": 7,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 6,
+      "medium": 1
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

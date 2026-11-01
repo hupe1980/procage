@@ -64,6 +64,10 @@ unacceptable. The full [threat model](crates/procage/THREAT_MODEL.md) lists ever
 class and its status in the current release. To report a suspected escape, see
 the [security policy](SECURITY.md).
 
+Every change is specified, threat-modelled and verified in the open: the
+[design records](specs/README.md) hold each change's spec, measurements,
+threat model and the verification of its security requirements.
+
 ## Development
 
 `just ci` runs every local quality gate: formatting, lints, tests, docs,

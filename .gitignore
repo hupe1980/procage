@@ -26,11 +26,11 @@ rustc-ice-*.txt
 # macOS
 .DS_Store
 
-# Internal design notes and Spec Kit planning: working documents, not claims
-# procage makes to its users. The published tree (src/, README, docs, tests,
-# examples) may not cite a path here.
+# Private design notes and agent configuration. The design records
+# (specs/, .specify/) are public; they never point here.
 /concepts/
-/specs/
-/.specify/
 /.claude/
 /CLAUDE.md
+# Generated: the Spec Kit extension cache and threat-model generator inputs.
+/.specify/extensions/.cache/
+/specs/**/security/incoming-*

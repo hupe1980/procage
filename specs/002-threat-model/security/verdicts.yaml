@@ -1,0 +1,61 @@
+verdicts:
+  - requirement: SR-001
+    verdict: verified
+    method: test
+    evidence: tests/threat_model.rs::mitigated_without_evidence_is_caught; tests/threat_model.rs::nonexistent_evidence_is_caught; tests/threat_model.rs::valid_evidence_is_accepted; review of README.md and src/lib.rs recorded in quickstart.md scenario 8
+    result: pass
+    justification: Mutating R-10 to mitigated with an empty or unresolvable evidence field fails with exactly evidence-required or evidence-missing naming R-10, and a real test reference is accepted; the README and crate docs state that 0.0.1 enforces nothing and describe behaviour as designed or meant.
+  - requirement: SR-002
+    verdict: verified
+    method: test
+    evidence: tests/threat_model.rs::evidence_in_library_source_is_caught; tests/threat_model.rs::kernel_fact_as_evidence_is_caught
+    result: pass
+    justification: Evidence under src/ and under tests/kernel_facts/ each fail with evidence-location naming the id and the reference. Whether a test in tests/ truly cages a child remains a review item, as recorded in research R4.
+  - requirement: SR-003
+    verdict: verified
+    method: test
+    evidence: tests/threat_model.rs::removed_id_is_caught; tests/threat_model.rs::duplicate_id_is_caught; tests/threat_model.rs::unknown_id_is_caught
+    result: pass
+    justification: Deleting R-22 yields baseline-missing R-22, a second R-10 row yields duplicate-id R-10, and an R-99 row yields baseline-unknown; each test asserts no other rule fires.
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: tests/threat_model.rs::unknown_status_is_caught; tests/threat_model.rs::missing_cell_is_caught; quickstart.md scenario 3 (blank line inside the table reported as row-format, not skipped)
+    result: pass
+    justification: Status "done" fails as value naming the id and field with the allowed values; a 7-cell row fails as row-format naming the line; rows stranded after a blank line are reported, not ignored.
+  - requirement: SR-005
+    verdict: verified
+    method: test
+    evidence: tests/threat_model.rs::unknown_kernel_fact_is_caught; tests/threat_model.rs::gate (asserts at least 40 kernel-fact ids were read)
+    result: pass
+    justification: Citing KF-M99 fails with kernel-fact naming R-21 and KF-M99; the clean catalog's KF-M07/M08/M12/M19/M21/M26/L09/L10 resolve against the kernel-facts catalog.
+  - requirement: SR-006
+    verdict: verified
+    method: test
+    evidence: justfile package-docs recipe (part of just ci); quickstart.md scenario 4 (include entry removed → fails)
+    result: pass
+    justification: src/threat_model.rs embeds THREAT_MODEL.md via include_str; the recipe checks the package list, builds docs from the unpacked package outside the workspace with -D warnings and asserts the threat_model page; removing the include entry failed the recipe.
+  - requirement: SR-007
+    verdict: verified
+    method: test
+    evidence: tests/threat_model.rs::missing_heading_is_caught; tests/threat_model.rs::wrong_release_is_caught
+    result: pass
+    justification: Removing the Out of scope heading fails as heading, and naming procage 0.0.0 fails as release-status with the current version; the clean document has all ten headings in order.
+  - requirement: SR-008
+    verdict: verified
+    method: test
+    evidence: justfile planning-paths (paths include THREAT_MODEL.md and SECURITY.md); quickstart.md scenarios 6 and 8
+    result: pass
+    justification: An injected specs/ reference in SECURITY.md failed the recipe; review and a grep for internal names, tokens and user actions found none in the published files.
+  - requirement: SR-009
+    verdict: verified
+    method: review
+    evidence: SECURITY.md (Reporting a vulnerability, Scope, Supported versions)
+    result: pass
+    justification: The policy names GitHub private vulnerability reporting with its URL, asks for no public issue, pull request or discussion, and links THREAT_MODEL.md for scope. Enabling the feature in repository settings is a maintainer action outside the code.
+  - requirement: SR-010
+    verdict: verified
+    method: review
+    evidence: THREAT_MODEL.md Escape classes table, reviewed in quickstart.md scenario 8
+    result: pass
+    justification: Every row is a one-line class description; R-11 and R-22 name the class without profile syntax, ioctl names or commands, and no row contains payloads or steps.

@@ -1,0 +1,1069 @@
+otmVersion: 0.2.0
+project:
+  id: 004-spawn-macos
+  name: Spawn a caged child on macOS
+threatspec:
+  actors:
+  - id: actor.apple
+    name: Apple, which may change or remove private libsandbox interfaces in an OS update
+    trust: trusted
+  - id: actor.child-code
+    name: Adaptive code running as the user inside the caged child (an LLM following injected instructions, a malicious
+      build script)
+    trust: untrusted
+  - id: actor.contributor
+    name: Contributor who changes the spawn path, the docs or the threat model
+    trust: semi-trusted
+  - id: actor.harness-author
+    name: Harness author who prepares cages and spawns children
+    trust: semi-trusted
+  - id: actor.outer-sandbox
+    name: An agent harness that already runs the caller inside its own Seatbelt sandbox
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: 'no authentication surface: procage authenticates no principal; secrets in the environment are modelled
+      as threat.env-secret-leak'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: 'no shared-tenant surface: one caller, its own children'
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked flow.parent-to-child: the bytecode and tokens are in the parent''s memory, copied into the
+      child by fork; nothing crosses a network'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked asset.cage: path rewrites and degradations are recorded in the cage; full receipts are feature
+      011'
+    technique: missing-audit-trail
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: procage calls no language model (LLM-driven code is the adversary inside
+      the child)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface; overclaiming in docs is modelled under STRIDE as threat.overclaimed-enforcement
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage executes only the program its caller names; the adversary inside the child is modelled under
+      STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Path rewrite
+    reason: folded into asset.cage (recorded field of the prepared cage)
+  - entity: Grant binding
+    reason: folded into asset.grant-token
+  - entity: Apply method probe
+    reason: modelled as component.probe
+  - entity: Spawn error
+    reason: the failure half of every flow; covered by threat.uncaged-run and threat.silent-nesting
+  extends: null
+  generated: '2026-11-01T17:26:07Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 6108a1929b9e009a7f5ee408f5b093a782fc6394e3a962bb4841fc1e6512b005
+  - path: spec.md
+    sha256: 2dd83fad03e66fa050f841be46ad402f63a441b79939ee285188e50bf3b8bf2b
+  surfaces:
+  - external-input
+  - network-boundary
+  - audit-relevant
+  - persistent-store
+  version: '0.1'
+trustZones:
+- id: tz.child
+  name: Caged child process
+  risk:
+    trustRating: 5
+- id: tz.os
+  name: macOS kernel Sandbox.kext and libsandbox
+  risk:
+    trustRating: 90
+- id: tz.outer
+  name: An outer sandbox around the caller
+  risk:
+    trustRating: 50
+- id: tz.parent
+  name: Caller process (harness) that prepares and spawns
+  risk:
+    trustRating: 70
+assets:
+- id: asset.cage
+  name: Prepared cage (compiled bytecode, grant classes, path rewrites, hygiene settings)
+  risk:
+    availability: 60
+    confidentiality: 10
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#Key-Entities
+    classification: internal
+- id: asset.grant-token
+  name: Per-spawn sandbox-extension token for a grant
+  risk:
+    availability: 30
+    confidentiality: 60
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#FR-012
+    classification: internal
+- id: asset.harness-process
+  name: The caller process itself (must not crash or hang)
+  risk:
+    availability: 90
+    confidentiality: 20
+    integrity: 60
+  attributes:
+    type: business-data
+    source: spec.md#FR-015
+    classification: internal
+- id: asset.parent-env
+  name: The caller's environment (may hold tokens and agent sockets)
+  risk:
+    availability: 10
+    confidentiality: 90
+    integrity: 40
+  attributes:
+    type: credential
+    source: spec.md#FR-011
+    classification: confidential
+- id: asset.terminal
+  name: The caller's controlling terminal
+  risk:
+    availability: 40
+    confidentiality: 50
+    integrity: 90
+  attributes:
+    type: business-data
+    source: spec.md#Edge-Cases
+    classification: internal
+- id: asset.user-files
+  name: Files outside the policy's grants (secrets, source trees, configuration)
+  risk:
+    availability: 50
+    confidentiality: 90
+    integrity: 90
+  attributes:
+    type: business-data
+    source: spec.md#User-Story-1
+    classification: confidential
+components:
+- id: component.canon
+  name: Path resolution to real firmlink-visible spellings
+  type: library
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-004
+- id: component.child
+  name: Caged child running the target program
+  type: process
+  parent:
+    trustZone: tz.child
+  attributes:
+    source: spec.md#User-Story-1
+- id: component.docs
+  name: Crate docs and threat-model release status
+  type: document
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-016
+- id: component.kernel
+  name: Sandbox.kext enforcing the applied profile
+  type: process
+  parent:
+    trustZone: tz.os
+  attributes:
+    source: spec.md#Context
+- id: component.prepare
+  name: Cage preparation (lower
+  type: library
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-003
+  compile: null
+  in-memory cache: null
+  limit): null
+- id: component.probe
+  name: Apply-method probe
+  type: process
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-009
+- id: component.spawn
+  name: Spawn path (nesting check
+  type: process
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-010
+  env: null
+  exec): null
+  fork: null
+  grant tokens: null
+  in-child sequence: null
+- id: component.sys
+  name: macOS system interface (dynamic symbol table and unsafe calls)
+  type: library
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.child-to-files
+  name: Child code accesses files and the network
+  source: actor.child-code
+  destination: component.kernel
+  assets:
+  - asset.user-files
+  - asset.terminal
+  attributes:
+    crosses:
+    - tz.child
+    - tz.os
+- id: flow.child-to-kernel
+  name: The child applies the profile and the kernel enforces it
+  source: component.child
+  destination: component.kernel
+  assets:
+  - asset.user-files
+  attributes:
+    crosses:
+    - tz.child
+    - tz.os
+- id: flow.os-update-to-sys
+  name: An OS update changes private interfaces
+  source: actor.apple
+  destination: component.sys
+  assets:
+  - asset.harness-process
+  attributes:
+    crosses:
+    - tz.os
+    - tz.parent
+- id: flow.outer-to-parent
+  name: An outer sandbox wraps the caller
+  source: actor.outer-sandbox
+  destination: component.spawn
+  assets:
+  - asset.cage
+  attributes:
+    crosses:
+    - tz.outer
+    - tz.parent
+- id: flow.parent-to-child
+  name: Fork copies bytecode, tokens and env into the child
+  source: component.spawn
+  destination: component.child
+  assets:
+  - asset.cage
+  - asset.grant-token
+  - asset.parent-env
+  attributes:
+    crosses:
+    - tz.parent
+    - tz.child
+- id: flow.policy-to-cage
+  name: The harness prepares a cage from a policy
+  source: actor.harness-author
+  destination: component.prepare
+  assets:
+  - asset.cage
+  attributes:
+    crosses: []
+threats:
+- id: threat.cache-confusion
+  name: The compile cache returns bytecode compiled for a different profile (key collision, stale or on-disk bytecode),
+    so a child gets another policy's cage
+  categories:
+  - Tampering
+  - Elevation of Privilege
+  cwes:
+  - CWE-345
+  risk:
+    impact: 90
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.cage
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.prepare
+    profile: stride
+    severity: medium
+    technique: data-tampering-at-rest
+- id: threat.compile-abort
+  name: A large profile makes libsandbox abort the calling process during an in-process compile (risk R-14)
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-400
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.harness-process
+    status: mitigated
+    actor: actor.harness-author
+    disposition: threat
+    elements:
+    - component.prepare
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.env-secret-leak
+  name: The child inherits the caller's environment (tokens, agent sockets) although the policy's environment setting
+    excludes it (escape class R-24)
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-526
+  risk:
+    impact: 80
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-011
+    assets:
+    - asset.parent-env
+    status: mitigated
+    actor: actor.child-code
+    constitution: V. Hygiene by default (environment from an allowlist)
+    disposition: threat
+    elements:
+    - flow.parent-to-child
+    - component.spawn
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.ffi-memory-error
+  name: An unsafe call misuses a libsandbox pointer (use after free of a profile, unchecked error string, wrong
+    signature), corrupting the harness's memory
+  categories:
+  - Tampering
+  - Denial of Service
+  cwes:
+  - CWE-416
+  - CWE-119
+  risk:
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.harness-process
+    status: mitigated
+    actor: actor.contributor
+    constitution: IV. unsafe in sys only
+    disposition: threat
+    elements:
+    - component.sys
+    profile: stride
+    severity: medium
+    technique: data-tampering-at-rest
+    with SAFETY comments: null
+- id: threat.fork-deadlock
+  name: Code between fork and exec takes a lock or allocates while another thread held it, so the child hangs forever
+    in a multithreaded harness (risk R-13)
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-833
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-010
+    assets:
+    - asset.harness-process
+    status: mitigated
+    actor: actor.harness-author
+    constitution: IV. Syscalls only between fork and exec
+    disposition: threat
+    elements:
+    - component.spawn
+    - flow.parent-to-child
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.grant-leak
+  name: A grant token issued for one spawn also unlocks other grants or other spawns (shared class, token reuse,
+    undeclared name), or an unresolved grant path matches nothing
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-269
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-012
+    assets:
+    - asset.grant-token
+    - asset.user-files
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - component.spawn
+    - flow.parent-to-child
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.noncanonical-path
+  name: A policy path in a symlinked or data-volume spelling (/tmp, /etc, /System/Volumes/Data/Users) yields a rule
+    the kernel never matches, so an allow does nothing or a deny protects nothing (escape classes R-02, R-12)
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-59
+  - CWE-41
+  risk:
+    impact: 80
+    likelihood: 70
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.user-files
+    status: mitigated
+    actor: actor.harness-author
+    constitution: I. Fail closed; path canonicalisation
+    disposition: threat
+    elements:
+    - component.canon
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.overclaimed-enforcement
+  name: Docs or the threat model present this development version as covering fd hygiene, descendant lifetime, a
+    base profile or Linux, or flip escape-class statuses without escape-suite canaries; inherited fds still bypass
+    path rules (R-21)
+  categories:
+  - Spoofing
+  - Repudiation
+  cwes:
+  - CWE-1059
+  risk:
+    impact: 75
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-016
+    assets:
+    - asset.user-files
+    status: mitigated
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.docs
+    profile: stride
+    severity: high
+    technique: false-evidence
+- id: threat.silent-nesting
+  name: The caller already runs inside a Seatbelt sandbox, so the kernel refuses a different second profile or silently
+    ignores an identical one, and the child runs with the outer policy instead of the requested one
+  categories:
+  - Elevation of Privilege
+  - Repudiation
+  cwes:
+  - CWE-636
+  risk:
+    impact: 80
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-008
+    assets:
+    - asset.user-files
+    status: mitigated
+    actor: actor.outer-sandbox
+    constitution: I. Fail closed (an already-sandboxed parent is a typed error)
+    disposition: threat
+    elements:
+    - flow.outer-to-parent
+    - component.spawn
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.symbol-removal
+  name: Apple removes or changes a private libsandbox symbol, so a hard-linked call fails to load or crashes the
+    harness (risk R-01)
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-477
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.harness-process
+    status: mitigated
+    actor: actor.apple
+    constitution: VI. Private interfaces, honestly (resolved at runtime; absence is Unsupported)
+    disposition: threat
+    elements:
+    - component.sys
+    - flow.os-update-to-sys
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.terminal-injection
+  name: The child keeps the caller's controlling terminal and injects keystrokes into it with TIOCSTI (escape class
+    R-22, observed by KF-M26)
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-269
+  risk:
+    impact: 85
+    likelihood: 50
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.terminal
+    status: mitigated
+    actor: actor.child-code
+    constitution: V. Hygiene by default (no inherited controlling terminal unless asked)
+    disposition: threat
+    elements:
+    - component.spawn
+    - flow.child-to-files
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.uncaged-run
+  name: Applying or confirming the profile fails in the child (or the apply method silently stops working on an
+    OS release) and the target program runs anyway, uncaged
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-636
+  - CWE-755
+  risk:
+    impact: 95
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-010
+    assets:
+    - asset.user-files
+    status: mitigated
+    actor: actor.child-code
+    constitution: I. Fail closed (a child that cannot confirm it is caged never runs its target)
+    disposition: threat
+    elements:
+    - component.spawn
+    - component.probe
+    - flow.child-to-kernel
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.canonicaliser
+  name: Every policy path is resolved to its real spelling (longest existing prefix, firmlink-visible form, glob
+    prefix escaped) and the rewrite recorded before lowering
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.noncanonical-path
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - src/macos/canon.rs
+    - tests/spawn_macos.rs
+- id: mitigation.compile-limit
+  name: Profiles over the in-process rule limit are refused with LimitExceeded before compiling
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.compile-abort
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - src/macos/mod.rs
+    - tests/spawn_macos.rs
+- id: mitigation.dlsym-table
+  name: All private symbols are resolved by dlsym once, before any fork, into a table; absence is Unsupported naming
+    symbol and OS build; unsafe is confined to macos::sys with SAFETY comments
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.symbol-removal
+    - threat.ffi-memory-error
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - src/macos/sys.rs
+    - Cargo.toml
+- id: mitigation.env-from-policy
+  name: The child's environment is built from the policy (allowlist or passthrough minus denied names) plus explicit
+    command variables
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.env-secret-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - src/macos/spawn.rs
+    - tests/spawn_macos.rs
+- id: mitigation.exact-memory-cache
+  name: The cache is in memory only and keyed by the exact profile text and parameters
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.cache-confusion
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - src/macos/mod.rs
+    - tests/spawn_macos.rs
+- id: mitigation.fail-closed-sequence
+  name: The child runs a fixed syscall sequence and exits before exec on any failed step, reporting step and errno;
+    the probe requires a caged child and a denied canary before any spawn
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.uncaged-run
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - src/macos/spawn.rs
+    - src/macos/probe.rs
+    - tests/spawn_macos.rs
+- id: mitigation.honest-status
+  name: Crate docs and the threat-model release status name what this version does on macOS and what it does not
+    (fd hygiene, lifetime, base profile, Linux); escape-class statuses unchanged; the catalog gate still runs
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.overclaimed-enforcement
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-011
+    touchpoints:
+    - src/lib.rs
+    - src/macos/mod.rs
+    - THREAT_MODEL.md
+    - README.md
+- id: mitigation.nesting-check
+  name: The parent checks whether it is sandboxed before forking and returns AlreadySandboxed
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.silent-nesting
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - src/macos/spawn.rs
+    - tests/spawn_macos.rs
+- id: mitigation.new-session
+  name: With Tty::None the child calls setsid and has no controlling terminal; Tty::NewPty is refused until feature
+    005
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.terminal-injection
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - src/macos/spawn.rs
+    - tests/spawn_macos.rs
+- id: mitigation.per-spawn-tokens
+  name: Each grant has its own class procage.<name>; tokens are issued per spawn for resolved existing paths and
+    consumed after apply; undeclared names and missing paths are typed errors
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.grant-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - src/macos/spawn.rs
+    - tests/spawn_macos.rs
+- id: mitigation.syscalls-only-child
+  name: Everything the child needs (bytecode pointer, token C strings, rlimits) is prepared in the parent; the child
+    calls only setsid, setrlimit, __mac_syscall, sandbox_check and sandbox_extension_consume; a test spawns 100
+    children under dyld contention
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.fork-deadlock
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - src/macos/spawn.rs
+    - tests/spawn_macos.rs
+requirements:
+- id: SR-001
+  statement: The child MUST NOT execute its target unless applying the profile, confirming the sandbox and consuming
+    its tokens all succeeded; spawning MUST return an error naming the failed step and OS error; spawning MUST be
+    refused when the apply-method probe has not shown a caged child with a denied canary.
+  priority: P1
+  mitigations:
+  - mitigation.fail-closed-sequence
+  acceptance:
+  - given: a cage and a child whose apply step is made to fail
+    then: it returns an error naming the step and the target never runs
+    when: spawn runs
+  - given: the first spawn of the process
+    then: it reports the apply method usable only after a throwaway child is caged and its canary access is denied
+    when: the probe runs
+  - given: a policy granting one directory
+    then: the kernel refuses with EPERM
+    when: the child reads outside it
+  tasks: []
+- id: SR-002
+  statement: Spawning from an already-sandboxed process MUST return AlreadySandboxed without forking a target.
+  priority: P1
+  mitigations:
+  - mitigation.nesting-check
+  acceptance:
+  - given: a process that is itself a caged child
+    then: it gets AlreadySandboxed and no grandchild runs
+    when: it asks procage to spawn
+  tasks: []
+- id: SR-003
+  statement: Private libsandbox symbols MUST be resolved at runtime before any fork, and a missing symbol MUST yield
+    Unsupported naming it; unsafe code MUST be confined to macos::sys with a SAFETY comment on every block.
+  priority: P1
+  mitigations:
+  - mitigation.dlsym-table
+  acceptance:
+  - given: a symbol name that does not exist
+    then: it returns Unsupported naming the symbol and OS build
+    when: the resolver looks it up
+  - given: the root crate
+    then: unsafe code outside macos::sys fails the build and every unsafe block has a SAFETY comment
+    when: lints run
+  tasks: []
+- id: SR-004
+  statement: Between fork and exec the child MUST only issue system calls on parent-prepared data; at least 100
+    caged children spawned from a parent with four threads under dyld contention MUST all be caged with none hanging.
+  priority: P1
+  mitigations:
+  - mitigation.syscalls-only-child
+  acceptance:
+  - given: four threads looping dlopen/dlsym/dlclose
+    then: all deny their canary access and none exceeds a 10 s timeout
+    when: 100 caged children are spawned
+  tasks: []
+- id: SR-005
+  statement: Every policy path MUST be resolved to its real, firmlink-visible spelling before lowering (longest
+    existing prefix, remainder byte-exact, glob prefix escaped), with each rewrite recorded.
+  priority: P1
+  mitigations:
+  - mitigation.canonicaliser
+  acceptance:
+  - given: a policy granting write to /tmp/<dir>
+    then: it succeeds and the cage records the rewrite to /private/tmp/<dir>
+    when: the child creates a file via /tmp
+  - given: a path not yet existing below /tmp
+    then: the existing prefix is resolved and the remainder kept
+    when: the cage is prepared
+  - given: a glob under /tmp whose resolved prefix contains a glob character
+    then: the character is escaped and matched literally
+    when: the cage is prepared
+  tasks: []
+- id: SR-006
+  statement: A grant token MUST be issued per spawn, of class procage.<name>, for a resolved existing path, and
+    MUST unlock only that grant for that spawn; undeclared grant names and missing paths MUST be typed errors; an
+    unbound grant MUST give no access.
+  priority: P1
+  mitigations:
+  - mitigation.per-spawn-tokens
+  acceptance:
+  - given: one cage with a write grant, bound to A then to B
+    then: each succeeds only in its own directory
+    when: two children write to A and B
+  - given: an unbound grant
+    then: access is refused
+    when: the child writes through it
+  - given: a binding for an undeclared name or a missing path
+    then: it fails with a typed grant error
+    when: spawn runs
+  tasks: []
+- id: SR-007
+  statement: Compiled profiles MUST be cached only in memory, keyed by the exact profile text and parameters.
+  priority: P2
+  mitigations:
+  - mitigation.exact-memory-cache
+  acceptance:
+  - given: the same policy prepared twice
+    then: no compile happens
+    when: the second cage is prepared
+  - given: two policies differing in one rule
+    then: two compiles happen
+    when: both are prepared
+  tasks: []
+- id: SR-008
+  statement: A profile over the in-process compile limit MUST be refused with LimitExceeded before libsandbox is
+    called.
+  priority: P2
+  mitigations:
+  - mitigation.compile-limit
+  acceptance:
+  - given: a policy over the configured limit
+    then: it fails with LimitExceeded and the compile counter is unchanged
+    when: the cage is prepared
+  tasks: []
+- id: SR-009
+  statement: The child's environment MUST be exactly the policy's allowlist (or passthrough minus denied names)
+    of the caller's environment plus variables set explicitly on the command.
+  priority: P1
+  mitigations:
+  - mitigation.env-from-policy
+  acceptance:
+  - given: the caller has SECRET_TOKEN and PATH set and the policy allowlists PATH
+    then: it shows PATH and not SECRET_TOKEN
+    when: the child prints its environment
+  - given: passthrough denying SECRET_TOKEN
+    then: SECRET_TOKEN is absent and other variables are present
+    when: the child prints its environment
+  tasks: []
+- id: SR-010
+  statement: With Tty::None the child MUST start a new session without a controlling terminal; Tty::NewPty MUST
+    be refused with Unsupported until implemented.
+  priority: P1
+  mitigations:
+  - mitigation.new-session
+  acceptance:
+  - given: Tty::None
+    then: it leads its own session and has no controlling terminal
+    when: the child queries its session and opens /dev/tty
+  - given: Tty::NewPty
+    then: it fails with Unsupported naming the setting
+    when: the cage is prepared
+  tasks: []
+- id: SR-011
+  statement: Crate docs and the threat-model release status MUST state what this development version enforces on
+    macOS (each claim backed by a caged-child test) and what it does not (fd hygiene, descendant lifetime, base
+    profile, Linux); escape-class statuses MUST stay unchanged until escape-suite canaries exist.
+  priority: P2
+  mitigations:
+  - mitigation.honest-status
+  acceptance:
+  - given: the crate docs, README and threat model
+    then: every enforcement sentence maps to a test in tests/spawn_macos.rs and the inherited-fd gap is stated
+    when: they are reviewed
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-30
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_macos.rs::a_failed_step_never_runs_the_target; tests/spawn_macos.rs::reads_inside_the_grant_and_is_refused_outside;
+    tests/spawn_macos.rs::the_apply_method_passes_its_probe; tests/spawn_macos.rs::a_target_the_policy_does_not_let_run_is_refused
+  result: pass
+  verdict: verified
+  justification: A failing in-child step (rlimit) returns Apply{step Rlimit} and the target's marker file is never
+    created. A child reading outside its grant is refused with EPERM by the kernel. The probe reports PathA only
+    through the PROBE_OK marker, which the child returns after apply, verify and a denied canary open (src/macos/sys.rs
+    install_probe). Skipping the apply call makes 13 tests fail, because verify then refuses.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-002.2026-10-30
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_macos.rs::a_caged_process_cannot_spawn_a_nested_cage
+  result: pass
+  verdict: verified
+  justification: The test binary re-runs itself as a caged child and asks procage to prepare and spawn; it gets
+    AlreadySandboxed and no grandchild runs. Removing both nesting checks fails the test.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-003.2026-10-30
+  requirement: SR-003
+  method: test
+  evidence: tests/spawn_macos.rs::a_missing_symbol_is_unsupported_and_named; tests/unsafe_confined.rs::unsafe_is_confined_to_macos_sys_with_safety_comments
+  result: pass
+  verdict: verified
+  justification: A nonexistent symbol resolves to Unsupported::Symbol naming it and the OS build, and real symbols
+    resolve. Symbols are dlsym'd at runtime into a OnceLock table before any fork. The unsafe_code lint is deny
+    at the crate root and allowed only in macos::sys, and the scanner test confirms every unsafe there has a SAFETY
+    block.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-004.2026-10-30
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_macos.rs::contention_every_child_is_caged_and_none_hangs
+  result: pass
+  verdict: verified
+  justification: Four threads churn dlopen, dlsym and dlclose while 100 caged children are spawned; all 100 get
+    EPERM on the denied file and each finishes within the 10 s timeout. The in-child sequence (sys.rs ChildPlan::run)
+    calls only setsid, setrlimit, __mac_syscall, getpid, sandbox_check and sandbox_extension_consume, on data owned
+    by the closure.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-005.2026-10-30
+  requirement: SR-005
+  method: test
+  evidence: tests/spawn_macos.rs::a_tmp_spelling_works_as_written; tests/spawn_macos.rs::a_missing_leaf_keeps_its_remainder;
+    tests/spawn_macos.rs::glob_characters_in_a_resolved_prefix_are_literal; tests/spawn_macos.rs::a_data_volume_spelling_resolves_to_the_visible_one
+  result: pass
+  verdict: verified
+  justification: A write via /tmp succeeds and the rewrite to /private/tmp is recorded. A missing leaf keeps its
+    remainder. A glob through a symlink to a directory named 'real*dir' resolves with the star escaped, so the child
+    reads the matching file and is refused the 'realXdir' sibling. A data-volume spelling of HOME resolves to the
+    visible HOME. Skipping resolution fails 8 tests.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-006.2026-10-30
+  requirement: SR-006
+  method: test
+  evidence: tests/spawn_macos.rs::a_grant_binds_for_one_spawn_only; tests/spawn_macos.rs::wrong_bindings_are_typed_errors
+  result: pass
+  verdict: verified
+  justification: One cage with grant scratch bound to A and then to B lets each child write only its own directory,
+    and an unbound spawn writes nowhere. Undeclared names and missing paths give GrantError::Undeclared and ::Missing.
+    Consuming tokens before apply fails the grant test.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-007.2026-10-30
+  requirement: SR-007
+  method: test
+  evidence: tests/spawn_macos.rs::the_same_policy_is_compiled_once; src/macos/mod.rs:396
+  result: pass
+  verdict: verified
+  justification: Preparing the same policy twice gives compiled() true then false, and changing one rule gives true.
+    The cache is a process-wide HashMap keyed by the exact profile text and params, and nothing is written to disk
+    (reviewed in Cage::with_options).
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-008.2026-10-30
+  requirement: SR-008
+  method: test
+  evidence: tests/spawn_macos.rs::refusals_before_any_child
+  result: pass
+  verdict: verified
+  justification: With a compile limit of 5, preparation returns LimitExceeded{limit 5}. In Cage::with_options the
+    limit check comes before the cache lookup and lib.compile, so libsandbox is not called.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-009.2026-10-30
+  requirement: SR-009
+  method: test
+  evidence: tests/spawn_macos.rs::the_environment_is_the_policys
+  result: pass
+  verdict: verified
+  justification: With an allowlist of PATH, the caged child sees exactly PATH plus the explicitly set PROCAGE_CHILD,
+    although HOME and cargo variables are set in the caller. Passthrough denying HOME drops HOME and keeps PATH.
+    Not clearing the environment fails the test.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-010.2026-10-30
+  requirement: SR-010
+  method: test
+  evidence: tests/spawn_macos.rs::the_child_leads_its_own_session_unless_the_terminal_is_inherited; tests/spawn_macos.rs::refusals_before_any_child
+  result: pass
+  verdict: verified
+  justification: With Tty::None the caged child reports getsid(0) == getpid(), so it leads a new session with no
+    controlling terminal; with Tty::Inherit it does not. Tty::NewPty is refused with Unsupported::Setting naming
+    it.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+- id: verification.sr-011.2026-10-30
+  requirement: SR-011
+  method: review
+  evidence: src/macos/mod.rs:1; src/lib.rs:8; THREAT_MODEL.md#Release-status; README.md:8; tests/threat_model.rs::gate
+  result: pass
+  verdict: verified
+  justification: I reviewed the docs. Each enforcement sentence in the macos module docs maps to a test in tests/spawn_macos.rs.
+    The crate docs, README and threat-model release status state that 0.0.2 is unreleased and list what is not done
+    (inherited fds bypass path rules, no lifetime control, no base profile, no Linux). Escape-class statuses are
+    unchanged and the catalog gate passes.
+  verified_at: '2026-10-30T06:49:32Z'
+  commit: 0cce8d7
+decisions: []

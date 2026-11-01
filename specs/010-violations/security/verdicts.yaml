@@ -1,0 +1,43 @@
+verdicts:
+  - requirement: SR-001
+    verdict: verified
+    method: test
+    evidence: crates/procage/src/violation.rs::a_newline_in_the_target_cannot_move_the_violation; crates/procage/tests/spawn_macos.rs::a_newline_in_a_path_stays_with_its_run
+    result: pass
+    justification: The unit test feeds a target containing a newline and another run's marker plus a code and asserts the marker is the kernel's last line, the full target is kept and the kind stays NotGranted; other_messages_are_ignored rejects messages without a marker line. The caged test is denied a real file named with a newline and a fake marker and finds the violation in its own record. The reader routes only to registered markers (violations.rs read()).
+  - requirement: SR-002
+    verdict: verified
+    method: test
+    evidence: crates/procage/tests/spawn_macos.rs::runs_keep_their_own_violations; crates/procage-kernel-facts/tests/kernel_facts.rs::KF-M29
+    result: pass
+    justification: Two concurrent runs keep only their own denials; after both are dropped (kill_all fences before freeing the slot, child.rs finish_record) the next run on a freed slot sees none of them. KF-M29 pins the ordering the fence relies on (a later process's denial arrives after a run's), 10/10 idle and 8/8 under full CPU load. A failed fence retires the slot instead of freeing it.
+  - requirement: SR-003
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/violations.rs::reporting_adds_only_messages; crates/procage-policy/tests/violations.rs::the_run_marker_block_carries_no_message; crates/procage/tests/escape_macos.rs (PROCAGE_ESCAPE_VIOLATIONS=1)
+    result: pass
+    justification: For every reference policy the profile without reporting has no message, and the reporting profile with messages stripped equals it; the preset fixtures and lowering table still pass unchanged; the marker block has no message; every reference profile compiles with reporting (policy_compiles); the escape suite passes 23/23 with reporting on (just escape and a CI step).
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: crates/procage/src/violation.rs::the_record_keeps_the_cap_and_counts_the_rest; crates/procage/src/violation.rs::the_receiver_is_bounded_and_never_blocks
+    result: pass
+    justification: With a cap of 3, five pushes keep 3 and count 2 dropped; the receiver holds at most 1,024 and pushing past it or after the receiver is dropped never blocks.
+  - requirement: SR-005
+    verdict: verified
+    method: test
+    evidence: crates/procage/tests/spawn_macos.rs::violations_arrive_while_the_child_runs; crates/procage/tests/spawn_macos.rs::reporting_is_off_by_default; crates/procage/tests/native.rs::violation_records_have_the_same_shape
+    result: pass
+    justification: A running child's record is not complete and becomes complete only after kill_all fenced; a cage without the option reports Off, empty and not complete; the native test asserts Observed or NotObserved on each OS (Linux lane). Crate docs, THREAT_MODEL limits and the site page call reporting diagnostic and best-effort.
+  - requirement: SR-006
+    verdict: verified
+    method: test
+    evidence: crates/procage/tests/spawn_macos.rs::the_helper_ends_with_its_process; crates/procage/src/macos/violations.rs::user_files_are_not_trusted
+    result: pass
+    justification: A process that started the helper is SIGKILLed and no helper carrying its prefix remains within 2 s; a user-owned file fails the integrity check (system binaries pass), and start() returns that reason, which ensure() turns into Coverage::Unavailable. The helper runs absolute /bin/sh and /usr/bin/log with env_clear and std's close-on-exec descriptors.
+  - requirement: SR-007
+    verdict: verified
+    method: test
+    evidence: crates/procage/src/macos/violations.rs::a_silent_helper_times_out; crates/procage/tests/spawn_macos.rs::a_dead_helper_is_reported_and_restarted
+    result: pass
+    justification: A monitor whose helper never delivers the fence returns None after the 200 ms limit, so violations() returns an incomplete record; a helper killed mid-run marks the record Unavailable and incomplete, and the next spawn restarts it. violations_of asserts violations() returns within 1 s after exit.

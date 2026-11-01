@@ -1,0 +1,698 @@
+{
+  "feature": "004-spawn-macos",
+  "commit": "0cce8d7",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "The child MUST NOT execute its target unless applying the profile, confirming the sandbox and consuming its tokens all succeeded; spawning MUST return an error naming the failed step and OS error; spawning MUST be refused when the apply-method probe has not shown a caged child with a denied canary.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a cage and a child whose apply step is made to fail",
+          "then": "it returns an error naming the step and the target never runs",
+          "when": "spawn runs"
+        },
+        {
+          "given": "the first spawn of the process",
+          "then": "it reports the apply method usable only after a throwaway child is caged and its canary access is denied",
+          "when": "the probe runs"
+        },
+        {
+          "given": "a policy granting one directory",
+          "then": "the kernel refuses with EPERM",
+          "when": "the child reads outside it"
+        }
+      ],
+      "mitigations": [
+        "mitigation.fail-closed-sequence"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-009] [SR-010] Implement `src/macos/spawn.rs`:"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-001] Implement `src/macos/probe.rs`: `probe()` runs once per process. It compiles `(version 1)(deny default)`, spawns `/usr/bin/true` with a pre_exec that applies, verifies and requires `open(\"/private/etc/hosts\")` to fail with EPERM, then returns the `PROBE_OK` marker. The result is `ApplyMethod::PathA`, or a cached `Unsupported::ApplyMethod`."
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-007] [SR-008] Implement `Cage` in `src/macos/mod.rs`:"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] Write the base-policy helper and US1 tests in `tests/spawn_macos.rs` (`#![cfg(target_os = \"macos\")]`):"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[US4] [SR-001] [SR-003] [SR-008] Add tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/probe.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "Spawning from an already-sandboxed process MUST return AlreadySandboxed without forking a target.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a process that is itself a caged child",
+          "then": "it gets AlreadySandboxed and no grandchild runs",
+          "when": "it asks procage to spawn"
+        }
+      ],
+      "mitigations": [
+        "mitigation.nesting-check"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-007] [SR-008] Implement `Cage` in `src/macos/mod.rs`:"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US4] [SR-002] [SR-010] [SR-009] Add the self-re-exec `child_entry` and tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/macos/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "Private libsandbox symbols MUST be resolved at runtime before any fork, and a missing symbol MUST yield Unsupported naming it; unsafe code MUST be confined to macos::sys with a SAFETY comment on every block.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a symbol name that does not exist",
+          "then": "it returns Unsupported naming the symbol and OS build",
+          "when": "the resolver looks it up"
+        },
+        {
+          "given": "the root crate",
+          "then": "unsafe code outside macos::sys fails the build and every unsafe block has a SAFETY comment",
+          "when": "lints run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.dlsym-table"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-003] Update the root `Cargo.toml`: version `0.0.2`; `[dependencies] procage-policy = { path = \"crates/procage-policy\", version = \"0.0.1\" }`; `[target.'cfg(target_os = \"macos\")'.dependencies] libc = \"0.2\"`; replace `[lints] workspace = true` with the workspace set but `unsafe_code = \"deny\"`. Update `crates/procage-policy/Cargo.toml` to version `0.0.1`, publishable, with a description of the companion crate. Run `cargo deny`."
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-003] Create `src/macos/sys.rs` (`#![allow(unsafe_code)]`). It holds:"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[US4] [SR-001] [SR-003] [SR-008] Add tests:"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[P] [SR-003] Write `tests/unsafe_confined.rs`: scan `src/` for the token `unsafe`. It is allowed only in `src/macos/sys.rs`, and there each occurrence must have `// SAFETY:` within the 3 lines above it."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "Cargo.toml",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Between fork and exec the child MUST only issue system calls on parent-prepared data; at least 100 caged children spawned from a parent with four threads under dyld contention MUST all be caged with none hanging.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "four threads looping dlopen/dlsym/dlclose",
+          "then": "all deny their canary access and none exceeds a 10 s timeout",
+          "when": "100 caged children are spawned"
+        }
+      ],
+      "mitigations": [
+        "mitigation.syscalls-only-child"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-009] [SR-010] Implement `src/macos/spawn.rs`:"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] Write the base-policy helper and US1 tests in `tests/spawn_macos.rs` (`#![cfg(target_os = \"macos\")]`):"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "Every policy path MUST be resolved to its real, firmlink-visible spelling before lowering (longest existing prefix, remainder byte-exact, glob prefix escaped), with each rewrite recorded.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a policy granting write to /tmp/<dir>",
+          "then": "it succeeds and the cage records the rewrite to /private/tmp/<dir>",
+          "when": "the child creates a file via /tmp"
+        },
+        {
+          "given": "a path not yet existing below /tmp",
+          "then": "the existing prefix is resolved and the remainder kept",
+          "when": "the cage is prepared"
+        },
+        {
+          "given": "a glob under /tmp whose resolved prefix contains a glob character",
+          "then": "the character is escaped and matched literally",
+          "when": "the cage is prepared"
+        }
+      ],
+      "mitigations": [
+        "mitigation.canonicaliser"
+      ],
+      "tasks": [
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[P] [US2] [SR-005] Implement `src/macos/canon.rs`: `resolve(&AbsPath)` (longest existing prefix, remainder byte-exact, `/System/Volumes/Data` mapped to the visible form when dev and inode match); glob prefix resolution with escaping; `resolve_policy(&Policy) -> Result<(Policy, Vec<PathRewrite>), SpawnError>` covering fs targets, unix sockets and raw Seatbelt filters."
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US2] [SR-005] Add tests to `tests/spawn_macos.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/macos/canon.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "A grant token MUST be issued per spawn, of class procage.<name>, for a resolved existing path, and MUST unlock only that grant for that spawn; undeclared grant names and missing paths MUST be typed errors; an unbound grant MUST give no access.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "one cage with a write grant, bound to A then to B",
+          "then": "each succeeds only in its own directory",
+          "when": "two children write to A and B"
+        },
+        {
+          "given": "an unbound grant",
+          "then": "access is refused",
+          "when": "the child writes through it"
+        },
+        {
+          "given": "a binding for an undeclared name or a missing path",
+          "then": "it fails with a typed grant error",
+          "when": "spawn runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.per-spawn-tokens"
+      ],
+      "tasks": [
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US3] [SR-006] Implement grant binding in `src/macos/spawn.rs`: undeclared name \u2192 `GrantError::Undeclared`; resolve, and a missing path \u2192 `Missing`; `issue_file(\"procage.<name>\")`, and null \u2192 `Issue`; tokens moved into the closure."
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] Add tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Compiled profiles MUST be cached only in memory, keyed by the exact profile text and parameters.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the same policy prepared twice",
+          "then": "no compile happens",
+          "when": "the second cage is prepared"
+        },
+        {
+          "given": "two policies differing in one rule",
+          "then": "two compiles happen",
+          "when": "both are prepared"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exact-memory-cache"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-007] [SR-008] Implement `Cage` in `src/macos/mod.rs`:"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] Add tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "A profile over the in-process compile limit MUST be refused with LimitExceeded before libsandbox is called.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a policy over the configured limit",
+          "then": "it fails with LimitExceeded and the compile counter is unchanged",
+          "when": "the cage is prepared"
+        }
+      ],
+      "mitigations": [
+        "mitigation.compile-limit"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-007] [SR-008] Implement `Cage` in `src/macos/mod.rs`:"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[US4] [SR-001] [SR-003] [SR-008] Add tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "The child's environment MUST be exactly the policy's allowlist (or passthrough minus denied names) of the caller's environment plus variables set explicitly on the command.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the caller has SECRET_TOKEN and PATH set and the policy allowlists PATH",
+          "then": "it shows PATH and not SECRET_TOKEN",
+          "when": "the child prints its environment"
+        },
+        {
+          "given": "passthrough denying SECRET_TOKEN",
+          "then": "SECRET_TOKEN is absent and other variables are present",
+          "when": "the child prints its environment"
+        }
+      ],
+      "mitigations": [
+        "mitigation.env-from-policy"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-009] [SR-010] Implement `src/macos/spawn.rs`:"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US4] [SR-002] [SR-010] [SR-009] Add the self-re-exec `child_entry` and tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/sys/macos.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/macos/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "With Tty::None the child MUST start a new session without a controlling terminal; Tty::NewPty MUST be refused with Unsupported until implemented.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "Tty::None",
+          "then": "it leads its own session and has no controlling terminal",
+          "when": "the child queries its session and opens /dev/tty"
+        },
+        {
+          "given": "Tty::NewPty",
+          "then": "it fails with Unsupported naming the setting",
+          "when": "the cage is prepared"
+        }
+      ],
+      "mitigations": [
+        "mitigation.new-session"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] [SR-009] [SR-010] Implement `src/macos/spawn.rs`:"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US4] [SR-002] [SR-010] [SR-009] Add the self-re-exec `child_entry` and tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-011",
+      "statement": "Crate docs and the threat-model release status MUST state what this development version enforces on macOS (each claim backed by a caged-child test) and what it does not (fd hygiene, descendant lifetime, base profile, Linux); escape-class statuses MUST stay unchanged until escape-suite canaries exist.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the crate docs, README and threat model",
+          "then": "every enforcement sentence maps to a test in tests/spawn_macos.rs and the inherited-fd gap is stated",
+          "when": "they are reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.honest-status"
+      ],
+      "tasks": [
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[SR-011] Docs:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "README.md",
+            "exists": true
+          },
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.cache-confusion",
+    "threat.compile-abort",
+    "threat.env-secret-leak",
+    "threat.ffi-memory-error",
+    "threat.fork-deadlock",
+    "threat.grant-leak",
+    "threat.noncanonical-path",
+    "threat.overclaimed-enforcement",
+    "threat.silent-nesting",
+    "threat.symbol-removal",
+    "threat.terminal-injection",
+    "threat.uncaged-run"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-009",
+      "summary": "Requirement 'SR-009' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-010",
+      "summary": "Requirement 'SR-010' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-011",
+      "summary": "Requirement 'SR-011' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 12,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 12
+    },
+    "threats_by_severity": {
+      "medium": 2,
+      "high": 9,
+      "critical": 1
+    },
+    "mitigations": 11,
+    "requirements": 11,
+    "requirements_with_tasks": 11,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 10,
+      "medium": 1
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

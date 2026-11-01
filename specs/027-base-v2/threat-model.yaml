@@ -1,0 +1,393 @@
+otmVersion: 0.2.0
+project:
+  id: 027-base-v2
+  name: Base profile V2
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child (adaptive, same uid as the caller)
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer who chooses a base profile or preset
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the base profile, presets or docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network-boundary surface; the environment is handed from the caller to its own child
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.base: credential exposure through base additions is threat.personal-data-in-base'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no stored data
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.base: the base adds static rules only'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Base profile version 2
+    reason: represented as component.base
+  - entity: Version-2 presets
+    reason: represented as component.presets
+  extends: null
+  generated: '2026-11-01T17:28:34Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 36e350d1d3e49ee5dde6bd37b626a98f197b293dc1906c50915c611ca6257b2f
+  - path: spec.md
+    sha256: 47b12f2ac6837f38d86408615c8952b42c2c410461e59b734c2fe1c52c4fca92
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: Caged developer tools and their descendants
+  risk:
+    trustRating: 5
+- id: tz.caller
+  name: The caller and its policy
+  risk:
+    trustRating: 90
+- id: tz.host
+  name: The user's data, shared per-user directories and system services outside the sandbox
+  risk:
+    trustRating: 80
+assets:
+- id: asset.shared-state
+  name: Per-user shared temporary and cache directories read later by unsandboxed tools (xcrun's tool cache)
+  risk:
+    availability: 30
+    confidentiality: 50
+    integrity: 100
+  attributes:
+    type: configuration
+    source: spec.md#Context
+    classification: internal
+- id: asset.user-data
+  name: The user's files and preferences in the home directory
+  risk:
+    availability: 20
+    confidentiality: 90
+    integrity: 80
+  attributes:
+    type: pii
+    source: spec.md#US2
+    classification: confidential
+components:
+- id: component.base
+  name: procage_policy::base macOS V2 rules and Linux V2
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-001
+- id: component.presets
+  name: Version-2 presets
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-005
+dataflows:
+- id: flow.tools
+  name: Caged developer tools read system and developer locations and write temporary files
+  source: tz.cage
+  destination: tz.host
+  assets:
+  - asset.user-data
+  - asset.shared-state
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.host
+threats:
+- id: threat.frozen-drift
+  name: V1 or the version-1 presets change while V2 is added, silently loosening frozen policies
+  categories:
+  - Tampering
+  risk:
+    impact: 70
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.user-data
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.base
+    - component.presets
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.personal-data-in-base
+  name: A V2 addition reads user data (preferences, files in the home, Homebrew etc with credentials)
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.user-data
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.base
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.shared-temp-poisoning
+  name: A base addition (dirhelper, membership) points tools at the user's shared temporary or cache directory,
+    so caged code writes xcrun's cache or temp files that unsandboxed tools trust
+  categories:
+  - Tampering
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.shared-state
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.base
+    - flow.tools
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.unfiltered-rule
+  name: A base rule is emitted with an empty filter list and so allows an operation everywhere (observed during
+    research for mach-lookup)
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 30
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.user-data
+    - asset.shared-state
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.base
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.no-dirhelper
+  name: V2 omits dirhelper and membership; a caged test checks that the per-user temporary directory resolves to
+    the private TMPDIR
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.shared-temp-poisoning
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/base.rs
+    - tests/spawn_macos.rs
+- id: mitigation.personal-checks
+  name: V2 additions are code, system data and two named personal entries; caged tests check home listing, home
+    preferences, Homebrew etc, writes and network stay refused
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.personal-data-in-base
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/base.rs
+    - tests/spawn_macos.rs
+- id: mitigation.pins
+  name: V1, V2 and the presets' profiles are pinned; every base rule carries a filter
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.unfiltered-rule
+    - threat.frozen-drift
+    status: verified
+    kind: detective
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/tests/base.rs
+    - crates/procage-policy/tests/presets.rs
+requirements:
+- id: SR-001
+  statement: Under base V2 the child's per-user temporary directory MUST resolve to its private TMPDIR, and V2 MUST
+    NOT allow com.apple.bsd.dirhelper or com.apple.system.opendirectoryd.membership.
+  priority: P1
+  mitigations:
+  - mitigation.no-dirhelper
+  acceptance:
+  - given: base V2 with the tmpdir grant
+    then: both are inside its private TMPDIR
+    when: the child asks getconf DARWIN_USER_TEMP_DIR and runs mktemp
+  tasks: []
+- id: SR-002
+  statement: Base V2 MUST NOT let the child list the home directory, read home preferences or ~/.ssh, read Homebrew
+    etc files other than OpenSSL's configuration, write system or Homebrew locations, or reach the network.
+  priority: P1
+  mitigations:
+  - mitigation.personal-checks
+  acceptance:
+  - given: base V2
+    then: each fails
+    when: the child tries each of these
+  tasks: []
+- id: SR-003
+  statement: V1, V2 and every preset's profile MUST be pinned, and every base rule MUST carry at least one filter
+    except V1's sysctl-read.
+  priority: P1
+  mitigations:
+  - mitigation.pins
+  acceptance:
+  - given: the policy crate tests
+    then: the pinned contents match and no base rule is unfiltered
+    when: they run
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-31
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_macos.rs::base_v2_runs_developer_tools, crates/procage-policy/tests/base.rs::v2_adds_no_service
+  result: pass
+  verdict: verified
+  justification: Under base V2 with the tmpdir grant, getconf DARWIN_USER_TEMP_DIR and mktemp both land in the child's
+    private TMPDIR (the caged test prints "private"); the policy test asserts V2's mach-lookup rules equal V1's
+    and name neither dirhelper nor membership.
+  verified_at: '2026-10-31T20:17:57Z'
+  commit: 407f2e0
+- id: verification.sr-002.2026-10-31
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_macos.rs::base_v2_grants_nothing_personal
+  result: pass
+  verdict: verified
+  justification: Under base V2 the child cannot list the home, read ~/Library/Preferences or ~/.ssh, read a Homebrew
+    etc file that is not OpenSSL's, write /opt/homebrew or /usr/local, or connect to a loopback port; stat of $HOME
+    succeeds as documented.
+  verified_at: '2026-10-31T20:17:57Z'
+  commit: 407f2e0
+- id: verification.sr-003.2026-10-31
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-policy/tests/base.rs::macos_v2_is_v1_plus_its_pinned_additions, crates/procage-policy/tests/base.rs::every_base_rule_has_a_filter,
+    crates/procage-policy/tests/presets.rs::every_v2_preset_is_pinned, crates/procage-policy/tests/presets.rs::every_preset_is_pinned
+  result: pass
+  verdict: verified
+  justification: V1's rendered allows are pinned and unchanged; V2 is V1 plus three pinned rules; every base rule
+    except V1's sysctl-read carries a filter (rendered and structural check); the v1 and v2 preset profiles are
+    pinned fixtures.
+  verified_at: '2026-10-31T20:17:57Z'
+  commit: 407f2e0
+decisions: []

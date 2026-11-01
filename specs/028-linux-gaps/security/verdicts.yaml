@@ -1,0 +1,25 @@
+verdicts:
+  - requirement: SR-001
+    verdict: verified
+    method: test
+    evidence: tests/escape_macos.rs::r09_unix_sockets_reach_only_their_paths, tests/escape_linux.rs::r09_unix_sockets_reach_only_their_paths
+    result: pass
+    justification: With ipc.unix_sockets on the workspace and no network, the caged child binds, listens and connects in the workspace, while connecting to a daemon socket outside and opening TCP fail, on macOS (EPERM) and Linux T1 (masked daemon ECONNREFUSED, TCP EPERM).
+  - requirement: SR-002
+    verdict: verified
+    method: test
+    evidence: tests/escape_linux.rs::r09_unix_sockets_reach_only_their_paths, crates/procage-policy/tests/gaps.rs::unix_sockets_by_tier_and_abi
+    result: pass
+    justification: On T1 the host abstract socket gives ECONNREFUSED (separate network namespace); on T2 below ABI 9 the setting is refused naming ipc-unix-sockets, in the canary and in the lowering test.
+  - requirement: SR-003
+    verdict: verified
+    method: test
+    evidence: tests/spawn_linux.rs::t2_hide_is_piecewise, tests/spawn_linux.rs::t2_hide_inside_a_writable_tree_is_refused, tests/spawn_linux.rs::t2_a_write_grant_around_a_hidden_path_fails_the_spawn, tests/spawn_linux.rs::t2_reading_everything_except_secrets
+    result: pass
+    justification: On T2 the hidden file is unreadable directly and through a symbolic-link sibling and a listing is denied while a sibling reads; an entry created after the spawn is denied; a write rule around is refused at preparation and a write grant around fails the spawn naming both; the secrets class keeps a home's .ssh unreadable while reading /. The negative control shows the test fails without the expansion.
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/gaps.rs::reading_everything_needs_exactly_the_spawn_snapshot, tests/spawn_linux.rs::t2_hide_is_piecewise
+    result: pass
+    justification: accept_spawn_snapshot holds exactly the five SPAWN_SNAPSHOT constructs; without it the secrets and fs-hide approximations are refused with a message naming the option; with it they lower and appear in the degradations; a glob rule stays refused.

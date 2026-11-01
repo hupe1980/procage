@@ -1,0 +1,1054 @@
+{
+  "feature": "001-kernel-facts",
+  "commit": "24f3263",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "The fact suite MUST fail, never skip or pass, every enforcement fact when the test process is already inside a Seatbelt sandbox, and the failure message MUST name the condition and the outside-sandbox command.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the suite is started under a Seatbelt profile (e.g. sandbox-exec or an agent harness)",
+          "then": "it fails with an already-sandboxed message naming the outside-sandbox command; no enforcement fact reports pass or skip",
+          "when": "an enforcement fact runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.outside-sandbox-precheck"
+      ],
+      "tasks": [
+        {
+          "id": "T014",
+          "done": true,
+          "text": "Implement the outside-sandbox precheck in `tests/kernel_facts/tests/kernel_facts.rs`. It runs the `selfcheck` step before any fact and prints `sandboxed: yes|no` in the header. When it reports `yes`, every `Enforcement` fact becomes FAIL \"already inside a Seatbelt sandbox: run `just test-outside` from a terminal that is not inside an agent sandbox\" and none is skipped. [SR-001]"
+        },
+        {
+          "id": "T043",
+          "done": true,
+          "text": "[US4] Create `justfile` with recipes `ci`, `fmt-check`, `lint`, `test`, `facts`, `test-outside`, `bisect`, `doc`, `deny`, `msrv` (`cargo +1.99.0 check --workspace --all-targets`), `no-std` (`cargo build -p procage-policy --target thumbv7em-none-eabihf`), `semver`, `planning-paths`, `kf-rosetta` and `ci-all`, per contracts/gates-and-lanes.md. Each prints `==> gate: <name>`. [SR-011] [SR-015] [SR-001]"
+        },
+        {
+          "id": "T046",
+          "done": true,
+          "text": "Run quickstart scenarios 1\u201310 and record their outcomes in `specs/001-kernel-facts/quickstart.md` (local file): the sandboxed run (scenario 3) must show 0 enforcement PASS [SR-001]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "justfile",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "Every enforcement fact MUST include a control run of the same action without the restriction that succeeds, and MUST match the specific expected errno, exit code or data, never just \"the child failed\".",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "an enforcement fact whose target file is missing",
+          "then": "the control run fails and the fact reports a setup failure, not a pass",
+          "when": "the fact runs"
+        },
+        {
+          "given": "a denied action that fails with an unexpected errno",
+          "then": "the fact fails and reports expected and observed errno",
+          "when": "the fact runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.positive-controls"
+      ],
+      "tasks": [
+        {
+          "id": "T015",
+          "done": true,
+          "text": "Implement the control-run helper `expect_denied(control_args, caged_args, expected_errno)` in `tests/kernel_facts/tests/kernel_facts.rs`. A control that does not succeed \u2192 SETUP-FAILED. A caged run with a different errno \u2192 FAIL with expected and observed. [SR-002]"
+        },
+        {
+          "id": "T020",
+          "done": true,
+          "text": "[US1] KF-M05 and KF-M06: step `apply-selfcheck` (apply allow-default bytecode via path A, then `sandboxed` must be 1 and still 1 after a second identical apply) and step `apply-then-spawn` (apply, then spawn `kf-probe selfcheck`, which must print `sandboxed=1`). The control is the unapplied `selfcheck`, which must print 0. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-002]"
+        },
+        {
+          "id": "T021",
+          "done": true,
+          "text": "[US1] KF-M07 and KF-M08: step `read <control|literal-etc|literal-private>` on `/etc/hosts` (reports `bytes` only, never contents) and step `tmp-create <control|subpath-tmp|subpath-private> <dir>`, where `<dir>` is a unique, exclusively created dir under `/private/tmp`, removed afterwards. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-002] [SR-005] [SR-014]"
+        },
+        {
+          "id": "T022",
+          "done": true,
+          "text": "[US1] KF-M09 and KF-M10: step `nest <scratch>`. Apply profile A (deny read of `a`), then apply B (deny read of `b`) and expect rc -1, errno EPERM, and `b` still readable. Re-applying A gives rc 0. After apply, `compile` succeeds (M10). File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-002]"
+        },
+        {
+          "id": "T028",
+          "done": true,
+          "text": "[US1] KF-M21 and KF-M22: [SR-002]"
+        },
+        {
+          "id": "T032",
+          "done": true,
+          "text": "[P] [US2] KF-L06 and KF-L08 (tiers T1, T2): steps `landlock-write <scratch>` (allow write in `scratch/a`, write in `scratch/b` \u2192 EACCES; control without Landlock succeeds) and `landlock-devnull` (write `/dev/null` denied until a rule is added) in `tests/kernel_facts/src/bin/kf-probe/linux.rs` [SR-002]"
+        },
+        {
+          "id": "T033",
+          "done": true,
+          "text": "[P] [US2] KF-L03, KF-L04, KF-L05 and KF-L07 (T1 only): steps `userns`, `ro-bind`, `tmpfs` and `netns` in `tests/kernel_facts/src/bin/kf-probe/linux.rs`, each with a control (the same action outside the namespace) [SR-002]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The TIOCSTI probe MUST operate only on a pseudo-terminal pair it creates, after detaching from any controlling terminal, and MUST NOT write a newline or command text.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the maintainer runs the suite in an interactive terminal",
+          "then": "no character appears in, or is executed by, the maintainer's terminal; the observation is read back from the probe's own pty",
+          "when": "the TIOCSTI probe runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.private-pty"
+      ],
+      "tasks": [
+        {
+          "id": "T041",
+          "done": true,
+          "text": "[US3] KF-M26 (TIOCSTI): step `tiocsti <control|caged>`: [SR-003]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/sys/macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Facts MUST execute only absolute-path commands with constant arguments, never through a shell or with arguments derived from the environment, and any setuid exec MUST be non-interactive and time-bounded.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the probe source",
+          "then": "no fact execs a shell or builds argv from environment variables",
+          "when": "it is reviewed or grepped"
+        },
+        {
+          "given": "the setuid fact on a host where sudo would prompt",
+          "then": "it completes within its timeout without prompting",
+          "when": "it runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.fixed-argv-no-shell"
+      ],
+      "tasks": [
+        {
+          "id": "T012",
+          "done": true,
+          "text": "Create `tests/kernel_facts/src/bin/kf-probe/main.rs`: [SR-004] [SR-008] [SR-014]"
+        },
+        {
+          "id": "T023",
+          "done": true,
+          "text": "[US1] KF-M11: step `setuid-exec <control|caged>` execs the fixed argv `/usr/bin/sudo -n -V` with stdin `/dev/null` and a 10 s timeout. Record the exec errno and exit status; the control must exec successfully. Expected: the caged `execve` fails with errno EPERM (1) and the control execs successfully. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-004] [SR-007]"
+        },
+        {
+          "id": "T024",
+          "done": true,
+          "text": "[US1] KF-M12: step `no-sandbox-exec` applies `(version 1)(allow default)(allow process-exec (with no-sandbox))` and execs its own `current_exe()` with the argument `selfcheck`, which must print `sandboxed=0`. The control without `with no-sandbox` prints 1. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-004]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/main.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "Facts MUST create and touch files only in their own freshly created 0700 temp directory (or under unique, exclusively created names where a fact needs /private/tmp itself), MUST NOT write under $HOME, and MUST remove what they create.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a pre-existing symlink at a predictable /tmp name",
+          "then": "they neither follow it nor write through it",
+          "when": "the /tmp facts run"
+        },
+        {
+          "given": "a full suite run",
+          "then": "no files created by the suite remain and nothing under $HOME changed",
+          "when": "it finishes"
+        }
+      ],
+      "mitigations": [
+        "mitigation.private-scratch-dirs"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "Implement `Scratch` in `tests/kernel_facts/src/lib.rs`: a fresh 0700 directory per fact, created exclusively with a unique name (`mkdir` with a random suffix, retried on EEXIST), canonicalised, asserted to match `^[A-Za-z0-9/._-]+$`, and removed on drop. It never resolves `$HOME`. [SR-005]"
+        },
+        {
+          "id": "T021",
+          "done": true,
+          "text": "[US1] KF-M07 and KF-M08: step `read <control|literal-etc|literal-private>` on `/etc/hosts` (reports `bytes` only, never contents) and step `tmp-create <control|subpath-tmp|subpath-private> <dir>`, where `<dir>` is a unique, exclusively created dir under `/private/tmp`, removed afterwards. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-002] [SR-005] [SR-014]"
+        },
+        {
+          "id": "T026",
+          "done": true,
+          "text": "[US1] KF-M19: step `fd-parent <scratch>` creates `scratch/secret` (16 bytes), opens it without CLOEXEC, and spawns `fd-child <fd>` with the fd inherited. `fd-child` applies a profile that denies `file-read*` on that path, reads the fd (expect `bytes=16`), and does a fresh `open` (expect `errno=1`). It reports counts only. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-005] [SR-014]"
+        },
+        {
+          "id": "T027",
+          "done": true,
+          "text": "[US1] KF-M20: step `ext-parent <a> <b> apply-first` compiles one profile once (`deny file-write*` on the scratch subpath, `allow file-write*` with the `com.apple.app-sandbox.read-write` extension). It issues a token for `a` and writes it to `ext-child` over **stdin** (never argv or env), with the bytecode passed as a file in scratch. The child applies, consumes, writes to `a` (ok) and to `b` (EPERM). A second run with a token for `b` gives the reverse. The token is never printed. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-017] [SR-005]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Every fact that may abort inside a system library MUST run in a separate child process, and an abort MUST be recorded as an observation while the suite continues.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the 20,000-rule fact",
+          "then": "the fact records the abort signal and every later fact still runs",
+          "when": "libsandbox aborts"
+        }
+      ],
+      "mitigations": [
+        "mitigation.crash-isolated-children"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "Implement `run_step(probe, args, timeout, stdin) -> (Exit, Observation)` in `tests/kernel_facts/src/lib.rs`: [SR-006] [SR-007] [SR-008]"
+        },
+        {
+          "id": "T018",
+          "done": true,
+          "text": "[US1] KF-M27 and KF-M28 via step `compile-rules <shape> <n>` in `tests/kernel_facts/src/bin/kf-probe/macos.rs`: [SR-006]"
+        },
+        {
+          "id": "T019",
+          "done": true,
+          "text": "[US1] KF-M17: 20,000 `deny-default-allow` rules \u2192 the observation `exit=signal:6` (SIGABRT), recorded while the runner continues; marked `slow`. File: `tests/kernel_facts/tests/kernel_facts.rs` [SR-006] [SR-007]"
+        },
+        {
+          "id": "T038",
+          "done": true,
+          "text": "[US3] Compile-abort bisection in `tests/kernel_facts/tests/kernel_facts.rs`, gated by `PROCAGE_KF_BISECT=1`, with a 10-minute budget per shape. It runs `compile-rules` in isolated children: `deny-default-allow` over 10,000\u201320,000 and `allow-default-deny` over 20,000\u201340,000 (a range bound that never aborts is recorded as such). It prints `bisect <shape>: ok<=N abort>=M (width P%)`. Then run `just bisect` and record the brackets as constants. [SR-006] [SR-007]"
+        },
+        {
+          "id": "T039",
+          "done": true,
+          "text": "[US3] KF-M24 (compile-abort bracket asserted): for each shape with an abort bracket, compile at the recorded `ok<=N` (no signal) and at `abort>=M` (SIGABRT). Marked `slow`. File: `tests/kernel_facts/tests/kernel_facts.rs` [SR-006]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Timing-dependent facts MUST use fixed trial counts and per-child timeouts that kill the child and fail the fact; the compile-abort bisection MUST be opt-in and time-budgeted.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a child that hangs",
+          "then": "it is killed and the fact fails with a timeout",
+          "when": "its timeout expires"
+        },
+        {
+          "given": "the default test command",
+          "then": "the compile-abort bisection does not run; the asserting fact checks only the recorded bracket edges",
+          "when": "it runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.bounded-trials"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "Implement `run_step(probe, args, timeout, stdin) -> (Exit, Observation)` in `tests/kernel_facts/src/lib.rs`: [SR-006] [SR-007] [SR-008]"
+        },
+        {
+          "id": "T019",
+          "done": true,
+          "text": "[US1] KF-M17: 20,000 `deny-default-allow` rules \u2192 the observation `exit=signal:6` (SIGABRT), recorded while the runner continues; marked `slow`. File: `tests/kernel_facts/tests/kernel_facts.rs` [SR-006] [SR-007]"
+        },
+        {
+          "id": "T023",
+          "done": true,
+          "text": "[US1] KF-M11: step `setuid-exec <control|caged>` execs the fixed argv `/usr/bin/sudo -n -V` with stdin `/dev/null` and a 10 s timeout. Record the exec errno and exit status; the control must exec successfully. Expected: the caged `execve` fails with errno EPERM (1) and the control execs successfully. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-004] [SR-007]"
+        },
+        {
+          "id": "T025",
+          "done": true,
+          "text": "[US1] KF-M18: implement the fork window in `tests/kernel_facts/src/sys/macos.rs` as `fork_apply_exec(bytecode, devnull_fd, argv, envp) -> pid`. The child sequence is exactly `dup2`, `dup2`, `__mac_syscall`, `execve`, `_exit(127)`, and everything is prepared before `fork`. Add step `patha-contention <trials>` in `tests/kernel_facts/src/bin/kf-probe/macos.rs`: 4 threads loop `dlopen`/`dlsym`/`dlclose`, and the main thread runs 200 trials of `/bin/cat /private/etc/hosts` under a deny rule. Each trial has a `waitpid` deadline of 3 s with kill. Report `enforced=` and `hangs=`. The control is 5 trials without apply, which must exit 0. [SR-007] [SR-008]"
+        },
+        {
+          "id": "T038",
+          "done": true,
+          "text": "[US3] Compile-abort bisection in `tests/kernel_facts/tests/kernel_facts.rs`, gated by `PROCAGE_KF_BISECT=1`, with a 10-minute budget per shape. It runs `compile-rules` in isolated children: `deny-default-allow` over 10,000\u201320,000 and `allow-default-deny` over 20,000\u201340,000 (a range bound that never aborts is recorded as such). It prints `bisect <shape>: ok<=N abort>=M (width P%)`. Then run `just bisect` and record the brackets as constants. [SR-006] [SR-007]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "justfile",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "Fact code MUST NOT run between fork and exec in the test runner process; each fact runs in a freshly exec'd probe binary, and fork-then-apply code exists only in that binary and issues syscalls only.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the test harness source",
+          "then": "it contains no pre_exec closure or raw fork; children start through the standard process API",
+          "when": "it is reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exec-fresh-probe-binary"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "Implement `run_step(probe, args, timeout, stdin) -> (Exit, Observation)` in `tests/kernel_facts/src/lib.rs`: [SR-006] [SR-007] [SR-008]"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "Create `tests/kernel_facts/src/bin/kf-probe/main.rs`: [SR-004] [SR-008] [SR-014]"
+        },
+        {
+          "id": "T025",
+          "done": true,
+          "text": "[US1] KF-M18: implement the fork window in `tests/kernel_facts/src/sys/macos.rs` as `fork_apply_exec(bytecode, devnull_fd, argv, envp) -> pid`. The child sequence is exactly `dup2`, `dup2`, `__mac_syscall`, `execve`, `_exit(127)`, and everything is prepared before `fork`. Add step `patha-contention <trials>` in `tests/kernel_facts/src/bin/kf-probe/macos.rs`: 4 threads loop `dlopen`/`dlsym`/`dlclose`, and the main thread runs 200 trials of `/bin/cat /private/etc/hosts` under a deny rule. Each trial has a `waitpid` deadline of 3 s with kill. Report `enforced=` and `hangs=`. The control is 5 trials without apply, which must exit 0. [SR-007] [SR-008]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/main.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "All unsafe code MUST be confined to one test-only sys module per OS, with a SAFETY comment on every unsafe block; private symbols MUST be resolved by dynamic lookup and a missing symbol MUST fail its fact by name.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the workspace",
+          "then": "unsafe_code is forbidden in every module except the sys modules, and every unsafe block has a SAFETY comment",
+          "when": "lints run"
+        },
+        {
+          "given": "a symbol name that does not exist",
+          "then": "the fact fails reporting the symbol as unavailable and the suite continues",
+          "when": "it is resolved"
+        }
+      ],
+      "mitigations": [
+        "mitigation.confined-audited-ffi"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[P] Create `tests/kernel_facts/Cargo.toml`: crate `procage-kernel-facts`, `publish = false`, dependency `libc = \"0.2\"`, `[[bin]] kf-probe` at `src/bin/kf-probe/main.rs`, `[[test]] kernel_facts` with `harness = false`, and its own `[lints]` (the workspace set, but `unsafe_code = \"deny\"`) [SR-009]"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "Create `tests/kernel_facts/src/sys/mod.rs` with `#![allow(unsafe_code)]` and cfg-gated `pub mod macos;` / `pub mod linux;`. This is the only module allowed unsafe, and every unsafe block carries `// SAFETY:`. [SR-009]"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "Implement the macOS dynamic symbol table in `tests/kernel_facts/src/sys/macos.rs`. It loads with `dlopen(\"/usr/lib/libsandbox.1.dylib\")` and `dlsym(RTLD_DEFAULT, \u2026)` for: [SR-009]"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[P] Implement the Linux syscall layer in `tests/kernel_facts/src/sys/linux.rs`: [SR-009]"
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[US1] KF-M01 symbol resolution: step `symbols` prints `missing=` per unresolved name, and the fact passes when none is missing. Files: `tests/kernel_facts/src/bin/kf-probe/macos.rs`, `tests/kernel_facts/tests/kernel_facts.rs` [SR-009]"
+        },
+        {
+          "id": "T049",
+          "done": true,
+          "text": "Run `cargo clippy --workspace --all-targets -- -D warnings` and grep that `unsafe` appears only under `tests/kernel_facts/src/sys/`, with a `// SAFETY:` comment on each block [SR-009]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "Cargo.toml",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/Cargo.toml",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/sys/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/sys/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/sys/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "The CI workflow MUST pin every third-party action to a full commit SHA, set token permissions to read-only, use no secrets on fact lanes, and check out without persisted credentials.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the CI workflow file",
+          "then": "every uses reference has a 40-hex SHA, permissions is contents read, and no secrets reference appears",
+          "when": "it is checked"
+        }
+      ],
+      "mitigations": [
+        "mitigation.pinned-least-privilege-ci"
+      ],
+      "tasks": [
+        {
+          "id": "T044",
+          "done": true,
+          "text": "[US4] Create `.github/workflows/ci.yml` with the jobs gates, macos, macos-newest, macos-x86, linux, linux-userns, linux-next and linux-container, per contracts/gates-and-lanes.md: [SR-010]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-011",
+      "statement": "The local CI command MUST run a dependency policy check (advisories, licence allowlist, crates.io-only sources, bans), and the lockfile MUST be part of the tree.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a dependency with a disallowed licence or a git source",
+          "then": "it fails at the dependency gate",
+          "when": "the local CI command runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.dependency-policy"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "Run `cargo generate-lockfile` (or `cargo build --workspace`) and confirm `Cargo.lock` covers the workspace; `cargo build --workspace` passes [SR-011]"
+        },
+        {
+          "id": "T042",
+          "done": true,
+          "text": "[P] [US4] Create `deny.toml`: [SR-011]"
+        },
+        {
+          "id": "T043",
+          "done": true,
+          "text": "[US4] Create `justfile` with recipes `ci`, `fmt-check`, `lint`, `test`, `facts`, `test-outside`, `bisect`, `doc`, `deny`, `msrv` (`cargo +1.99.0 check --workspace --all-targets`), `no-std` (`cargo build -p procage-policy --target thumbv7em-none-eabihf`), `semver`, `planning-paths`, `kf-rosetta` and `ci-all`, per contracts/gates-and-lanes.md. Each prints `==> gate: <name>`. [SR-011] [SR-015] [SR-001]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "Cargo.lock",
+            "exists": true
+          },
+          {
+            "path": "deny.toml",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-012",
+      "statement": "Every fact report and question finding MUST record OS version and build or kernel release, architecture, tier (Linux), and date; question findings MUST also record the method and whether the answer is proven or inferred.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "any suite run",
+          "then": "its header contains OS build or kernel, architecture, date and tier",
+          "when": "the report is printed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.attributed-reports"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[P] Implement a UTC `YYYY-MM-DD` civil date from `SystemTime` (days-to-civil, no dependencies) in `tests/kernel_facts/src/lib.rs` [SR-012]"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "Create the runner (it also prints an `excluded:` section listing each fact left out on purpose with its reason, per spec FR-002) `tests/kernel_facts/tests/kernel_facts.rs`: [SR-012]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-013",
+      "statement": "Local Linux fact runs MUST NOT use privileged containers or host networking, MUST run the facts as a non-root user, and MUST mount the host workspace read-only.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "the documented container recipe",
+          "then": "it has no --privileged, no host network, a read-only source mount and a non-root user",
+          "when": "it is inspected"
+        }
+      ],
+      "mitigations": [
+        "mitigation.unprivileged-container"
+      ],
+      "tasks": [
+        {
+          "id": "T036",
+          "done": true,
+          "text": "[US2] Recipes `kf-linux` (T2) and `kf-linux-t1` (adds `--security-opt seccomp=unconfined --security-opt apparmor=unconfined`) in `justfile`: [SR-013]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-014",
+      "statement": "Probes MUST report byte counts, errno values and exit codes only, never file contents or environment variable values.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "the inherited-fd fact reads a file",
+          "then": "the report shows the byte count, not the contents",
+          "when": "it reports"
+        }
+      ],
+      "mitigations": [
+        "mitigation.report-redaction"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "Implement in `tests/kernel_facts/src/lib.rs`: [SR-014]"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "Create `tests/kernel_facts/src/bin/kf-probe/main.rs`: [SR-004] [SR-008] [SR-014]"
+        },
+        {
+          "id": "T021",
+          "done": true,
+          "text": "[US1] KF-M07 and KF-M08: step `read <control|literal-etc|literal-private>` on `/etc/hosts` (reports `bytes` only, never contents) and step `tmp-create <control|subpath-tmp|subpath-private> <dir>`, where `<dir>` is a unique, exclusively created dir under `/private/tmp`, removed afterwards. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-002] [SR-005] [SR-014]"
+        },
+        {
+          "id": "T026",
+          "done": true,
+          "text": "[US1] KF-M19: step `fd-parent <scratch>` creates `scratch/secret` (16 bytes), opens it without CLOEXEC, and spawns `fd-child <fd>` with the fd inherited. `fd-child` applies a profile that denies `file-read*` on that path, reads the fd (expect `bytes=16`), and does a fresh `open` (expect `errno=1`). It reports counts only. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-005] [SR-014]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/main.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-015",
+      "statement": "The local CI command MUST fail when any published file mentions the private notes directory, specs/ or .specify/.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "a source comment citing a private research note",
+          "then": "the planning-path gate fails naming the file",
+          "when": "the local CI command runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.planning-path-gate"
+      ],
+      "tasks": [
+        {
+          "id": "T043",
+          "done": true,
+          "text": "[US4] Create `justfile` with recipes `ci`, `fmt-check`, `lint`, `test`, `facts`, `test-outside`, `bisect`, `doc`, `deny`, `msrv` (`cargo +1.99.0 check --workspace --all-targets`), `no-std` (`cargo build -p procage-policy --target thumbv7em-none-eabihf`), `semver`, `planning-paths`, `kf-rosetta` and `ci-all`, per contracts/gates-and-lanes.md. Each prints `==> gate: <name>`. [SR-011] [SR-015] [SR-001]"
+        },
+        {
+          "id": "T045",
+          "done": true,
+          "text": "[US4] Add a \"Development\" section to `README.md`: `just ci`, and the fact suite's outside-sandbox rule (it fails, never skips, inside an agent sandbox). No planning paths. [SR-015]"
+        },
+        {
+          "id": "T048",
+          "done": true,
+          "text": "[P] Verify that no file under `src/`, `crates/`, `tests/`, `.github/`, `README.md` or `Cargo.toml` mentions planning paths (`just planning-paths`), and that `cargo package -p procage --list` is unchanged apart from expected metadata [SR-015]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-016",
+      "statement": "The Linux probe MUST derive the tier only from measurements taken in throwaway children, MUST treat a failed, crashed or timed-out measurement as absent, and MUST NOT consult the kernel version string for capabilities.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a container with default seccomp",
+          "then": "it reports T2 with user namespaces absent (EPERM)",
+          "when": "the probe runs"
+        },
+        {
+          "given": "a measurement child that crashes",
+          "then": "the capability counts as absent and the tier is not raised",
+          "when": "the probe derives the tier"
+        }
+      ],
+      "mitigations": [
+        "mitigation.measured-tier-floor"
+      ],
+      "tasks": [
+        {
+          "id": "T029",
+          "done": true,
+          "text": "[US2] Step `measure <cap>` in `tests/kernel_facts/src/bin/kf-probe/linux.rs` for landlock (abi, errata), seccomp_filter, userns, uid_map (`setgroups deny` plus maps), tmpfs, ro_bind (locked ro bind, write \u2192 EROFS), fresh_proc (userns+pidns fork, `mount proc`), netns (only `lo`, not `IFF_UP`) and apparmor (sysctl read). Each runs in its own process, so a crash means absent. Never read `uname` for capabilities. [SR-016]"
+        },
+        {
+          "id": "T030",
+          "done": true,
+          "text": "[US2] Tier derivation in `tests/kernel_facts/tests/kernel_facts.rs`, per research R5: [SR-016]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-017",
+      "statement": "Sandbox extension tokens MUST be passed between steps only over a stdin pipe, MUST NOT appear in argv, environment or observations, and MUST grant only a 0700 scratch directory.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the KF-M20 and KF-M25 steps run",
+          "then": "no token string appears; the child reads it from stdin",
+          "when": "argv, env and the report are inspected"
+        }
+      ],
+      "mitigations": [
+        "mitigation.token-over-pipe"
+      ],
+      "tasks": [
+        {
+          "id": "T027",
+          "done": true,
+          "text": "[US1] KF-M20: step `ext-parent <a> <b> apply-first` compiles one profile once (`deny file-write*` on the scratch subpath, `allow file-write*` with the `com.apple.app-sandbox.read-write` extension). It issues a token for `a` and writes it to `ext-child` over **stdin** (never argv or env), with the bytecode passed as a file in scratch. The child applies, consumes, writes to `a` (ok) and to `b` (EPERM). A second run with a token for `b` gives the reverse. The token is never printed. File: `tests/kernel_facts/src/bin/kf-probe/macos.rs` [SR-017] [SR-005]"
+        },
+        {
+          "id": "T040",
+          "done": true,
+          "text": "[US3] KF-M25 (extension ordering): `ext-parent <a> <b> consume-first`. The child consumes the token **before** applying, then writes to `a`; record allowed or denied. Disassemble `sandbox_extension_consume` and `sandbox_check` (`lldb --batch -o \"disassemble -n \u2026\"` against a running `kf-probe`) and record the call targets in the finding constant with `proven=false`. Files: `tests/kernel_facts/src/bin/kf-probe/macos.rs`, `tests/kernel_facts/tests/kernel_facts.rs` [SR-017]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/src/bin/kf-probe/macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.compile-abort-kills-harness",
+    "threat.container-host-exposure",
+    "threat.escape-fact-runs-unconfined-payload",
+    "threat.extension-token-exposure",
+    "threat.false-pass-enforcement-fact",
+    "threat.ffi-misdeclaration",
+    "threat.fork-in-multithreaded-harness",
+    "threat.malicious-dependency",
+    "threat.planning-path-leak",
+    "threat.probe-overstates-tier",
+    "threat.sandboxed-runner-false-result",
+    "threat.secret-leak-in-reports",
+    "threat.shared-tmp-races",
+    "threat.tiocsti-injects-into-maintainer-terminal",
+    "threat.unattributed-evidence",
+    "threat.unbounded-fact-runtime",
+    "threat.unpinned-ci-actions"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-009",
+      "summary": "Requirement 'SR-009' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-016",
+      "summary": "Requirement 'SR-016' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-010",
+      "summary": "Requirement 'SR-010' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-011",
+      "summary": "Requirement 'SR-011' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-012",
+      "summary": "Requirement 'SR-012' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-013",
+      "summary": "Requirement 'SR-013' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-014",
+      "summary": "Requirement 'SR-014' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-015",
+      "summary": "Requirement 'SR-015' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-017",
+      "summary": "Requirement 'SR-017' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C9",
+      "severity": "medium",
+      "location": "spec.md",
+      "summary": "spec.md changed since the model was generated",
+      "recommendation": "Re-run the model command to refresh the threat model"
+    }
+  ],
+  "metrics": {
+    "threats": 17,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 17
+    },
+    "threats_by_severity": {
+      "high": 5,
+      "low": 4,
+      "medium": 7,
+      "critical": 1
+    },
+    "mitigations": 17,
+    "requirements": 17,
+    "requirements_with_tasks": 17,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 6,
+      "medium": 12
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

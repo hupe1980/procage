@@ -1,0 +1,668 @@
+otmVersion: 0.2.0
+project:
+  id: 009-escape-suite
+  name: The escape suite
+threatspec:
+  actors:
+  - id: actor.child-code
+    name: Adaptive code inside a caged child that a canary spawns (the canary plays it)
+    trust: untrusted
+  - id: actor.contributor
+    name: Contributor who edits a mitigation, a canary, the catalog or the gate
+    trust: semi-trusted
+  - id: actor.reader
+    name: User who decides from the published catalog whether procage fits their threat model
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: 'no network-boundary surface: canaries run locally and the gate reads repository files'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked component.catalog-gate: the catalog is parsed as a fixed table grammar and evidence paths are
+      restricted to two files; nothing is executed'
+    technique: injection
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: procage calls no language model (LLM-driven code is the adversary inside
+      the child)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface; overclaiming in docs is modelled under STRIDE as threat.overclaimed-enforcement
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage executes only the program its caller names; the adversary inside the child is modelled under
+      STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Escape class
+    reason: represented as asset.catalog-truth (its published status, evidence and notes)
+  - entity: Canary
+    reason: represented as component.escape-suite
+  - entity: Open variant
+    reason: folded into asset.catalog-truth (published notes) and component.escape-suite (open canaries)
+  extends: null
+  generated: '2026-11-01T17:26:09Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 09090a2c1044317730ea4f61cd30735a6cbf0cbf2f091bba696af38ee51aadfe
+  - path: spec.md
+    sha256: c77adb124d49b9d7d56177f291f8fe235d6af7f65dbc66b1e71c3f47f5036a44
+  surfaces:
+  - external-input
+  - persistent-store
+  version: '0.1'
+trustZones:
+- id: tz.child
+  name: Caged child spawned by a canary
+  risk:
+    trustRating: 5
+- id: tz.host
+  name: The developer's or CI runner's real session, files, pasteboard and processes
+  risk:
+    trustRating: 80
+- id: tz.public
+  name: Readers of the published crate and repository
+  risk:
+    trustRating: 60
+- id: tz.repo
+  name: The repository (tests, catalog, gate, CI workflow)
+  risk:
+    trustRating: 70
+assets:
+- id: asset.catalog-truth
+  name: The truth of each published class status, its evidence and its open variants
+  risk:
+    availability: 40
+    confidentiality: 0
+    integrity: 100
+  attributes:
+    type: configuration
+    source: spec.md#US2
+    classification: public
+- id: asset.host-state
+  name: The host session around the suite (real launch agents, cron, shell rc, pasteboard, applications, running
+    processes)
+  risk:
+    availability: 50
+    confidentiality: 50
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#FR-013
+    classification: internal
+- id: asset.mitigations
+  name: The mitigations under test (canonicaliser, hard-deny tier, hygiene, Linux seccomp, mounts, Landlock)
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 100
+  attributes:
+    type: capability
+    source: spec.md#Context
+    classification: internal
+components:
+- id: component.cage
+  name: The spawn backends under test
+  type: library
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-002
+- id: component.catalog
+  name: Published threat model, README and crate docs
+  type: document
+  parent:
+    trustZone: tz.public
+  attributes:
+    source: spec.md#FR-010
+- id: component.catalog-gate
+  name: The catalog gate with canary-coverage, evidence and open-variant rules
+  type: test-suite
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-007
+- id: component.ci
+  name: CI workflow lanes and just recipes
+  type: pipeline
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-011
+- id: component.escape-suite
+  name: Platform escape-suite files with one or more canaries per class
+  type: test-suite
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.attempt
+  name: A canary's caged child attempts an escape
+  source: actor.child-code
+  destination: component.cage
+  assets:
+  - asset.mitigations
+  - asset.host-state
+  attributes:
+    crosses:
+    - tz.child
+    - tz.host
+- id: flow.claim
+  name: Canary results become catalog statuses
+  source: component.escape-suite
+  destination: component.catalog
+  assets:
+  - asset.catalog-truth
+  attributes:
+    crosses:
+    - tz.repo
+    - tz.public
+- id: flow.edit
+  name: A contributor changes a mitigation, canary or status
+  source: actor.contributor
+  destination: component.escape-suite
+  assets:
+  - asset.catalog-truth
+  - asset.mitigations
+  attributes:
+    crosses:
+    - tz.repo
+- id: flow.read
+  name: A reader relies on the catalog
+  source: component.catalog
+  destination: actor.reader
+  assets:
+  - asset.catalog-truth
+  attributes:
+    crosses:
+    - tz.public
+threats:
+- id: threat.canary-side-effect
+  name: A canary whose escape succeeds changes the real host (launch agent, cron, rc file, pasteboard, launched
+    application)
+  categories:
+  - Tampering
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-013
+    assets:
+    - asset.host-state
+    status: mitigated
+    actor: actor.child-code
+    elements:
+    - flow.attempt
+    profile: stride
+    severity: high
+    technique: data-tampering
+- id: threat.false-pass
+  name: A canary passes because the attempt fails for an unrelated reason (missing file, missing tool, wrong path,
+    permission bits) and a contributor marks the class mitigated
+  categories:
+  - Spoofing
+  risk:
+    impact: 90
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.catalog-truth
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.escape-suite
+    - flow.claim
+    profile: stride
+    severity: high
+    technique: repudiation
+- id: threat.hidden-open-variant
+  name: A known open variant is not published, so a reader trusts a partial class as fully handled
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 80
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.catalog-truth
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.catalog
+    - flow.read
+    profile: stride
+    severity: high
+    technique: repudiation
+- id: threat.mitigation-regression
+  name: A later change weakens a mitigation and no canary notices because it covers a different variant
+  categories:
+  - Tampering
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.mitigations
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - flow.edit
+    - component.cage
+    profile: stride
+    severity: high
+    technique: data-tampering
+- id: threat.overclaimed-status
+  name: The catalog marks a class mitigated with evidence on one platform only, with an ignored canary, or while
+    an open canary for it exists
+  categories:
+  - Tampering
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.catalog-truth
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.catalog
+    - component.catalog-gate
+    profile: stride
+    severity: high
+    technique: data-tampering
+- id: threat.silent-skip
+  name: A canary or lane skips (already sandboxed, lower tier, missing tool) and reports green
+  categories:
+  - Repudiation
+  risk:
+    impact: 80
+    likelihood: 50
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.catalog-truth
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.escape-suite
+    - component.ci
+    profile: stride
+    severity: high
+    technique: repudiation
+- id: threat.surviving-descendant
+  name: An open lifetime canary leaves an escaped descendant running on the developer machine or CI runner
+  categories:
+  - Denial of Service
+  risk:
+    impact: 50
+    likelihood: 70
+  attributes:
+    source: spec.md#SC-005
+    assets:
+    - asset.host-state
+    status: mitigated
+    actor: actor.child-code
+    elements:
+    - flow.attempt
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.uninformative-lane
+  name: The host refuses the attempt on its own (Docker seccomp, AppArmor, Yama) so the canary passes without testing
+    procage's mitigation
+  categories:
+  - Spoofing
+  risk:
+    impact: 70
+    likelihood: 80
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.catalog-truth
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.escape-suite
+    profile: stride
+    severity: critical
+    technique: repudiation
+mitigations:
+- id: mitigation.defect-injection
+  name: Removing each covered mitigation makes a canary fail (recorded per system)
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.mitigation-regression
+    - threat.false-pass
+    status: verified
+    kind: detective
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - src/linux/sys.rs
+    - src/macos/sys.rs
+- id: mitigation.gate-rules
+  name: Gate rules for canary coverage per platform, evidence location, no ignored evidence, no open canary on a
+    mitigated class, partial needs a note
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.overclaimed-status
+    - threat.hidden-open-variant
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    - SR-004
+    touchpoints:
+    - tests/threat_model.rs
+    - THREAT_MODEL.md
+- id: mitigation.informative-report
+  name: Syscall canaries report whether the lane was informative (uncaged control allowed); evidence for kernel-surface
+    classes is recorded from the T1 lane
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.uninformative-lane
+    status: verified
+    kind: detective
+    requirements:
+    - SR-002
+    touchpoints:
+    - tests/escape_linux.rs
+    - quickstart.md
+- id: mitigation.no-skip
+  name: Canaries fail on AlreadySandboxed and on a tier mismatch; lanes set the expected tier; external tools are
+    avoided
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.silent-skip
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - tests/escape_macos.rs
+    - tests/escape_linux.rs
+    - .github/workflows/ci.yml
+    - justfile
+- id: mitigation.positive-control
+  name: Each canary pairs the refused attempt with a control that succeeds (the same operation on a granted target,
+    or uncaged) and asserts the specific refusal (errno, typed error), not just failure
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.false-pass
+    - threat.uninformative-lane
+    status: verified
+    kind: detective
+    requirements:
+    - SR-001
+    - SR-002
+    touchpoints:
+    - tests/escape_macos.rs
+    - tests/escape_linux.rs
+- id: mitigation.scratch-only
+  name: Canaries use fake homes and scratch paths, service lookups instead of actions, and kill every pid they learn
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.canary-side-effect
+    - threat.surviving-descendant
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - tests/escape_macos.rs
+    - tests/escape_linux.rs
+requirements:
+- id: SR-001
+  statement: Every active canary MUST assert the specific refusal (errno or typed error) and MUST include a positive
+    control showing the same operation succeeds where the policy allows it.
+  priority: P1
+  mitigations:
+  - mitigation.positive-control
+  acceptance:
+  - given: a canary for a file-based class
+    then: the control succeeds and the attempt fails with the expected errno
+    when: the child attempts the escape and the control
+  - given: a canary whose attempt target does not exist
+    then: it fails rather than passes
+    when: it runs
+  tasks: []
+- id: SR-002
+  statement: A syscall canary MUST report whether its lane was informative, and a kernel-surface class MUST NOT
+    be marked mitigated from uninformative lanes alone.
+  priority: P1
+  mitigations:
+  - mitigation.positive-control
+  - mitigation.informative-report
+  acceptance:
+  - given: the Docker default seccomp lane
+    then: it passes and prints which attempts were uninformative
+    when: the R-28 canary runs
+  - given: the T1 lane
+    then: the uncaged controls succeed and the caged attempts fail with EPERM
+    when: the R-28 and R-29 canaries run
+  tasks: []
+- id: SR-003
+  statement: The gate MUST reject a mitigated or detected class without a non-ignored canary on every listed platform,
+    evidence outside the platform escape-suite files, ignored canaries as evidence, and a mitigated class that has
+    an open canary.
+  priority: P1
+  mitigations:
+  - mitigation.gate-rules
+  acceptance:
+  - given: a class marked mitigated with a macOS canary only but listing Linux
+    then: exactly the per-platform evidence rule fires
+    when: the gate runs
+  - given: evidence naming an ignored canary
+    then: the ignored-evidence rule fires
+    when: the gate runs
+  - given: an open canary for a mitigated class
+    then: the open-canary rule fires
+    when: the gate runs
+  tasks: []
+- id: SR-004
+  statement: Every class MUST have a canary per listed platform, and a partial class MUST have an entry under Open
+    variants; the release status MUST name every open class.
+  priority: P1
+  mitigations:
+  - mitigation.gate-rules
+  acceptance:
+  - given: a class with no canary for one listed platform
+    then: the coverage rule fires
+    when: the gate runs
+  - given: a partial class without a note
+    then: the open-variant rule fires
+    when: the gate runs
+  tasks: []
+- id: SR-005
+  statement: The suite MUST fail, never skip, when the parent is already sandboxed or the host tier differs from
+    the expected tier, and every CI lane MUST run it with its expected tier.
+  priority: P1
+  mitigations:
+  - mitigation.no-skip
+  acceptance:
+  - given: a T2 container with PROCAGE_EXPECT_TIER=T1
+    then: it fails with a tier mismatch
+    when: the Linux suite runs
+  - given: the CI workflow
+    then: every macOS and Linux lane runs the suite and Linux lanes set the expected tier
+    when: it is read
+  tasks: []
+- id: SR-006
+  statement: Canaries MUST NOT write outside scratch directories, write the real pasteboard, launch applications,
+    or leave processes running.
+  priority: P2
+  mitigations:
+  - mitigation.scratch-only
+  acceptance:
+  - given: a full suite run including the open canaries
+    then: no canary process is alive and no file outside scratch directories changed
+    when: it ends
+  tasks: []
+- id: SR-007
+  statement: For each system at least one covered mitigation MUST be removed in a defect-injection run and a canary
+    MUST fail; at least five defects in total.
+  priority: P2
+  mitigations:
+  - mitigation.defect-injection
+  acceptance:
+  - given: a mitigation removed from the code
+    then: the canary for its class fails
+    when: the suite runs
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-30
+  requirement: SR-001
+  method: test
+  evidence: tests/escape_macos.rs::r05_modifying_fcntl_commands_are_refused, tests/escape_macos.rs::r10_runs_do_not_share_temporary_files,
+    tests/escape_linux.rs::r22_terminal_input_injection_is_refused
+  result: pass
+  verdict: verified
+  justification: Every active canary asserts the exact errno or typed error next to a control (granted target, or
+    class waived with access opened); r10 holds the first tmpdir alive so ENOENT cannot pass; all pass on macOS,
+    T1 and T2.
+  verified_at: '2026-10-30T20:43:30Z'
+  commit: b295ea6
+- id: verification.sr-002.2026-10-30
+  requirement: SR-002
+  method: test
+  evidence: tests/escape_linux.rs::r28_filter_bypassing_interfaces_are_refused, tests/escape_linux.rs::r29_nested_user_namespaces_and_mount_changes_are_refused
+  result: pass
+  verdict: verified
+  justification: syscalls() prints informative= per call and only counts calls whose waived control is not refused;
+    on a T1 host at least two must be informative. Observed informative=false on Docker T2 and true on T1 (quickstart.md).
+  verified_at: '2026-10-30T20:43:30Z'
+  commit: b295ea6
+- id: verification.sr-003.2026-10-30
+  requirement: SR-003
+  method: test
+  evidence: tests/threat_model.rs::mitigated_on_one_platform_only_is_caught, tests/threat_model.rs::ignored_canary_as_evidence_is_caught,
+    tests/threat_model.rs::mitigated_with_an_open_canary_is_caught, tests/threat_model.rs::evidence_in_another_test_file_is_caught
+  result: pass
+  verdict: verified
+  justification: Each test mutates the real catalog or suite and asserts exactly the expected rule fires; all 26
+    gate tests pass.
+  verified_at: '2026-10-30T20:43:30Z'
+  commit: b295ea6
+- id: verification.sr-004.2026-10-30
+  requirement: SR-004
+  method: test
+  evidence: tests/threat_model.rs::missing_canary_is_caught, tests/threat_model.rs::partial_without_a_note_is_caught,
+    tests/threat_model.rs::gate
+  result: pass
+  verdict: verified
+  justification: Coverage and open-variant rules have defect tests; the real catalog passes with R-23/R-25 partial
+    and noted; the release status names R-08, R-23 and R-25 (reviewed in THREAT_MODEL.md).
+  verified_at: '2026-10-30T20:43:30Z'
+  commit: b295ea6
+- id: verification.sr-005.2026-10-30
+  requirement: SR-005
+  method: test
+  evidence: tests/escape_linux.rs::r21_an_inherited_descriptor_does_not_reach_the_child
+  result: pass
+  verdict: verified
+  justification: host_tier() asserts PROCAGE_EXPECT_TIER in every Linux canary; `just linux T1` in the T2 container
+    failed with TIER MISMATCH; spawn errors (including AlreadySandboxed) panic, never skip; ci.yml runs escape_macos
+    in every macOS lane and spawn_linux + escape_linux in every Linux job, with the tier set where known.
+  verified_at: '2026-10-30T20:43:30Z'
+  commit: b295ea6
+- id: verification.sr-006.2026-10-30
+  requirement: SR-006
+  method: test
+  evidence: tests/escape_macos.rs::r23_a_double_forked_descendant_dies_with_the_run, tests/escape_macos.rs::r23_a_launch_agent_cannot_be_planted
+  result: pass
+  verdict: verified
+  justification: Open lifetime canaries kill the surviving pid before asserting (no sleeper left after the --ignored
+    run, checked with pgrep); the launch-agent canary removes any created plist; all other writes go to scratch
+    or fake homes; service canaries only look up names.
+  verified_at: '2026-10-30T20:43:30Z'
+  commit: b295ea6
+- id: verification.sr-007.2026-10-30
+  requirement: SR-007
+  method: evidence
+  evidence: specs/009-escape-suite/quickstart.md#Recorded-outcomes
+  result: pass
+  verdict: verified
+  justification: Five defects (two macOS, three Linux) were injected one at a time and each made a canary fail;
+    two canaries were strengthened until their defect was caught.
+  verified_at: '2026-10-30T20:43:30Z'
+  commit: b295ea6
+decisions: []

@@ -1,0 +1,1183 @@
+otmVersion: 0.2.0
+project:
+  id: 008-spawn-linux
+  name: Spawning a caged child on Linux
+threatspec:
+  actors:
+  - id: actor.child-code
+    name: Adaptive code running as the user inside the caged child
+    trust: untrusted
+  - id: actor.contributor
+    name: Contributor who edits the backend, the lowering or the class lists
+    trust: semi-trusted
+  - id: actor.earlier-run
+    name: An earlier caged run that left files, symlinks or directories in a writable tree for the next spawn
+    trust: untrusted
+  - id: actor.harness-author
+    name: Harness author who prepares policies and binds grants on a Linux host
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: 'no network-boundary surface: the plan is built and applied inside the caller process and its forked
+      child'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked component.lowering-linux: every degradation and waiver is listed in the plan, and the tier
+      and ABI are reported by the probe'
+    technique: missing-audit-trail
+  - disposition: no-threat-detected
+    reason: 'checked component.child-sequence: paths reach the kernel as NUL-terminated byte strings and descriptors,
+      never through a shell or a parsed language'
+    technique: injection
+  - disposition: no-threat-detected
+    reason: 'checked asset.secrets: homes are every directory under /home plus /root, so another user''s readable
+      secrets are masked too'
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: procage calls no language model (LLM-driven code is the adversary inside
+      the child)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface; overclaiming in docs is modelled under STRIDE as threat.overclaimed-enforcement
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage executes only the program its caller names; the adversary inside the child is modelled under
+      STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Child plan
+    reason: represented as component.child-sequence (what applies it) and asset.policy-intent (what it carries)
+  - entity: Cage (Linux)
+    reason: represented as component.lowering-linux and component.seccomp-builder (what preparing a cage does) and
+      asset.policy-intent
+  - entity: Class paths
+    reason: folded into asset.linux-class-lists
+  extends: null
+  generated: '2026-11-01T17:26:09Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 3147d473abf9d21611363999dd47a3571da3e954d1b5c2f94e2476de3df8a744
+  - path: spec.md
+    sha256: a3cf7399f5423805147a25573b2dabc072b92ea8938d085219fbe56cf96ea409
+  surfaces:
+  - external-input
+  - persistent-store
+  version: '0.1'
+trustZones:
+- id: tz.caller
+  name: The caller process (harness) that prepares the cage and forks
+  risk:
+    trustRating: 80
+- id: tz.child
+  name: Caged child
+  risk:
+    trustRating: 5
+- id: tz.kernel
+  name: The Linux kernel (Landlock, seccomp, namespaces, mounts)
+  risk:
+    trustRating: 95
+- id: tz.user
+  name: The user's files and session outside the sandbox
+  risk:
+    trustRating: 80
+assets:
+- id: asset.handoff-files
+  name: Files unsandboxed tools later run or read (git hooks and config, rc files, editor and agent config, PATH
+    bins, systemd user units, autostart)
+  risk:
+    availability: 30
+    confidentiality: 20
+    integrity: 100
+  attributes:
+    type: configuration
+    source: spec.md#FR-013
+    classification: internal
+- id: asset.kernel-surface
+  name: Kernel attack surface reachable by syscalls (io_uring, bpf, ptrace, keyctl, namespaces, mounts)
+  risk:
+    availability: 60
+    confidentiality: 80
+    integrity: 100
+  attributes:
+    type: capability
+    source: spec.md#FR-007
+    classification: internal
+- id: asset.linux-class-lists
+  name: The frozen Linux pattern lists of the data classes
+  risk:
+    availability: 40
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-013
+    classification: public
+- id: asset.network
+  name: Network reachability (host loopback services, the internet)
+  risk:
+    availability: 20
+    confidentiality: 80
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#FR-010
+    classification: internal
+- id: asset.policy-intent
+  name: The caller's policy and the guarantee that the child runs at least that confined
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 100
+  attributes:
+    type: configuration
+    source: spec.md#FR-003
+    classification: internal
+- id: asset.secrets
+  name: Credentials and private data in Linux homes (SSH, cloud, keyrings, browser profiles)
+  risk:
+    availability: 30
+    confidentiality: 100
+    integrity: 80
+  attributes:
+    type: credential
+    source: spec.md#FR-013
+    classification: confidential
+- id: asset.user-files
+  name: Files outside the policy's rules (the rest of the filesystem)
+  risk:
+    availability: 40
+    confidentiality: 90
+    integrity: 90
+  attributes:
+    type: pii
+    source: spec.md#US1
+    classification: confidential
+components:
+- id: component.child-handle
+  name: Child handle (tree kill
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-012
+  env report): null
+  tmpdir: null
+- id: component.child-sequence
+  name: In-child sequence (namespaces
+  type: process
+  parent:
+    trustZone: tz.kernel
+  attributes:
+    source: spec.md#FR-005
+  Landlock: null
+  caps: null
+  fds: null
+  mounts: null
+  rlimits: null
+  seccomp: null
+  verify): null
+- id: component.class-masks
+  name: Spawn-time discovery of class paths (homes
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-015
+  walk of writable trees) and the mount list: null
+- id: component.docs
+  name: Lowering table
+  type: document
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-019
+  crate docs and threat model: null
+- id: component.grants
+  name: Per-spawn grants as Landlock rules on parent-opened descriptors
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-011
+- id: component.lowering-linux
+  name: Linux lowering with coverage-aware data classes
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-014
+- id: component.probe
+  name: Tier probe (Landlock ABI
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-001
+  mounts) in a throwaway child: null
+  user namespaces: null
+- id: component.seccomp-builder
+  name: seccomp filter built in the parent for the native architecture
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-007
+dataflows:
+- id: flow.child-file-access
+  name: The child opens files
+  source: actor.child-code
+  destination: component.child-sequence
+  assets:
+  - asset.user-files
+  - asset.secrets
+  - asset.handoff-files
+  attributes:
+    crosses:
+    - tz.child
+    - tz.kernel
+- id: flow.child-syscalls
+  name: The child makes syscalls
+  source: actor.child-code
+  destination: component.child-sequence
+  assets:
+  - asset.kernel-surface
+  - asset.network
+  attributes:
+    crosses:
+    - tz.child
+    - tz.kernel
+- id: flow.contributor-edits
+  name: A change edits the backend or lists
+  source: actor.contributor
+  destination: component.lowering-linux
+  assets:
+  - asset.linux-class-lists
+  - asset.policy-intent
+  attributes:
+    crosses:
+    - tz.caller
+- id: flow.prepare
+  name: The harness prepares a cage and binds grants
+  source: actor.harness-author
+  destination: component.lowering-linux
+  assets:
+  - asset.policy-intent
+  attributes:
+    crosses:
+    - tz.caller
+- id: flow.spawn-walk
+  name: At spawn the parent walks writable trees an earlier run may have shaped
+  source: actor.earlier-run
+  destination: component.class-masks
+  assets:
+  - asset.handoff-files
+  attributes:
+    crosses:
+    - tz.user
+    - tz.caller
+threats:
+- id: threat.foreign-abi-bypass
+  name: The child issues a syscall through another architecture or ABI (x32, 32-bit compat) whose numbers the filter
+    does not check
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-184
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.kernel-surface
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - component.seccomp-builder
+    profile: stride
+    severity: high
+    technique: privilege-escalation
+- id: threat.fs-outside-policy
+  name: The child reads or writes a file outside its policy's rules on Linux
+  categories:
+  - Information Disclosure
+  - Tampering
+  cwes:
+  - CWE-284
+  risk:
+    impact: 90
+    likelihood: 80
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.user-files
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-file-access
+    - component.child-sequence
+    - component.grants
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.hygiene-leak
+  name: The child inherits a caller descriptor, a secret environment variable, or outlives its handle on Linux
+  categories:
+  - Information Disclosure
+  - Denial of Service
+  cwes:
+  - CWE-403
+  risk:
+    impact: 70
+    likelihood: 60
+  attributes:
+    source: spec.md#US4
+    assets:
+    - asset.user-files
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - component.child-handle
+    - component.child-sequence
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.kernel-surface-syscall
+  name: The child reaches kernel attack surface (ptrace, io_uring, bpf, keyctl, perf, userfaultfd, namespace creation,
+    mounts) to escape or attack the host
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-250
+  risk:
+    impact: 95
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.kernel-surface
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-syscalls
+    - component.seccomp-builder
+    profile: stride
+    severity: high
+    technique: privilege-escalation
+- id: threat.linux-overclaim
+  name: The docs or lowering table claim Linux enforcement that the backend does not apply, or a plan field the
+    backend ignores
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-1059
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-019
+    assets:
+    - asset.policy-intent
+    - asset.linux-class-lists
+    status: mitigated
+    actor: actor.contributor
+    constitution: II. Evidence before claims
+    disposition: threat
+    elements:
+    - component.docs
+    - flow.contributor-edits
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.linux-secret-read
+  name: On Linux the child reads SSH keys, cloud credentials or browser profiles through a rule that covers a home
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-552
+  risk:
+    impact: 95
+    likelihood: 70
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.secrets
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-file-access
+    - component.class-masks
+    - component.lowering-linux
+    profile: stride
+    severity: critical
+    technique: sensitive-data-exposure
+- id: threat.linux-trust-handoff
+  name: On Linux the child writes a git hook, rc file, editor config or systemd user unit, or renames .git to do
+    so, for an unsandboxed tool to run later (R-07, R-23)
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  cwes:
+  - CWE-494
+  risk:
+    impact: 95
+    likelihood: 70
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.handoff-files
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-file-access
+    - component.class-masks
+    profile: stride
+    severity: critical
+    technique: data-tampering-at-rest
+- id: threat.mount-undo
+  name: On T1 the child uses its namespace capabilities to unmount or remount a protect or mask, or to map new ids
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-269
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#US5
+    assets:
+    - asset.handoff-files
+    - asset.user-files
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - component.child-sequence
+    profile: stride
+    severity: high
+    technique: privilege-escalation
+- id: threat.network-exfil
+  name: With Network::None the child still opens a socket and reaches a host or loopback service
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-923
+  risk:
+    impact: 80
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-010
+    assets:
+    - asset.network
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-syscalls
+    - component.child-sequence
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.silent-downgrade
+  name: A construct the tier cannot enforce (protect on T2, a host without Landlock) is applied weaker or not at
+    all without an error
+  categories:
+  - Repudiation
+  - Elevation of Privilege
+  cwes:
+  - CWE-636
+  risk:
+    impact: 90
+    likelihood: 60
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.policy-intent
+    status: mitigated
+    actor: actor.harness-author
+    constitution: I. Fail closed
+    disposition: threat
+    elements:
+    - flow.prepare
+    - component.probe
+    - component.lowering-linux
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.step-failure-runs-target
+  name: A step in the child fails (Landlock, seccomp, a mount) and the target runs anyway, unconfined or partly
+    confined
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-755
+  risk:
+    impact: 95
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.policy-intent
+    status: mitigated
+    actor: actor.child-code
+    constitution: I. Fail closed
+    disposition: threat
+    elements:
+    - component.child-sequence
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.walk-shaped-by-earlier-run
+  name: An earlier run shapes a writable tree (symlinks, huge trees) so the spawn-time walk skips class paths or
+    follows links out of the tree
+  categories:
+  - Tampering
+  - Denial of Service
+  cwes:
+  - CWE-59
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-017
+    assets:
+    - asset.handoff-files
+    status: mitigated
+    actor: actor.earlier-run
+    disposition: threat
+    elements:
+    - flow.spawn-walk
+    - component.class-masks
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+mitigations:
+- id: mitigation.bounded-walk
+  name: The walk never follows symlinks, mounts follow links only to protect their targets, and a tree over the
+    bound fails the spawn
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.walk-shaped-by-earlier-run
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-011
+    touchpoints:
+    - src/linux/classes.rs
+- id: mitigation.honest-linux-docs
+  name: Lowering table fixtures match the backend; docs list the gaps this feature leaves; escape statuses unchanged
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.linux-overclaim
+    status: verified
+    kind: detective
+    requirements:
+    - SR-012
+    touchpoints:
+    - crates/procage-policy/src/lowering.md
+    - crates/procage-policy/tests/lowering_table.rs
+    - THREAT_MODEL.md
+    - src/linux/mod.rs
+- id: mitigation.hygiene-parity
+  name: Session, env denylist, rlimits, fd close-on-exec, parent-death signal, tree kill on drop, private TMPDIR
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.hygiene-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - src/linux/child.rs
+    - src/unix.rs
+    - src/linux/sys.rs
+    - tests/spawn_linux.rs
+- id: mitigation.landlock-ruleset
+  name: Landlock ruleset built in the parent from the plan, handling every right of the ABI; rules on parent-opened
+    descriptors; missing paths fail the spawn
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.fs-outside-policy
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - src/linux/spawn.rs
+    - src/linux/sys.rs
+    - tests/spawn_linux.rs
+- id: mitigation.linux-class-masks
+  name: T1 masks secrets, makes handoff and persistence paths read-only and pins .git at spawn; T2 gaps when covered
+    and refuses covering grants; coverage-aware lowering
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.linux-secret-read
+    - threat.linux-trust-handoff
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    - SR-007
+    touchpoints:
+    - crates/procage-policy/src/presets.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - src/linux/classes.rs
+    - tests/spawn_linux.rs
+- id: mitigation.netns-or-socket-deny
+  name: Network::None is a new network namespace on T1 and a seccomp socket deny plus Landlock network rights on
+    T2
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.network-exfil
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - src/linux/sys.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - tests/spawn_linux.rs
+- id: mitigation.no-caps-locked-mounts
+  name: T1 drops every capability before exec, keeps locked mount flags, and seccomp denies mount, umount and namespace
+    calls
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.mount-undo
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - src/linux/sys.rs
+    - tests/spawn_linux.rs
+- id: mitigation.seccomp-hard-deny
+  name: seccomp filter from the plan, last in the sequence, EPERM per rule; foreign architecture and x32 kill
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.kernel-surface-syscall
+    - threat.foreign-abi-bypass
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    - SR-003
+    touchpoints:
+    - src/linux/seccomp.rs
+    - src/linux/sys.rs
+    - tests/spawn_linux.rs
+- id: mitigation.tier-gaps
+  name: Probe picks the tier; lowering for the tier and ABI fails on every gap not allowed by name; no Landlock
+    is Unsupported
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.silent-downgrade
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - src/linux/probe.rs
+    - src/linux/mod.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - tests/spawn_linux.rs
+- id: mitigation.verify-and-step-errors
+  name: Each child step returns a coded error before exec; the child verifies seccomp filter mode and Landlock before
+    exec
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.step-failure-runs-target
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - src/linux/sys.rs
+    - src/linux/spawn.rs
+    - tests/spawn_linux.rs
+requirements:
+- id: SR-001
+  statement: On both tiers the child MUST be refused every file access its policy's rules and grants do not allow,
+    and a grant MUST apply only to the spawn it was bound for.
+  priority: P1
+  mitigations:
+  - mitigation.landlock-ruleset
+  acceptance:
+  - given: read on R and write on W, on T1 and T2
+    then: only the first two succeed
+    when: the child reads R/f, writes W/g, reads a file outside both and writes R/h
+  - given: a grant bound for one spawn
+    then: it is refused
+    when: a second spawn without the binding reads the path
+  tasks: []
+- id: SR-002
+  statement: The child MUST be refused ptrace, io_uring_setup, bpf, keyctl, perf_event_open, userfaultfd, unshare,
+    mount and the other hard-deny syscalls with EPERM, on both tiers.
+  priority: P1
+  mitigations:
+  - mitigation.seccomp-hard-deny
+  acceptance:
+  - given: any policy on T1 and T2
+    then: each fails with EPERM
+    when: the child calls ptrace, io_uring_setup, bpf, keyctl, unshare and mount
+  tasks: []
+- id: SR-003
+  statement: The seccomp filter MUST kill a syscall made through a foreign architecture or the x32 ABI.
+  priority: P1
+  mitigations:
+  - mitigation.seccomp-hard-deny
+  acceptance:
+  - given: the built filter
+    then: the verdict is kill
+    when: it is evaluated for a foreign audit architecture and for an x32 syscall number
+  tasks: []
+- id: SR-004
+  statement: Preparation MUST fail with a named capability gap for every construct the tier cannot enforce unless
+    that degradation is allowed by name, and MUST fail with Unsupported on a host without the required Landlock
+    ABI or when a tier the host lacks is requested.
+  priority: P1
+  mitigations:
+  - mitigation.tier-gaps
+  acceptance:
+  - given: T2 and Protect inside a write rule
+    then: it fails with a gap naming fs-protect, and with that degradation allowed the plan lists it
+    when: the cage is prepared
+  - given: a host without user namespaces
+    then: it fails with Unsupported
+    when: T1 is requested
+  tasks: []
+- id: SR-005
+  statement: A failing step in the child MUST be reported as Apply with the step and errno, and the target MUST
+    NOT run; the child MUST verify seccomp filter mode and Landlock before exec.
+  priority: P1
+  mitigations:
+  - mitigation.verify-and-step-errors
+  acceptance:
+  - given: a forced failure in a child step
+    then: the error names the step and the target did not run
+    when: spawning
+  tasks: []
+- id: SR-006
+  statement: On Linux the secret paths in every home MUST stay unreadable to the child on T1 even under a covering
+    read rule, and on T2 a covering rule or grant MUST be a gap or a refused grant, unless the secrets class is
+    waived by name.
+  priority: P1
+  mitigations:
+  - mitigation.linux-class-masks
+  acceptance:
+  - given: T1 and read on a home with .ssh and .aws
+    then: both are refused or empty and listing the home succeeds
+    when: the child lists them
+  - given: T2 and a grant bound to a home that holds .ssh
+    then: the grant is refused naming secrets
+    when: spawning
+  tasks: []
+- id: SR-007
+  statement: On T1 the child MUST NOT write existing trust-handoff or persistence paths under writable rules or
+    in homes, nor rename or remove an existing .git, while .git/objects and ordinary files stay writable; on T2
+    a covering write rule MUST be a gap.
+  priority: P1
+  mitigations:
+  - mitigation.linux-class-masks
+  acceptance:
+  - given: T1 and write on W with .git/hooks, .vscode and .bashrc
+    then: each is refused and W/.git/objects/x and W/src/x succeed
+    when: the child writes each and renames .git
+  - given: T2 and write on W
+    then: it fails with a gap naming hd-trust-handoff, and with the class waived the plan lists the waiver
+    when: the cage is prepared
+  - given: trust-handoff waived on T1
+    then: it succeeds
+    when: the child writes W/.git/hooks/x
+  tasks: []
+- id: SR-008
+  statement: On T1 the child MUST hold no capabilities and MUST NOT undo a mount (umount, remount, new namespace).
+  priority: P1
+  mitigations:
+  - mitigation.no-caps-locked-mounts
+  acceptance:
+  - given: T1 with a protected subtree
+    then: the sets are empty and both calls fail and the subtree stays read-only (EROFS)
+    when: the child reads its capability sets and tries umount and a rw remount
+  tasks: []
+- id: SR-009
+  statement: With Network::None the child MUST NOT reach any socket endpoint on T1 or T2.
+  priority: P1
+  mitigations:
+  - mitigation.netns-or-socket-deny
+  acceptance:
+  - given: Network::None and a listener on the host loopback
+    then: it fails on both tiers
+    when: the child connects
+  tasks: []
+- id: SR-010
+  statement: The Linux child MUST get macOS hygiene parity, with only standard and handed-over descriptors, the
+    denylisted environment dropped, its own session, and the tree killed on drop.
+  priority: P2
+  mitigations:
+  - mitigation.hygiene-parity
+  acceptance:
+  - given: a leaked descriptor and passthrough env with GITHUB_TOKEN
+    then: neither reaches the child and a handed-over descriptor does
+    when: spawning
+  - given: a child with a grandchild
+    then: both are gone
+    when: the handle drops
+  tasks: []
+- id: SR-011
+  statement: The spawn-time walk MUST NOT follow symbolic links and MUST fail the spawn when a tree exceeds the
+    bound.
+  priority: P2
+  mitigations:
+  - mitigation.bounded-walk
+  acceptance:
+  - given: a writable tree with a symlink to a directory outside it
+    then: the walk does not enter the target
+    when: spawning
+  - given: a bound lower than the tree size
+    then: the spawn fails naming the tree
+    when: spawning
+  tasks: []
+- id: SR-012
+  statement: The lowering table MUST state each Linux outcome as the backend applies it, including the gaps this
+    feature leaves, and the docs MUST keep the escape statuses unchanged.
+  priority: P2
+  mitigations:
+  - mitigation.honest-linux-docs
+  acceptance:
+  - given: the lowering table fixture test
+    then: every Linux cell matches the lowering and names the gaps
+    when: it runs
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-30
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_linux.rs::files_outside_the_policy_are_refused
+  result: pass
+  verdict: verified
+  justification: On T1 and T2 (just linux, just linux-t1) the child reads R/f and writes W/g, and gets EACCES reading
+    and listing outside both and writing R/h; a_grant_applies_to_its_spawn_only shows a binding grants only its
+    spawn.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-001.2026-10-30-2
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_linux.rs::files_outside_the_policy_are_refused
+  result: pass
+  verdict: verified
+  justification: On T1 and T2 (just linux, just linux-t1) the child reads R/f and writes W/g, and gets EACCES reading
+    and listing outside both and writing R/h; a_grant_applies_to_its_spawn_only shows a binding grants only its
+    spawn.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-002.2026-10-30
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_linux.rs::hard_deny_syscalls_are_refused
+  result: partial
+  verdict: partial
+  justification: On the T1 lane all eight probed syscalls (ptrace, io_uring_setup, bpf, keyctl, unshare, setns,
+    perf_event_open, userfaultfd) get EPERM with informative controls, but mount and the other mount-API calls named
+    by the statement are not shown to be filtered (an unprivileged control also gets EPERM).
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-002.2026-10-30-2
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_linux.rs::hard_deny_syscalls_are_refused
+  result: pass
+  verdict: verified
+  justification: On the T1 lane all nine probed syscalls (ptrace, io_uring_setup, bpf, keyctl, unshare, setns, perf_event_open,
+    userfaultfd, open_tree) get EPERM in T1 and forced-T2 children with informative controls; src/linux/seccomp.rs::tests::every_policy_denies_the_hard_deny_syscalls
+    shows the filter of every policy returns EPERM for mount, umount2, pivot_root, move_mount, fsopen, fsmount and
+    the rest, whose kernel errno is ambiguous without privilege.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-003.2026-10-30
+  requirement: SR-003
+  method: test
+  evidence: src/linux/seccomp.rs::tests::a_foreign_architecture_is_killed
+  result: partial
+  verdict: partial
+  justification: A foreign audit architecture is killed, but the x32 scenario only asserts kill on x86_64 builds;
+    on the aarch64 host it never evaluates an x86_64 filter.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-003.2026-10-30-2
+  requirement: SR-003
+  method: test
+  evidence: src/linux/seccomp.rs::tests::an_x86_64_filter_kills_x32_and_i386_calls
+  result: pass
+  verdict: verified
+  justification: An x86_64 filter, built on any host, kills an x32 syscall number and an i386 call and allows a
+    native one; a_foreign_architecture_is_killed covers the native aarch64 filter (ran in both containers).
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-004.2026-10-30
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_linux.rs::t2_cannot_protect_inside_a_writable_tree
+  result: pass
+  verdict: verified
+  justification: T2 preparation fails with an unsupported fs-protect gap and an allowed fs-literal approximation
+    is recorded; t1_on_a_host_without_user_namespaces_is_unsupported ran on the T2 lane and got Unsupported::Tier.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-004.2026-10-30-2
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_linux.rs::t2_cannot_protect_inside_a_writable_tree
+  result: pass
+  verdict: verified
+  justification: T2 preparation fails with an unsupported fs-protect gap and an allowed fs-literal approximation
+    is recorded; t1_on_a_host_without_user_namespaces_is_unsupported ran on the T2 lane and got Unsupported::Tier.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-005.2026-10-30
+  requirement: SR-005
+  method: test
+  evidence: tests/spawn_linux.rs::a_failed_step_is_named_and_the_target_does_not_run
+  result: pass
+  verdict: verified
+  justification: A limit above the hard limit gives Apply{step Rlimit} and the touch target never created its marker,
+    on both tiers; with the seccomp call removed (defect a1) the verify step stopped the spawn.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-005.2026-10-30-2
+  requirement: SR-005
+  method: test
+  evidence: tests/spawn_linux.rs::a_failed_step_is_named_and_the_target_does_not_run
+  result: pass
+  verdict: verified
+  justification: A limit above the hard limit gives Apply{step Rlimit} and the touch target never created its marker,
+    on both tiers; with the seccomp call removed (defect a1) the verify step stopped the spawn.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-006.2026-10-30
+  requirement: SR-006
+  method: test
+  evidence: tests/spawn_linux.rs::t1_masks_secrets_in_a_readable_home
+  result: pass
+  verdict: verified
+  justification: On T1 with a read rule on a home, .ssh and .aws are unreadable while the home lists, only after
+    the approximation is accepted; waived, all succeed; t2_refuses_a_grant_that_reaches_secrets gets GrantError::CoversClass(secrets).
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-006.2026-10-30-2
+  requirement: SR-006
+  method: test
+  evidence: tests/spawn_linux.rs::t1_masks_secrets_in_a_readable_home
+  result: pass
+  verdict: verified
+  justification: On T1 with a read rule on a home, .ssh and .aws are unreadable while the home lists, only after
+    the approximation is accepted; waived, all succeed; t2_refuses_a_grant_that_reaches_secrets gets GrantError::CoversClass(secrets).
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-007.2026-10-30
+  requirement: SR-007
+  method: test
+  evidence: tests/spawn_linux.rs::t1_protects_trust_handoff_paths_in_a_writable_workspace
+  result: pass
+  verdict: verified
+  justification: Hooks, .git/config, .vscode and .bashrc give EROFS, renaming .git gives EBUSY, objects/index/refs/src
+    succeed; waived hooks succeed; t2_cannot_enforce_classes_a_rule_reaches gets the hd-trust-handoff gap and the
+    waiver is listed; t1_makes_persistence_paths_read_only refuses a systemd user unit.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-007.2026-10-30-2
+  requirement: SR-007
+  method: test
+  evidence: tests/spawn_linux.rs::t1_protects_trust_handoff_paths_in_a_writable_workspace
+  result: pass
+  verdict: verified
+  justification: Hooks, .git/config, .vscode and .bashrc give EROFS, renaming .git gives EBUSY, objects/index/refs/src
+    succeed; waived hooks succeed; t2_cannot_enforce_classes_a_rule_reaches gets the hd-trust-handoff gap and the
+    waiver is listed; t1_makes_persistence_paths_read_only refuses a systemd user unit.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-008.2026-10-30
+  requirement: SR-008
+  method: test
+  evidence: tests/spawn_linux.rs::t1_children_hold_no_capabilities
+  result: pass
+  verdict: verified
+  justification: Effective, permitted and bounding sets are 0 in a T1 child; t1_protect_is_read_only_and_cannot_be_undone
+    shows umount and rw remount fail and the subtree stays EROFS.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-008.2026-10-30-2
+  requirement: SR-008
+  method: test
+  evidence: tests/spawn_linux.rs::t1_children_hold_no_capabilities
+  result: pass
+  verdict: verified
+  justification: Effective, permitted and bounding sets are 0 in a T1 child; t1_protect_is_read_only_and_cannot_be_undone
+    shows umount and rw remount fail and the subtree stays EROFS.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-009.2026-10-30
+  requirement: SR-009
+  method: test
+  evidence: tests/spawn_linux.rs::without_network_nothing_is_reachable
+  result: pass
+  verdict: verified
+  justification: With Network::None a connect to a host loopback listener fails on T1 (netns) and T2, and on T2
+    socket creation gets EPERM.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-009.2026-10-30-2
+  requirement: SR-009
+  method: test
+  evidence: tests/spawn_linux.rs::without_network_nothing_is_reachable
+  result: pass
+  verdict: verified
+  justification: With Network::None a connect to a host loopback listener fails on T1 (netns) and T2, and on T2
+    socket creation gets EPERM.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-010.2026-10-30
+  requirement: SR-010
+  method: test
+  evidence: tests/spawn_linux.rs::descriptors_reach_the_child_only_when_handed_over
+  result: pass
+  verdict: verified
+  justification: Leaked descriptors (200) are absent and a handed-over one is open; passthrough_drops_secret_variables,
+    dropping_the_handle_kills_every_descendant and session_and_limits_are_the_policys cover env, lifetime and session
+    on both tiers.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-010.2026-10-30-2
+  requirement: SR-010
+  method: test
+  evidence: tests/spawn_linux.rs::descriptors_reach_the_child_only_when_handed_over
+  result: pass
+  verdict: verified
+  justification: Leaked descriptors (200) are absent and a handed-over one is open; passthrough_drops_secret_variables,
+    dropping_the_handle_kills_every_descendant and session_and_limits_are_the_policys cover env, lifetime and session
+    on both tiers.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-011.2026-10-30
+  requirement: SR-011
+  method: test
+  evidence: src/linux/classes.rs::tests::the_walk_does_not_follow_links
+  result: pass
+  verdict: verified
+  justification: A symlinked directory holding .vscode outside the tree yields no cover; tests/spawn_linux.rs::an_oversized_writable_tree_fails_the_spawn
+    gets SpawnError::Walk with limit 10.
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-011.2026-10-30-2
+  requirement: SR-011
+  method: test
+  evidence: src/linux/classes.rs::tests::the_walk_does_not_follow_links
+  result: pass
+  verdict: verified
+  justification: A symlinked directory holding .vscode outside the tree yields no cover; tests/spawn_linux.rs::an_oversized_writable_tree_fails_the_spawn
+    gets SpawnError::Walk with limit 10.
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+- id: verification.sr-012.2026-10-30
+  requirement: SR-012
+  method: test
+  evidence: crates/procage-policy/tests/lowering_table.rs::every_row_matches_the_lowering
+  result: pass
+  verdict: verified
+  justification: Every Linux cell (data classes, gaps for relays, unix sockets below ABI 9, hide on T2, globs, signals
+    below ABI 6) is checked against the lowering at each ABI; THREAT_MODEL.md escape statuses are unchanged (threat_model
+    gate passes).
+  verified_at: '2026-10-30T18:25:31Z'
+  commit: fbf108d
+- id: verification.sr-012.2026-10-30-2
+  requirement: SR-012
+  method: test
+  evidence: crates/procage-policy/tests/lowering_table.rs::every_row_matches_the_lowering
+  result: pass
+  verdict: verified
+  justification: Every Linux cell (data classes, gaps for relays, unix sockets below ABI 9, hide on T2, globs, signals
+    below ABI 6) is checked against the lowering at each ABI; THREAT_MODEL.md escape statuses are unchanged (threat_model
+    gate passes).
+  verified_at: '2026-10-30T18:26:37Z'
+  commit: fbf108d
+decisions: []

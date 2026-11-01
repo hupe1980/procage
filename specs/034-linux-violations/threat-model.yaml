@@ -1,0 +1,761 @@
+otmVersion: 0.2.0
+project:
+  id: 034-linux-violations
+  name: 'Linux violations: exact reports of refused system calls'
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that fits policies
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits reporting, lowering or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: no-threat-detected
+    reason: 'checked flow.listener: the listener travels over a socket pair created close-on-exec by the parent
+      before the fork; no network'
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'evaluated: the supervisor reads only the notification (pid, number, arguments) and /proc/<pid>/comm;
+      it never reads the caged process memory'
+    technique: credential-theft
+  - disposition: no-threat-detected
+    reason: 'evaluated: the only filter change is the verdict of EPERM rules; a changed rule is threat.filter-drift'
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T17:26:14Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: d7fd48330d560bdcbb2b8cefd1aad7ce4668c7a0700f2e583b055c673db49cba
+  - path: spec.md
+    sha256: c02675b829a1a0287fd4ea1173e98fd8299e671b39f0fd159c9c0a78320cfd34
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+- id: tz.kernel
+  name: The Linux kernel (seccomp)
+  risk:
+    trustRating: 95
+assets:
+- id: asset.harness
+  name: 'The harness process: memory, threads, the time wait and violations() take'
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#FR-005
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.record
+  name: The violation record the harness shows its user and may act on (e.g. ask for a grant)
+  risk:
+    availability: 30
+    confidentiality: 30
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#US1
+    classification: internal
+components:
+- id: component.child
+  name: Child-side install and listener hand-over before execve
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.docs
+  name: Crate docs, site, README and THREAT_MODEL on Linux reporting
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-007
+- id: component.filter
+  name: The seccomp filter with a listener (policy crate rules and reasons, procage seccomp builder)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.supervisor
+  name: Per-run supervisor thread answering notifications and recording violations
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+dataflows:
+- id: flow.confine
+  name: The filter confines the child and its descendants
+  source: component.filter
+  destination: tz.cage
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.listener
+  name: The child passes the listener to the parent over a socket pair
+  source: component.child
+  destination: component.supervisor
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+- id: flow.notify
+  name: The kernel delivers refused calls; the supervisor answers
+  source: tz.kernel
+  destination: component.supervisor
+  assets:
+  - asset.record
+  - asset.host
+  attributes:
+    crosses:
+    - tz.kernel
+    - tz.harness
+- id: flow.record
+  name: The record reaches the harness
+  source: component.supervisor
+  destination: tz.harness
+  assets:
+  - asset.record
+  attributes:
+    crosses: []
+threats:
+- id: threat.blocked-run
+  name: The supervisor stops answering (lock, panic, harness stop), so caged processes hang in refused calls, or
+    a detached run blocks forever
+  categories:
+  - Denial of Service
+  risk:
+    impact: 40
+    likelihood: 25
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.supervisor
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.continue-answer
+  name: The supervisor answers with anything but EPERM (CONTINUE flag, success), letting a refused call run or appear
+    to succeed
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    likelihood: 15
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.supervisor
+    - flow.notify
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.false-complete
+  name: The record says complete while processes of the run still make calls, or claims file and network denials
+    are covered
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.supervisor
+    - component.docs
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.filter-drift
+  name: The notifying filter differs from the plain one in more than the verdict of EPERM rules (a rule lost, ENOSYS
+    rules notified), or the plain filter changes
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.filter
+    - flow.confine
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.listener-hijack
+  name: Caged code obtains the listener (an inherited copy, /proc reopen, pidfd_getfd) and answers its own refused
+    call with CONTINUE, so the refused system call runs
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.child
+    - flow.listener
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.record-flood
+  name: Caged code makes millions of refused calls and exhausts the harness memory or blocks answers
+  categories:
+  - Denial of Service
+  risk:
+    impact: 50
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.supervisor
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.unfiltered-fallback
+  name: Listener creation fails and the child execs with no filter, or the failure is silent
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.child
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.wrong-reason
+  name: A violation names the wrong rule (condition evaluated differently from the filter), or a recycled pid gives
+    the wrong process name
+  categories:
+  - Repudiation
+  risk:
+    impact: 50
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.supervisor
+    - component.filter
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.cap-answer-first
+  name: Answer first, then record into the capped record (10,000) and bounded receiver; detached runs keep being
+    answered until POLLHUP
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.record-flood
+    - threat.blocked-run
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    - SR-006
+    touchpoints:
+    - crates/procage/src/linux/violations.rs
+    - crates/procage/src/violation.rs
+- id: mitigation.eperm-only
+  name: 'The answer is built in one place: error -EPERM, value 0, flags 0, sent before recording'
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.continue-answer
+    - threat.blocked-run
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage/src/linux/violations.rs
+- id: mitigation.hup-complete
+  name: Complete only after POLLHUP and the child reaped; coverage SystemCalls documents that Landlock denials are
+    not reported
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.false-complete
+    status: verified
+    kind: detective
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage/src/linux/violations.rs
+    - crates/procage/src/lib.rs
+    - crates/procage/THREAT_MODEL.md
+- id: mitigation.no-copy
+  name: The listener is created close-on-exec, sent before execve and closed in the child; /proc reopen is refused
+    by the kernel (measured ENXIO/EACCES); pidfd_getfd and ptrace stay refused by the process-access class, whose
+    waiver already hands the parent to the child
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.listener-hijack
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/tests/escape_linux.rs
+- id: mitigation.plain-fallback
+  name: On listener failure the child installs the plain filter in the same step and reports the errno; any other
+    failure aborts the spawn as today
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.unfiltered-fallback
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage/src/linux/sys.rs
+- id: mitigation.same-oracle
+  name: Condition::matches checked against the BPF interpreter on generated arguments; process name read before
+    answering and dropped unless the notification is still valid
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.wrong-reason
+    status: verified
+    kind: detective
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage-policy/src/linux.rs
+    - crates/procage/src/linux/seccomp.rs
+    - crates/procage/src/linux/violations.rs
+- id: mitigation.verdict-only
+  name: Both filters come from one builder; only EPERM verdicts differ; reference-policy filters byte-identical
+    without reporting; Linux escape suite with reporting on
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.filter-drift
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage/src/linux/seccomp.rs
+    - crates/procage/tests/escape_linux.rs
+requirements:
+- id: SR-001
+  statement: 'No process of the run MUST hold or be able to open the seccomp listener: the child closes it before
+    execve, and a caged process scanning its descriptors and the parent''s /proc entries MUST find none it can use.'
+  priority: P1
+  mitigations:
+  - mitigation.no-copy
+  acceptance:
+  - given: a reporting run on T1 and T2
+    then: it holds no seccomp listener and the open fails
+    when: the caged process lists its descriptors and tries to open the parent's listener through /proc
+  tasks: []
+- id: SR-002
+  statement: The supervisor MUST answer every notification with EPERM (value 0, no flags) before recording it, and
+    MUST keep answering until the listener hangs up, also after detach.
+  priority: P1
+  mitigations:
+  - mitigation.eperm-only
+  - mitigation.cap-answer-first
+  acceptance:
+  - given: a reporting run
+    then: it fails with EPERM and the record lists it
+    when: the child makes a refused call
+  - given: a detached run
+    then: the call returns EPERM instead of blocking
+    when: its process makes a refused call
+  tasks: []
+- id: SR-003
+  statement: Without reporting the filter MUST be byte-identical to today's; with it only the verdict of EPERM rules
+    MUST differ, and the Linux escape suite MUST pass with reporting on.
+  priority: P1
+  mitigations:
+  - mitigation.verdict-only
+  acceptance:
+  - given: every reference policy and target
+    then: they differ only in EPERM verdicts, and without it equals the plain builder
+    when: the filter is built with and without notification
+  - given: the Linux escape suite
+    then: every canary holds
+    when: run with reporting on, T1 and T2
+  tasks: []
+- id: SR-004
+  statement: If the listener cannot be created the child MUST install the plain filter before execve and the record
+    MUST say Unavailable with the reason; no run MUST exec without a filter.
+  priority: P1
+  mitigations:
+  - mitigation.plain-fallback
+  acceptance:
+  - given: an outer filter that already has a listener
+    then: the child is confined, its refused calls fail with EPERM, and coverage is Unavailable naming EBUSY
+    when: a reporting cage spawns
+  tasks: []
+- id: SR-005
+  statement: A violation's reason MUST be the reason of the first rule whose condition matches, evaluated as the
+    filter does, and its process name MUST be dropped if the notification is no longer valid.
+  priority: P2
+  mitigations:
+  - mitigation.same-oracle
+  acceptance:
+  - given: generated arguments for every condition
+    then: they agree
+    when: matches() and the BPF interpreter evaluate them
+  - given: a refused socket, setsid and ptrace
+    then: the reasons are not granted, lifetime and the process-access class
+    when: they are recorded
+  tasks: []
+- id: SR-006
+  statement: The record MUST keep at most 10,000 violations and count the rest; answering MUST NOT wait on the harness.
+  priority: P2
+  mitigations:
+  - mitigation.cap-answer-first
+  acceptance:
+  - given: a child making 20,000 refused calls
+    then: every call returns EPERM promptly and the record holds the cap with the rest counted
+    when: it runs
+  tasks: []
+- id: SR-007
+  statement: A Linux record MUST be complete only after the listener hung up and the child was reaped, and its coverage
+    MUST be SystemCalls, Unavailable or Off; docs MUST say Landlock denials are not reported.
+  priority: P1
+  mitigations:
+  - mitigation.hup-complete
+  acceptance:
+  - given: a running child or a surviving descendant
+    then: it is not complete
+    when: the record is read
+  - given: the run ended by kill_all
+    then: it is complete with coverage SystemCalls
+    when: the record is read
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r32_the_seccomp_listener_stays_out_of_reach
+  result: pass
+  verdict: verified
+  justification: On T1 and T2 with /proc granted, the caged child counts seccomp listeners among its own descriptors
+    (0) and tries to reopen every listener it sees under /proc/<parent>/fd (0 reopened, the kernel refuses), while
+    its coverage is SystemCalls. The child closes the listener after sendmsg (sys.rs ChildPlan::run); pidfd_getfd
+    and ptrace stay refused by the process-access class.
+  verified_at: '2026-11-01T06:27:37Z'
+  commit: 36ed673
+- id: verification.sr-001.2026-11-01-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r32_the_seccomp_listener_stays_out_of_reach
+  result: pass
+  verdict: verified
+  justification: On T1 and T2 with /proc granted, the caged child counts seccomp listeners among its own descriptors
+    (0) and tries to reopen every listener it sees under /proc/<parent>/fd (0 reopened, the kernel refuses), while
+    its coverage is SystemCalls. The child closes the listener after sendmsg (sys.rs ChildPlan::run); pidfd_getfd
+    and ptrace stay refused by the process-access class.
+  verified_at: '2026-11-01T06:27:45Z'
+  commit: 36ed673
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::refused_calls_are_reported_with_their_reason; crates/procage/tests/spawn_linux.rs::a_detached_run_is_still_answered
+  result: pass
+  verdict: verified
+  justification: Refused ptrace, socket and setsid each return EPERM in the child and appear in the record; a detached
+    run's later refused calls return EPERM instead of blocking. The answer is built only in sys::answer_eperm (error
+    -EPERM, value 0, flags 0) and sent before the violation is built (violations.rs supervise).
+  verified_at: '2026-11-01T06:27:37Z'
+  commit: 36ed673
+- id: verification.sr-002.2026-11-01-2
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::refused_calls_are_reported_with_their_reason; crates/procage/tests/spawn_linux.rs::a_detached_run_is_still_answered
+  result: pass
+  verdict: verified
+  justification: Refused ptrace, socket and setsid each return EPERM in the child and appear in the record; a detached
+    run's later refused calls return EPERM instead of blocking. The answer is built only in sys::answer_eperm (error
+    -EPERM, value 0, flags 0) and sent before the violation is built (violations.rs supervise).
+  verified_at: '2026-11-01T06:27:45Z'
+  commit: 36ed673
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/src/linux/seccomp.rs::notifying_changes_only_eperm_verdicts; crates/procage/tests/escape_linux.rs
+    (PROCAGE_ESCAPE_VIOLATIONS=1, T1 and T2)
+  result: pass
+  verdict: verified
+  justification: For varied policies on both tiers and ABIs 1–8, the notifying filter has the same instructions
+    as the plain one except EPERM returns, which become SECCOMP_RET_USER_NOTIF; the plain path (notify false) is
+    unchanged and its existing filter tests pass; the Linux escape suite passes 22/22 with reporting on, on both
+    tiers.
+  verified_at: '2026-11-01T06:27:37Z'
+  commit: 36ed673
+- id: verification.sr-003.2026-11-01-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/src/linux/seccomp.rs::notifying_changes_only_eperm_verdicts; crates/procage/tests/escape_linux.rs
+    (PROCAGE_ESCAPE_VIOLATIONS=1, T1 and T2)
+  result: pass
+  verdict: verified
+  justification: For varied policies on both tiers and ABIs 1–8, the notifying filter has the same instructions
+    as the plain one except EPERM returns, which become SECCOMP_RET_USER_NOTIF; the plain path (notify false) is
+    unchanged and its existing filter tests pass; the Linux escape suite passes 22/22 with reporting on, on both
+    tiers.
+  verified_at: '2026-11-01T06:27:45Z'
+  commit: 36ed673
+- id: verification.sr-004.2026-11-01
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::without_a_listener_the_run_is_still_confined
+  result: pass
+  verdict: verified
+  justification: With an outer filter holding a listener on the spawning thread, the reporting child's listener
+    install fails with EBUSY, it installs the plain filter, ptrace still returns EPERM, and the record's coverage
+    is Unavailable naming the busy error.
+  verified_at: '2026-11-01T06:27:37Z'
+  commit: 36ed673
+- id: verification.sr-004.2026-11-01-2
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::without_a_listener_the_run_is_still_confined
+  result: pass
+  verdict: verified
+  justification: With an outer filter holding a listener on the spawning thread, the reporting child's listener
+    install fails with EBUSY, it installs the plain filter, ptrace still returns EPERM, and the record's coverage
+    is Unavailable naming the busy error.
+  verified_at: '2026-11-01T06:27:45Z'
+  commit: 36ed673
+- id: verification.sr-005.2026-11-01
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/src/linux/seccomp.rs::matches_agrees_with_the_filter; crates/procage-policy/tests/seccomp_reasons.rs::each_origin_names_its_reason;
+    crates/procage/tests/spawn_linux.rs::refused_calls_are_reported_with_their_reason
+  result: pass
+  verdict: verified
+  justification: Condition::matches equals the BPF interpreter on edge and pseudo-random arguments for every EPERM
+    rule of varied plans; each rule origin carries its reason; the caged test finds process-access, not granted
+    and lifetime for ptrace, socket and setsid. The process name is read before answering and kept only if NOTIF_ID_VALID
+    still holds.
+  verified_at: '2026-11-01T06:27:37Z'
+  commit: 36ed673
+- id: verification.sr-005.2026-11-01-2
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/src/linux/seccomp.rs::matches_agrees_with_the_filter; crates/procage-policy/tests/seccomp_reasons.rs::each_origin_names_its_reason;
+    crates/procage/tests/spawn_linux.rs::refused_calls_are_reported_with_their_reason
+  result: pass
+  verdict: verified
+  justification: Condition::matches equals the BPF interpreter on edge and pseudo-random arguments for every EPERM
+    rule of varied plans; each rule origin carries its reason; the caged test finds process-access, not granted
+    and lifetime for ptrace, socket and setsid. The process name is read before answering and kept only if NOTIF_ID_VALID
+    still holds.
+  verified_at: '2026-11-01T06:27:45Z'
+  commit: 36ed673
+- id: verification.sr-006.2026-11-01
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_flood_is_answered_and_capped
+  result: pass
+  verdict: verified
+  justification: 20,000 refused ptrace calls all return EPERM; the record holds 10,000 and counts 10,000 dropped,
+    and is complete.
+  verified_at: '2026-11-01T06:27:37Z'
+  commit: 36ed673
+- id: verification.sr-006.2026-11-01-2
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_flood_is_answered_and_capped
+  result: pass
+  verdict: verified
+  justification: 20,000 refused ptrace calls all return EPERM; the record holds 10,000 and counts 10,000 dropped,
+    and is complete.
+  verified_at: '2026-11-01T06:27:45Z'
+  commit: 36ed673
+- id: verification.sr-007.2026-11-01
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_record_completes_when_the_run_ends; crates/procage/tests/spawn_linux.rs::a_surviving_descendant_keeps_the_record_open
+  result: pass
+  verdict: verified
+  justification: A running child's record is incomplete (the receiver already yielded its ptrace), and complete
+    after kill_all; a background descendant keeps the record incomplete after the child exits until kill_all. Crate
+    docs, THREAT_MODEL and the site state that Landlock denials are not reported.
+  verified_at: '2026-11-01T06:27:37Z'
+  commit: 36ed673
+- id: verification.sr-007.2026-11-01-2
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_record_completes_when_the_run_ends; crates/procage/tests/spawn_linux.rs::a_surviving_descendant_keeps_the_record_open
+  result: pass
+  verdict: verified
+  justification: A running child's record is incomplete (the receiver already yielded its ptrace), and complete
+    after kill_all; a background descendant keeps the record incomplete after the child exits until kill_all. Crate
+    docs, THREAT_MODEL and the site state that Landlock denials are not reported.
+  verified_at: '2026-11-01T06:27:45Z'
+  commit: 36ed673
+decisions: []

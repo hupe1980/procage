@@ -1,0 +1,37 @@
+verdicts:
+  - requirement: SR-001
+    verdict: verified
+    method: test
+    evidence: tests/spawn_macos.rs::base_grants_nothing_personal; crates/procage-policy/tests/base.rs::base_names_nothing_personal
+    result: pass
+    justification: Under base V1 alone, a caged child is refused listing HOME, stat of HOME, reading a temp-dir file, creating a /tmp file and connecting to a loopback listener. The lowered base names no /Users, /private/var/folders, /private/tmp or /Volumes path and no network rule. Adding /Users to the base fails all three tests.
+  - requirement: SR-002
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/base.rs::macos_content_is_pinned; crates/procage-policy/tests/base.rs::linux_content_is_pinned
+    result: pass
+    justification: The exact SBPL lines of base V1 (with and without Tty::Inherit) and the exact Landlock rules at ABI 6 are pinned; any change fails these tests, as the injected /Users and tty defects showed.
+  - requirement: SR-003
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/base.rs::base_allows_come_before_every_deny
+    result: pass
+    justification: With base V1 and a protect rule, every allow line precedes the first deny, and the base terminal allow precedes the TIOCSTI deny. Emitting the base in the hard-deny block fails the test.
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/base.rs::a_terminal_only_with_inherit; crates/procage-policy/tests/base.rs::base_allows_come_before_every_deny
+    result: pass
+    justification: With Tty::None and NewPty, no /dev/tty rule appears on macOS and no tty or pts rule on Linux. With Inherit, macOS gets one terminal allow ahead of the TIOCSTI deny, and Linux gets two rules. Adding the tty rule unconditionally fails the test.
+  - requirement: SR-005
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/base.rs::base_services_are_not_hard_denied_services
+    result: pass
+    justification: No base service appears in any hard-deny mach-lookup line, and none starts with a handoff prefix (com.apple.lsd., com.apple.coreservices., com.apple.pasteboard). The six services are query services (user lookup, notifications, configuration, certificate trust, Rosetta).
+  - requirement: SR-006
+    verdict: verified
+    method: test
+    evidence: tests/spawn_macos.rs::base_runs_ordinary_programs; tests/spawn_macos.rs::base_runs_a_rust_program_and_dev_null_stdio; crates/procage-policy/src/base.rs:1
+    result: pass
+    justification: All 15 programs exit 0 under base V1 on macOS 26.6.2, with correct output (id -un and date +%Z equal their output outside the cage). A Rust child starts without extra rules, and a /dev/null-stdio child runs. The CI macOS lanes run tests/spawn_macos.rs (configured, observed once pushed). The base module docs state the release measured, the verified programs, and that Xcode shims are not covered.

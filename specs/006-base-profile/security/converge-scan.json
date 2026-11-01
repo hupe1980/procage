@@ -1,0 +1,378 @@
+{
+  "feature": "006-base-profile",
+  "commit": "4ec115f",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "Base V1 alone MUST NOT give a caged child access to the user's home, the user's temporary directory, /tmp writes or the network.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "base V1 only",
+          "then": "it is refused",
+          "when": "the child lists or stats the home directory"
+        },
+        {
+          "given": "base V1 only",
+          "then": "each is refused",
+          "when": "the child reads a temp-dir file, creates a /tmp file or connects to loopback"
+        }
+      ],
+      "mitigations": [
+        "mitigation.base-refusal-tests"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-005] Create `crates/procage-policy/src/base.rs` with the documented V1 content constants (macOS: system code dirs, data dirs, metadata literals, devices, sysctl, services, shared memory; Linux: system dirs, `/etc`, devices), plus `macos_v1(tty) -> Vec<sbpl::Rule>` (terminal devices only with `Tty::Inherit`) and `linux_v1(tty, handled) -> Vec<LandlockRule>`."
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-001] Add the caged test `base_grants_nothing_personal`: under base V1 alone, `ls $HOME` and `stat $HOME/.zshrc` (or of `$HOME` itself) are refused; reading a temp-dir file, creating a `/tmp` file and `nc` to loopback are refused."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/base.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The lowered content of base V1 MUST be pinned per target by a test, so any change fails until a new version is introduced.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "base V1",
+          "then": "the rules equal the pinned list",
+          "when": "it is lowered for macOS and Linux"
+        }
+      ],
+      "mitigations": [
+        "mitigation.frozen-snapshot"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-002] Add `Base::{None, V1}` (`#[non_exhaustive]`, default `None`, serde kebab) and `Policy.base` in `crates/procage-policy/src/policy.rs`, the serde field in `format.rs`, `Construct::BaseV1` (`base-v1`) in `lower/mod.rs`, `sbpl::Filter::IpcPosixName` and `linux::RuleTarget::PathIfExists`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] [SR-004] [SR-005] Write `crates/procage-policy/tests/base.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/base.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/base.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "Base allows MUST be emitted before every protect, hide and hard-deny rule.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "base V1 plus a protect rule",
+          "then": "every base allow precedes the protect deny and the hard-deny tier",
+          "when": "it is lowered for macOS"
+        }
+      ],
+      "mitigations": [
+        "mitigation.base-in-allow-block"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[US1] [SR-003] Lower `Base::V1` into the allow block in `lower/macos.rs` and into Landlock rules in `lower/linux.rs` (exact on all targets), then add the `base-v1` row to `src/lowering.md` with the note \"Linux content verified with Linux spawning (008)\"."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] [SR-004] [SR-005] Write `crates/procage-policy/tests/base.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/base.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Terminal devices MUST be allowed only with Tty::Inherit, and the TIOCSTI deny MUST still come after them.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "base V1 with Tty::None",
+          "then": "no /dev/tty rule appears",
+          "when": "lowered"
+        },
+        {
+          "given": "base V1 with Tty::Inherit",
+          "then": "the terminal allows precede the TIOCSTI deny",
+          "when": "lowered"
+        }
+      ],
+      "mitigations": [
+        "mitigation.tty-only-on-inherit"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-005] Create `crates/procage-policy/src/base.rs` with the documented V1 content constants (macOS: system code dirs, data dirs, metadata literals, devices, sysctl, services, shared memory; Linux: system dirs, `/etc`, devices), plus `macos_v1(tty) -> Vec<sbpl::Rule>` (terminal devices only with `Tty::Inherit`) and `linux_v1(tty, handled) -> Vec<LandlockRule>`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] [SR-004] [SR-005] Write `crates/procage-policy/tests/base.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/base.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "The base MUST allow only the listed query services and MUST NOT name any service the hard-deny tier denies.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the base service list and the hard-deny service list",
+          "then": "they are disjoint",
+          "when": "compared"
+        }
+      ],
+      "mitigations": [
+        "mitigation.read-only-services"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-005] Create `crates/procage-policy/src/base.rs` with the documented V1 content constants (macOS: system code dirs, data dirs, metadata literals, devices, sysctl, services, shared memory; Linux: system dirs, `/etc`, devices), plus `macos_v1(tty) -> Vec<sbpl::Rule>` (terminal devices only with `Tty::Inherit`) and `linux_v1(tty, handled) -> Vec<LandlockRule>`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] [SR-004] [SR-005] Write `crates/procage-policy/tests/base.rs`:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/base.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/base.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Every program of the verified set MUST run correctly under base V1 on the real kernel, on every macOS CI lane, and the docs MUST state the release measured and the programs not covered.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "base V1 and a granted working directory",
+          "then": "it exits 0 with correct output (user name, local zone)",
+          "when": "each program of the set runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.program-set-on-every-lane"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-006] Add caged tests `base_runs_ordinary_programs` to `tests/spawn_macos.rs`: `id -un` equals the user name outside, `date +%Z` equals outside, `uname -a`, `sh`/`zsh`/`bash -c` in a granted working directory, `cat`/`sort`/`sed`/`awk`, `xxd` on `/dev/urandom`, `perl -e 1`, `tar --version`, `gzip -V`; a Rust child (the test binary) without an extra sysctl rule; a child with `Stdio::null()` for all three streams."
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[SR-006] Docs: `base.rs` module docs (content with a reason per entry, verified programs, release, Xcode shims not covered); `macos` module docs (point to `Base::V1`); crate example uses the base; README and THREAT_MODEL release status (\"ships base profile V1 for macOS\")."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.base-drift",
+    "threat.base-insufficient",
+    "threat.base-overrides-deny",
+    "threat.base-too-broad",
+    "threat.service-handoff-via-base",
+    "threat.tty-surface"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 6,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 6
+    },
+    "threats_by_severity": {
+      "high": 3,
+      "medium": 3
+    },
+    "mitigations": 6,
+    "requirements": 6,
+    "requirements_with_tasks": 6,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 3,
+      "medium": 3
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

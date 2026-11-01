@@ -1,0 +1,101 @@
+{
+  "feature": "004-spawn-macos",
+  "commit": "0cce8d7",
+  "timestamp": "2026-10-30T06:49:32Z",
+  "status": "CONVERGED",
+  "threats": {
+    "total": 12,
+    "open_blocking": []
+  },
+  "requirements": {
+    "total": 11,
+    "verified": [
+      "SR-001",
+      "SR-002",
+      "SR-003",
+      "SR-004",
+      "SR-005",
+      "SR-006",
+      "SR-007",
+      "SR-008",
+      "SR-009",
+      "SR-010",
+      "SR-011"
+    ],
+    "implemented_unverified": [],
+    "partial": [],
+    "missing": []
+  },
+  "expired_decisions": [],
+  "drift": [],
+  "appended_tasks": [],
+  "already_open_tasks_for": [],
+  "verdicts": {
+    "SR-001": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::a_failed_step_never_runs_the_target; tests/spawn_macos.rs::reads_inside_the_grant_and_is_refused_outside; tests/spawn_macos.rs::the_apply_method_passes_its_probe; tests/spawn_macos.rs::a_target_the_policy_does_not_let_run_is_refused",
+      "justification": "A failing in-child step (rlimit) returns Apply{step Rlimit} and the target's marker file is never created. A child reading outside its grant is refused with EPERM by the kernel. The probe reports PathA only through the PROBE_OK marker, which the child returns after apply, verify and a denied canary open (src/macos/sys.rs install_probe). Skipping the apply call makes 13 tests fail, because verify then refuses."
+    },
+    "SR-002": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::a_caged_process_cannot_spawn_a_nested_cage",
+      "justification": "The test binary re-runs itself as a caged child and asks procage to prepare and spawn; it gets AlreadySandboxed and no grandchild runs. Removing both nesting checks fails the test."
+    },
+    "SR-003": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::a_missing_symbol_is_unsupported_and_named; tests/unsafe_confined.rs::unsafe_is_confined_to_macos_sys_with_safety_comments",
+      "justification": "A nonexistent symbol resolves to Unsupported::Symbol naming it and the OS build, and real symbols resolve. Symbols are dlsym'd at runtime into a OnceLock table before any fork. The unsafe_code lint is deny at the crate root and allowed only in macos::sys, and the scanner test confirms every unsafe there has a SAFETY block."
+    },
+    "SR-004": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::contention_every_child_is_caged_and_none_hangs",
+      "justification": "Four threads churn dlopen, dlsym and dlclose while 100 caged children are spawned; all 100 get EPERM on the denied file and each finishes within the 10 s timeout. The in-child sequence (sys.rs ChildPlan::run) calls only setsid, setrlimit, __mac_syscall, getpid, sandbox_check and sandbox_extension_consume, on data owned by the closure."
+    },
+    "SR-005": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::a_tmp_spelling_works_as_written; tests/spawn_macos.rs::a_missing_leaf_keeps_its_remainder; tests/spawn_macos.rs::glob_characters_in_a_resolved_prefix_are_literal; tests/spawn_macos.rs::a_data_volume_spelling_resolves_to_the_visible_one",
+      "justification": "A write via /tmp succeeds and the rewrite to /private/tmp is recorded. A missing leaf keeps its remainder. A glob through a symlink to a directory named 'real*dir' resolves with the star escaped, so the child reads the matching file and is refused the 'realXdir' sibling. A data-volume spelling of HOME resolves to the visible HOME. Skipping resolution fails 8 tests."
+    },
+    "SR-006": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::a_grant_binds_for_one_spawn_only; tests/spawn_macos.rs::wrong_bindings_are_typed_errors",
+      "justification": "One cage with grant scratch bound to A and then to B lets each child write only its own directory, and an unbound spawn writes nowhere. Undeclared names and missing paths give GrantError::Undeclared and ::Missing. Consuming tokens before apply fails the grant test."
+    },
+    "SR-007": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::the_same_policy_is_compiled_once; src/macos/mod.rs:396",
+      "justification": "Preparing the same policy twice gives compiled() true then false, and changing one rule gives true. The cache is a process-wide HashMap keyed by the exact profile text and params, and nothing is written to disk (reviewed in Cage::with_options)."
+    },
+    "SR-008": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::refusals_before_any_child",
+      "justification": "With a compile limit of 5, preparation returns LimitExceeded{limit 5}. In Cage::with_options the limit check comes before the cache lookup and lib.compile, so libsandbox is not called."
+    },
+    "SR-009": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::the_environment_is_the_policys",
+      "justification": "With an allowlist of PATH, the caged child sees exactly PATH plus the explicitly set PROCAGE_CHILD, although HOME and cargo variables are set in the caller. Passthrough denying HOME drops HOME and keeps PATH. Not clearing the environment fails the test."
+    },
+    "SR-010": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_macos.rs::the_child_leads_its_own_session_unless_the_terminal_is_inherited; tests/spawn_macos.rs::refusals_before_any_child",
+      "justification": "With Tty::None the caged child reports getsid(0) == getpid(), so it leads a new session with no controlling terminal; with Tty::Inherit it does not. Tty::NewPty is refused with Unsupported::Setting naming it."
+    },
+    "SR-011": {
+      "verdict": "verified",
+      "method": "review",
+      "evidence": "src/macos/mod.rs:1; src/lib.rs:8; THREAT_MODEL.md#Release-status; README.md:8; tests/threat_model.rs::gate",
+      "justification": "I reviewed the docs. Each enforcement sentence in the macos module docs maps to a test in tests/spawn_macos.rs. The crate docs, README and threat-model release status state that 0.0.2 is unreleased and list what is not done (inherited fds bypass path rules, no lifetime control, no base profile, no Linux). Escape-class statuses are unchanged and the catalog gate passes."
+    }
+  }
+}

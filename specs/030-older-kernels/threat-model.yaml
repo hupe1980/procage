@@ -1,0 +1,536 @@
+otmVersion: 0.2.0
+project:
+  id: 030-older-kernels
+  name: Older Linux kernels - honest confinement from Landlock ABI 1
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child (adaptive, same uid as the caller)
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that builds cages and chooses policies and options
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the Linux lowering, the seccomp compiler or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network-boundary surface
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.lowering-linux: no change to reading files or the environment; truncation and signal
+      rules do not disclose data'
+    technique: credential-theft
+  - disposition: no-threat-detected
+    reason: 'evaluated: files at rest emptied through truncation are threat.truncation-below-abi3'
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.seccomp: three fixed seccomp blocks; signals to other processes are threat.unscoped-signals'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Landlock ABI cap
+    reason: represented as component.cage-options
+  - entity: Signals::SameUser
+    reason: part of component.lowering-linux and component.lowering-macos
+  - entity: Truncation guard
+    reason: part of component.lowering-linux and component.seccomp
+  extends: null
+  generated: '2026-11-01T17:26:13Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: c9b6c8b702f91d2871a5f14105f0c9e23bfa0be8ffe3d73d62f84b2cedf4d71d
+  - path: spec.md
+    sha256: c7c7c6cef1a1f20cd6fb8ee95febb5ff4bca70cf71fcc6277a2f176d86efaa99
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness process that builds and spawns cages
+  risk:
+    trustRating: 90
+assets:
+- id: asset.files
+  name: The user's files outside the policy's writable paths
+  risk:
+    availability: 80
+    confidentiality: 60
+    integrity: 100
+  attributes:
+    type: pii
+    source: spec.md#Context
+    classification: confidential
+- id: asset.network
+  name: The outside network with the network off
+  risk:
+    availability: 10
+    confidentiality: 90
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#US2
+    classification: internal
+- id: asset.processes
+  name: The user's other processes (editor, agent, shells) outside the cage
+  risk:
+    availability: 80
+    confidentiality: 0
+    integrity: 60
+  attributes:
+    type: capability
+    source: spec.md#US3
+    classification: internal
+components:
+- id: component.cage-options
+  name: CageOptions::with_landlock_abi and the probe
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-004
+- id: component.docs
+  name: Per-ABI table, lowering table, threat model and escape catalog
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-006
+- id: component.lowering-linux
+  name: Linux lowering (tier minimums, truncation guard, signals)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.lowering-macos
+  name: macOS lowering of Signals::SameUser
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.seccomp
+  name: seccomp compiler (open flag condition, new syscall numbers)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.confine
+  name: The harness applies the plan to the child (Landlock, seccomp)
+  source: component.lowering-linux
+  destination: tz.cage
+  assets:
+  - asset.files
+  - asset.network
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.signal
+  name: The caged child signals processes outside the cage
+  source: tz.cage
+  destination: tz.harness
+  assets:
+  - asset.processes
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+threats:
+- id: threat.cap-raises-abi
+  name: The ABI cap uses rights the kernel lacks (a cap above the kernel) or lowers for one ABI and enforces another,
+    so gaps understate what is missing
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.files
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.cage-options
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.overclaimed-old-kernels
+  name: The docs claim confinement on older kernels that the tests do not show (truncation, signals, passed sockets)
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.files
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.docs
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.t2-weaker-on-old-abi
+  name: Tier T2 on ABI 1-3 lets caged code create IP sockets or write outside the writable paths because a rule
+    assumed ABI 4
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.files
+    - asset.network
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.lowering-linux
+    - flow.confine
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.truncation-below-abi3
+  name: On a kernel below Landlock ABI 3 caged code truncates readable files outside the writable paths (truncate,
+    open with O_TRUNC and no write access, openat2), emptying them
+  categories:
+  - Tampering
+  risk:
+    impact: 90
+    likelihood: 70
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.files
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.lowering-linux
+    - component.seccomp
+    - flow.confine
+    profile: stride
+    severity: critical
+    technique: data-tampering-at-rest
+- id: threat.unscoped-signals
+  name: procage widens SelfAndChildren to unscoped signals on its own below ABI 6, so caged code kills the user's
+    other processes without the harness knowing
+  categories:
+  - Denial of Service
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.processes
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.lowering-linux
+    - component.lowering-macos
+    - flow.signal
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+mitigations:
+- id: mitigation.abi-docs
+  name: Per-ABI table and limits in the Linux docs, lowering table, threat model and catalog
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.overclaimed-old-kernels
+    status: verified
+    kind: detective
+    requirements:
+    - SR-005
+    touchpoints:
+    - src/linux/mod.rs
+    - crates/procage-policy/src/lowering.md
+    - THREAT_MODEL.md
+- id: mitigation.abi-matrix
+  name: Caged tests at capped ABIs 1, 2, 3, 5 and the kernel's own on T1 and T2 check writes, sockets, hard-deny
+    syscalls and truncation
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.t2-weaker-on-old-abi
+    status: verified
+    kind: detective
+    requirements:
+    - SR-002
+    touchpoints:
+    - tests/spawn_linux.rs
+    - crates/procage-policy/src/lower/mod.rs
+    - src/linux/probe.rs
+- id: mitigation.cap-is-min
+  name: The cap is min(cap, kernel ABI) and the same value drives lowering and enforcement; the cage reports it
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.cap-raises-abi
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - src/linux/mod.rs
+- id: mitigation.explicit-same-user
+  name: SameUser is a separate policy value chosen by the caller; SelfAndChildren below ABI 6 stays unsupported
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.unscoped-signals
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/policy.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/src/lower/macos.rs
+- id: mitigation.truncation-guard
+  name: Below ABI 3 the plan denies truncate, open/openat with O_TRUNC unless write-only or read-write, and openat2
+    (ENOSYS), on both tiers
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.truncation-below-abi3
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/src/linux.rs
+    - src/linux/seccomp.rs
+requirements:
+- id: SR-001
+  statement: Below Landlock ABI 3, on both tiers, caged code MUST NOT be able to truncate a file outside the writable
+    paths by truncate(2), open or openat with O_TRUNC, or openat2.
+  priority: P1
+  mitigations:
+  - mitigation.truncation-guard
+  acceptance:
+  - given: T1 or T2 with the ABI capped at 1 or 2 and / readable
+    then: each fails and the file keeps its size
+    when: the child tries each truncation route on a file outside the writable paths
+  - given: the same cage
+    then: both succeed
+    when: the child writes a workspace file with > and truncates it through a write descriptor
+  tasks: []
+- id: SR-002
+  statement: Tier T2 at Landlock ABI 1 to 3 MUST keep writes inside the writable paths, refuse IP sockets with the
+    network off and refuse the hard-deny syscalls.
+  priority: P1
+  mitigations:
+  - mitigation.abi-matrix
+  acceptance:
+  - given: T2 with the ABI capped at 1, 2, 3 and 5 and a writable workspace
+    then: each fails
+    when: the child writes outside, opens an AF_INET socket and calls ptrace
+  tasks: []
+- id: SR-003
+  statement: 'procage MUST NOT widen Signals::SelfAndChildren on its own: below ABI 6 it MUST be a capability gap;
+    only Signals::SameUser, chosen by the caller, lets signals reach the user''s other processes.'
+  priority: P1
+  mitigations:
+  - mitigation.explicit-same-user
+  acceptance:
+  - given: the ABI capped at 5 and SelfAndChildren
+    then: it fails with a gap naming signals-self-and-children
+    when: the cage is built
+  - given: the kernel ABI (6 or later) and SelfAndChildren
+    then: the signal is refused
+    when: the child signals a process outside the cage
+  tasks: []
+- id: SR-004
+  statement: The Landlock ABI cap MUST NOT raise the ABI above the kernel's, and lowering and enforcement MUST use
+    the same capped ABI, reported by the cage.
+  priority: P1
+  mitigations:
+  - mitigation.cap-is-min
+  acceptance:
+  - given: a cap above the kernel ABI
+    then: it reports the kernel ABI
+    when: the cage is built
+  - given: a cap of 0
+    then: it is refused as a kernel without Landlock
+    when: the cage is built
+  tasks: []
+- id: SR-005
+  statement: The docs MUST state, per Landlock ABI, what a policy gets, including the truncation guard's side effect,
+    unscoped signals below ABI 6 and passed IP sockets on T2 below ABI 4.
+  priority: P2
+  mitigations:
+  - mitigation.abi-docs
+  acceptance:
+  - given: the Linux docs, the lowering table and the threat model
+    then: each limit is stated
+    when: read for a kernel below ABI 6
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-31
+  requirement: SR-001
+  method: test
+  evidence: tests/escape_linux.rs::r31_files_outside_the_writable_paths_cannot_be_truncated
+  result: pass
+  verdict: verified
+  justification: On T1 and T2 with the ABI capped at 1 and 2, truncate, openat read-only and no-access with O_TRUNC
+    fail with EPERM and openat2 with ENOSYS, every outside file keeps its content, and writing plus set_len inside
+    the workspace work; at ABI 3 Landlock refuses them (EACCES). With the guard disabled the canary fails (all four
+    routes succeed).
+  verified_at: '2026-10-31T23:30:55Z'
+  commit: 2657b32
+- id: verification.sr-002.2026-10-31
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_linux.rs::older_kernels_keep_writes_the_network_and_hard_denies
+  result: pass
+  verdict: verified
+  justification: On T2 (and T1) at capped ABIs 1, 2, 3, 5 and 8 a workspace write works, an outside write fails
+    with EACCES, UDP and TCP sockets and ptrace fail with EPERM.
+  verified_at: '2026-10-31T23:30:55Z'
+  commit: 2657b32
+- id: verification.sr-003.2026-10-31
+  requirement: SR-003
+  method: test
+  evidence: tests/spawn_linux.rs::signals_reach_outside_processes_only_when_the_policy_says_so
+  result: pass
+  verdict: verified
+  justification: Capped at ABI 5 SelfAndChildren is a gap naming signals-self-and-children; at ABI 8 it refuses
+    a signal to an outside process (EPERM); only SameUser delivers it; macOS r25 shows the hard-deny class still
+    applies to SameUser.
+  verified_at: '2026-10-31T23:30:55Z'
+  commit: 2657b32
+- id: verification.sr-004.2026-10-31
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_linux.rs::the_abi_cap_only_lowers
+  result: pass
+  verdict: verified
+  justification: A cap of 200 reports and plans the kernel ABI (8); a cap of 0 is Unsupported::Landlock { abi 0,
+    needed 1 }; the r31 and matrix tests assert Cage::landlock_abi equals the cap, and one value feeds the tier
+    check, lowering and ruleset (src/linux/mod.rs Cage::with_options).
+  verified_at: '2026-10-31T23:30:55Z'
+  commit: 2657b32
+- id: verification.sr-005.2026-10-31
+  requirement: SR-005
+  method: review
+  evidence: src/linux/mod.rs (Kernels section), crates/procage-policy/src/lowering.md, THREAT_MODEL.md
+  result: pass
+  verdict: verified
+  justification: The Kernels table states the truncation guard and its side effect (ABI 3), passed IP sockets on
+    T2 (ABI 4) and unscoped signals with SameUser (ABI 6); the lowering table states both tiers' minimum, the guard
+    and the signals-same-user row; THREAT_MODEL lists the limits and R-31.
+  verified_at: '2026-10-31T23:30:55Z'
+  commit: 2657b32
+decisions: []

@@ -1,0 +1,594 @@
+otmVersion: 0.2.0
+project:
+  id: 006-base-profile
+  name: A base profile that lets ordinary programs start
+threatspec:
+  actors:
+  - id: actor.apple
+    name: Apple, whose OS updates change what programs need
+    trust: trusted
+  - id: actor.child-code
+    name: Adaptive code running as the user inside the caged child
+    trust: untrusted
+  - id: actor.contributor
+    name: Contributor who edits the base profile content
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: one user, own processes
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked flow.base-to-profile: base rules are compiled into the profile in the parent; nothing crosses
+      a network'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked asset.base-content: the base is a named, frozen version visible in the policy and the lowered
+      profile'
+    technique: missing-audit-trail
+  - disposition: no-threat-detected
+    reason: 'checked component.base-lowering: the base adds a fixed number of rules (under 20) to every profile'
+    technique: resource-exhaustion
+  - disposition: no-threat-detected
+    reason: 'checked component.base-lowering: base paths and names are constants and pass through the one quoting
+      function like any value'
+    technique: injection
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: procage calls no language model (LLM-driven code is the adversary inside
+      the child)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface; overclaiming in docs is modelled under STRIDE as threat.overclaimed-enforcement
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage executes only the program its caller names; the adversary inside the child is modelled under
+      STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Base profile
+    reason: represented as asset.base-content and component.base-lowering under shorter names
+  - entity: Verified program set
+    reason: test data, modelled as part of component.base-tests
+  extends: null
+  generated: '2026-11-01T17:26:08Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: f4d4de0ca7303bbfc0ca3e5e1d351fddc04fafd69bb6e15a8f9aa787318f0585
+  - path: spec.md
+    sha256: f2e92b7b2e2c6a8f96465c55cd3ed362cc1362434801d1e63d8b93bf3dd90fc9
+  surfaces:
+  - external-input
+  - network-boundary
+  version: '0.1'
+trustZones:
+- id: tz.child
+  name: Caged child
+  risk:
+    trustRating: 5
+- id: tz.os
+  name: macOS services and kernel
+  risk:
+    trustRating: 90
+- id: tz.policy
+  name: procage-policy lowering
+  risk:
+    trustRating: 80
+assets:
+- id: asset.base-content
+  name: The frozen content of base V1 per target
+  risk:
+    availability: 60
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-001
+    classification: public
+- id: asset.terminal
+  name: The caller's terminal
+  risk:
+    availability: 30
+    confidentiality: 50
+    integrity: 90
+  attributes:
+    type: business-data
+    source: spec.md#FR-003
+    classification: internal
+- id: asset.user-data
+  name: The user's home, project trees, temporary files and other users' files
+  risk:
+    availability: 40
+    confidentiality: 90
+    integrity: 90
+  attributes:
+    type: business-data
+    source: spec.md#FR-005
+    classification: confidential
+components:
+- id: component.base-lowering
+  name: Base V1 lowering for macOS and Linux
+  type: library
+  parent:
+    trustZone: tz.policy
+  attributes:
+    source: spec.md#FR-002
+- id: component.base-tests
+  name: Program set and refusal tests on the kernel
+  type: process
+  parent:
+    trustZone: tz.child
+  attributes:
+    source: spec.md#FR-008
+- id: component.docs
+  name: Base docs and lowering table row
+  type: document
+  parent:
+    trustZone: tz.policy
+  attributes:
+    source: spec.md#FR-009
+- id: component.services
+  name: Allowed system services (opendirectoryd libinfo, notifyd, configd, trustd, oahd)
+  type: process
+  parent:
+    trustZone: tz.os
+  attributes:
+    source: spec.md#FR-002
+dataflows:
+- id: flow.base-to-profile
+  name: Base rules enter the lowered profile
+  source: component.base-lowering
+  destination: component.base-tests
+  assets:
+  - asset.base-content
+  attributes:
+    crosses:
+    - tz.policy
+    - tz.child
+- id: flow.child-to-services
+  name: The child looks up allowed services
+  source: actor.child-code
+  destination: component.services
+  assets:
+  - asset.user-data
+  attributes:
+    crosses:
+    - tz.child
+    - tz.os
+- id: flow.contributor-to-base
+  name: A change edits base content
+  source: actor.contributor
+  destination: component.base-lowering
+  assets:
+  - asset.base-content
+  attributes:
+    crosses:
+    - tz.policy
+threats:
+- id: threat.base-drift
+  name: The content of base V1 changes silently in a later version of procage, loosening every policy that names
+    V1
+  categories:
+  - Tampering
+  cwes:
+  - CWE-1357
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.base-content
+    status: mitigated
+    actor: actor.contributor
+    constitution: VII. Presets are versioned and frozen
+    disposition: threat
+    elements:
+    - flow.contributor-to-base
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.base-insufficient
+  name: An OS update makes base V1 insufficient, so programs fail in confusing ways (or callers add broad rules
+    to compensate) without anyone noticing
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-1059
+  risk:
+    impact: 50
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-008
+    assets:
+    - asset.base-content
+    status: mitigated
+    actor: actor.apple
+    disposition: threat
+    elements:
+    - component.base-tests
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.base-overrides-deny
+  name: A base allow is emitted after a protect, hide or hard-deny rule and overrides it under last-match-wins
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-696
+  risk:
+    impact: 85
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.user-data
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.base-lowering
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.base-too-broad
+  name: The base grants access to the user's home, project trees, temp files, the network or writes, so every policy
+    that opts in loses its confinement
+  categories:
+  - Information Disclosure
+  - Elevation of Privilege
+  cwes:
+  - CWE-732
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.user-data
+    status: mitigated
+    actor: actor.child-code
+    constitution: I. Fail closed / VII safe presets
+    disposition: threat
+    elements:
+    - component.base-lowering
+    - flow.base-to-profile
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.service-handoff-via-base
+  name: A Mach service the base allows performs work outside the sandbox on the child's behalf (handoff) or discloses
+    user data beyond the user's own account
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  cwes:
+  - CWE-441
+  risk:
+    impact: 70
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.user-data
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-to-services
+    - component.services
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.tty-surface
+  name: Terminal devices are allowed to every child, widening the keystroke-injection surface (R-22) for children
+    that should have no terminal
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-269
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.terminal
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - component.base-lowering
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.base-in-allow-block
+  name: Base rules are emitted in the allow block; the precedence tests include a base policy
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.base-overrides-deny
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/tests/base.rs
+- id: mitigation.base-refusal-tests
+  name: 'Caged tests under base V1 alone: home listing and stat, temp-dir reads, /tmp writes and loopback connects
+    are refused; the base lists no /Users, /private/var/folders, /private/tmp or /Volumes rule'
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.base-too-broad
+    status: verified
+    kind: detective
+    requirements:
+    - SR-001
+    touchpoints:
+    - tests/spawn_macos.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/tests/base.rs
+- id: mitigation.frozen-snapshot
+  name: A test pins the exact lowered rules of base V1 per target; changing them fails the test and needs a new
+    version
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.base-drift
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/tests/base.rs
+    - crates/procage-policy/src/base.rs
+- id: mitigation.program-set-on-every-lane
+  name: The verified program set runs under base V1 on every macOS CI lane, and the docs state the release it was
+    measured on
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.base-insufficient
+    status: verified
+    kind: detective
+    requirements:
+    - SR-006
+    touchpoints:
+    - tests/spawn_macos.rs
+    - .github/workflows/ci.yml
+    - src/macos/mod.rs
+- id: mitigation.read-only-services
+  name: Only query services are allowed (user lookup, notifications, configuration, certificate trust, Rosetta);
+    handoff services stay hard-denied, and a test asserts the base names none of the hard-deny services
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.service-handoff-via-base
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage-policy/src/base.rs
+    - crates/procage-policy/tests/base.rs
+- id: mitigation.tty-only-on-inherit
+  name: Terminal device rules are added only with Tty::Inherit; the TIOCSTI hard deny stays last
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.tty-surface
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/tests/base.rs
+requirements:
+- id: SR-001
+  statement: Base V1 alone MUST NOT give a caged child access to the user's home, the user's temporary directory,
+    /tmp writes or the network.
+  priority: P1
+  mitigations:
+  - mitigation.base-refusal-tests
+  acceptance:
+  - given: base V1 only
+    then: it is refused
+    when: the child lists or stats the home directory
+  - given: base V1 only
+    then: each is refused
+    when: the child reads a temp-dir file, creates a /tmp file or connects to loopback
+  tasks: []
+- id: SR-002
+  statement: The lowered content of base V1 MUST be pinned per target by a test, so any change fails until a new
+    version is introduced.
+  priority: P2
+  mitigations:
+  - mitigation.frozen-snapshot
+  acceptance:
+  - given: base V1
+    then: the rules equal the pinned list
+    when: it is lowered for macOS and Linux
+  tasks: []
+- id: SR-003
+  statement: Base allows MUST be emitted before every protect, hide and hard-deny rule.
+  priority: P1
+  mitigations:
+  - mitigation.base-in-allow-block
+  acceptance:
+  - given: base V1 plus a protect rule
+    then: every base allow precedes the protect deny and the hard-deny tier
+    when: it is lowered for macOS
+  tasks: []
+- id: SR-004
+  statement: Terminal devices MUST be allowed only with Tty::Inherit, and the TIOCSTI deny MUST still come after
+    them.
+  priority: P1
+  mitigations:
+  - mitigation.tty-only-on-inherit
+  acceptance:
+  - given: base V1 with Tty::None
+    then: no /dev/tty rule appears
+    when: lowered
+  - given: base V1 with Tty::Inherit
+    then: the terminal allows precede the TIOCSTI deny
+    when: lowered
+  tasks: []
+- id: SR-005
+  statement: The base MUST allow only the listed query services and MUST NOT name any service the hard-deny tier
+    denies.
+  priority: P2
+  mitigations:
+  - mitigation.read-only-services
+  acceptance:
+  - given: the base service list and the hard-deny service list
+    then: they are disjoint
+    when: compared
+  tasks: []
+- id: SR-006
+  statement: Every program of the verified set MUST run correctly under base V1 on the real kernel, on every macOS
+    CI lane, and the docs MUST state the release measured and the programs not covered.
+  priority: P2
+  mitigations:
+  - mitigation.program-set-on-every-lane
+  acceptance:
+  - given: base V1 and a granted working directory
+    then: it exits 0 with correct output (user name, local zone)
+    when: each program of the set runs
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-30
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_macos.rs::base_grants_nothing_personal; crates/procage-policy/tests/base.rs::base_names_nothing_personal
+  result: pass
+  verdict: verified
+  justification: Under base V1 alone, a caged child is refused listing HOME, stat of HOME, reading a temp-dir file,
+    creating a /tmp file and connecting to a loopback listener. The lowered base names no /Users, /private/var/folders,
+    /private/tmp or /Volumes path and no network rule. Adding /Users to the base fails all three tests.
+  verified_at: '2026-10-30T08:26:40Z'
+  commit: 4ec115f
+- id: verification.sr-002.2026-10-30
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-policy/tests/base.rs::macos_content_is_pinned; crates/procage-policy/tests/base.rs::linux_content_is_pinned
+  result: pass
+  verdict: verified
+  justification: The exact SBPL lines of base V1 (with and without Tty::Inherit) and the exact Landlock rules at
+    ABI 6 are pinned; any change fails these tests, as the injected /Users and tty defects showed.
+  verified_at: '2026-10-30T08:26:40Z'
+  commit: 4ec115f
+- id: verification.sr-003.2026-10-30
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-policy/tests/base.rs::base_allows_come_before_every_deny
+  result: pass
+  verdict: verified
+  justification: With base V1 and a protect rule, every allow line precedes the first deny, and the base terminal
+    allow precedes the TIOCSTI deny. Emitting the base in the hard-deny block fails the test.
+  verified_at: '2026-10-30T08:26:40Z'
+  commit: 4ec115f
+- id: verification.sr-004.2026-10-30
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-policy/tests/base.rs::a_terminal_only_with_inherit; crates/procage-policy/tests/base.rs::base_allows_come_before_every_deny
+  result: pass
+  verdict: verified
+  justification: With Tty::None and NewPty, no /dev/tty rule appears on macOS and no tty or pts rule on Linux. With
+    Inherit, macOS gets one terminal allow ahead of the TIOCSTI deny, and Linux gets two rules. Adding the tty rule
+    unconditionally fails the test.
+  verified_at: '2026-10-30T08:26:40Z'
+  commit: 4ec115f
+- id: verification.sr-005.2026-10-30
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-policy/tests/base.rs::base_services_are_not_hard_denied_services
+  result: pass
+  verdict: verified
+  justification: No base service appears in any hard-deny mach-lookup line, and none starts with a handoff prefix
+    (com.apple.lsd., com.apple.coreservices., com.apple.pasteboard). The six services are query services (user lookup,
+    notifications, configuration, certificate trust, Rosetta).
+  verified_at: '2026-10-30T08:26:40Z'
+  commit: 4ec115f
+- id: verification.sr-006.2026-10-30
+  requirement: SR-006
+  method: test
+  evidence: tests/spawn_macos.rs::base_runs_ordinary_programs; tests/spawn_macos.rs::base_runs_a_rust_program_and_dev_null_stdio;
+    crates/procage-policy/src/base.rs:1
+  result: pass
+  verdict: verified
+  justification: All 15 programs exit 0 under base V1 on macOS 26.6.2, with correct output (id -un and date +%Z
+    equal their output outside the cage). A Rust child starts without extra rules, and a /dev/null-stdio child runs.
+    The CI macOS lanes run tests/spawn_macos.rs (configured, observed once pushed). The base module docs state the
+    release measured, the verified programs, and that Xcode shims are not covered.
+  verified_at: '2026-10-30T08:26:40Z'
+  commit: 4ec115f
+decisions: []

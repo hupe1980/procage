@@ -1,0 +1,1262 @@
+otmVersion: 0.2.0
+project:
+  id: 003-policy-ir
+  name: Portable policy IR and its lowering to each backend
+threatspec:
+  actors:
+  - id: actor.config-source
+    name: Whoever can write a stored policy document that a harness reads (a repository-local configuration file)
+    trust: untrusted
+  - id: actor.contributor
+    name: Contributor or later feature that changes the lowering, the table or the raw layers
+    trust: semi-trusted
+  - id: actor.harness-author
+    name: Harness author who builds a policy in code and lowers it for a target
+    trust: semi-trusted
+  - id: actor.path-source
+    name: Whoever controls directory and file names that end up in a policy (a cloned repository, a user-named workspace,
+      a temp directory)
+    trust: untrusted
+  - id: actor.spawn-backend
+    name: procage spawn backend (macOS, Linux) that applies a plan to a child (later features)
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: 'no authentication surface: the crate authenticates no principal and holds no credential'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: 'no authentication surface: no component accepts identities'
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: 'no shared-tenant surface: a pure library evaluated inside one caller process'
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked flow.config-to-format: the crate reads bytes the harness hands it and adds no transport; integrity
+      of storage and transport is the harness''s, and every read value passes the constructor checks (threat.format-drops-restriction)'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked component.lowering and component.data-format: the crate writes no file, log or telemetry; paths
+      in a plan return only to the caller that supplied them'
+    technique: sensitive-data-exposure
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: the crate calls no language model (LLM-driven code is the adversary of later
+      features, inside the child)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface; overclaiming in docs is modelled under STRIDE as threat.overclaimed-enforcement
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: no agent code-execution surface; the crate executes nothing (profile injection is modelled under STRIDE
+      as threat.quote-injection)
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Policy (intent layer)
+    reason: represented as asset.policy and component.intent-layer under a shorter name
+  - entity: Absolute path
+    reason: folded into asset.policy-paths; a path is a value inside the policy, not a separate store
+  - entity: Glob
+    reason: folded into asset.policy-paths
+  - entity: File rule
+    reason: folded into asset.policy
+  - entity: Grant
+    reason: folded into asset.policy; grant names are covered by threat.identifier-injection
+  - entity: Hard-deny class
+    reason: folded into asset.hard-deny-tier
+  - entity: Seatbelt layer / Linux layer
+    reason: folded into asset.raw-layers
+  - entity: Target
+    reason: an input parameter of lowering; covered by threat.silent-degradation (tier substitution)
+  - entity: Capability gap
+    reason: folded into asset.lowered-plan (the failure half of the lowering result)
+  - entity: Degradation
+    reason: folded into asset.lowered-plan
+  extends: null
+  generated: '2026-11-01T17:26:06Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 9f2ab8bb560a9f43b6d2d816e00e34b5262c57a3e84a9832eb9a3add5ba469df
+  - path: spec.md
+    sha256: 49e10ed2c7fb53b88e324927bd72d00e0d99d279cebca23e725e64773f157ad9
+  surfaces:
+  - external-input
+  - network-boundary
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.backend
+  name: OS backends (libsandbox, kernel) and procage spawn code that apply plans
+  risk:
+    trustRating: 90
+- id: tz.ci
+  name: CI and local quality gates
+  risk:
+    trustRating: 60
+- id: tz.harness
+  name: Caller process that builds and lowers policies
+  risk:
+    trustRating: 70
+- id: tz.policy-crate
+  name: procage-policy library code
+  risk:
+    trustRating: 80
+- id: tz.untrusted-input
+  name: Untrusted names and documents (directory names, stored policy files)
+  risk:
+    trustRating: 5
+assets:
+- id: asset.hard-deny-tier
+  name: Hard-deny tier and its waivers
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#FR-009
+    classification: internal
+- id: asset.lowered-plan
+  name: Lowered plan (SBPL profile text and params, Linux plan) or the list of capability gaps; degradations recorded
+  risk:
+    availability: 60
+    confidentiality: 10
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#FR-013
+    classification: internal
+- id: asset.lowering-table
+  name: Published lowering table (construct x target outcomes)
+  risk:
+    availability: 30
+    confidentiality: 0
+    integrity: 85
+  attributes:
+    type: business-data
+    source: spec.md#FR-016
+    classification: public
+- id: asset.policy
+  name: Intent-layer policy (file rules, network, process, IPC, hygiene settings, grants, waivers)
+  risk:
+    availability: 40
+    confidentiality: 10
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#FR-007
+    classification: internal
+- id: asset.policy-paths
+  name: Paths and globs inside a policy
+  risk:
+    availability: 30
+    confidentiality: 20
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#FR-001
+    classification: internal
+- id: asset.raw-layers
+  name: Seatbelt and Linux backend layers (raw rules)
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#FR-010
+    classification: internal
+- id: asset.stored-policy
+  name: Serialised policy document
+  risk:
+    availability: 30
+    confidentiality: 10
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-021
+    classification: internal
+components:
+- id: component.assurance
+  name: Generated-input tests, fuzz targets and the libsandbox compile test
+  type: process
+  parent:
+    trustZone: tz.ci
+  attributes:
+    source: spec.md#FR-023
+- id: component.data-format
+  name: Optional versioned data format
+  type: library
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-021
+- id: component.escaper
+  name: The one SBPL quoting function and parameter fallback
+  type: library
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-005
+- id: component.harness
+  name: Caller that builds a policy and passes the plan on
+  type: process
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#User-Story-1
+- id: component.intent-layer
+  name: Intent-layer policy types
+  type: library
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-007
+- id: component.limits-guard
+  name: SBPL limits guard and exact rewrites
+  type: library
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-019
+- id: component.lowering
+  name: Lowering to SBPL and to Linux T1/T2 plans, gaps and degradations
+  type: library
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-013
+- id: component.lowering-table
+  name: Lowering table (crate docs and test fixture)
+  type: document
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-016
+- id: component.path-types
+  name: Path and glob types (absolute path, glob compiler)
+  type: library
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-001
+- id: component.raw-layers
+  name: Seatbelt and Linux backend layers
+  type: library
+  parent:
+    trustZone: tz.policy-crate
+  attributes:
+    source: spec.md#FR-010
+- id: component.spawn-backends
+  name: procage spawn backends and libsandbox/kernel (apply plans; later features)
+  type: process
+  parent:
+    trustZone: tz.backend
+  attributes:
+    source: spec.md#Context
+dataflows:
+- id: flow.config-to-format
+  name: A stored policy document is read into a policy
+  source: actor.config-source
+  destination: component.data-format
+  assets:
+  - asset.stored-policy
+  - asset.policy
+  attributes:
+    crosses:
+    - tz.untrusted-input
+    - tz.policy-crate
+- id: flow.contributor-to-lowering
+  name: A change edits lowering code or the table
+  source: actor.contributor
+  destination: component.lowering
+  assets:
+  - asset.lowering-table
+  - asset.lowered-plan
+  attributes:
+    crosses:
+    - tz.policy-crate
+- id: flow.harness-to-lowering
+  name: The harness lowers a policy for a target with allowed degradations
+  source: component.harness
+  destination: component.lowering
+  assets:
+  - asset.policy
+  - asset.raw-layers
+  - asset.hard-deny-tier
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.policy-crate
+- id: flow.lowering-to-guard
+  name: The emitted profile passes the limits guard
+  source: component.lowering
+  destination: component.limits-guard
+  assets:
+  - asset.lowered-plan
+  attributes:
+    crosses: []
+- id: flow.names-to-policy
+  name: Untrusted directory and file names become policy paths
+  source: actor.path-source
+  destination: component.path-types
+  assets:
+  - asset.policy-paths
+  attributes:
+    crosses:
+    - tz.untrusted-input
+    - tz.policy-crate
+- id: flow.paths-to-escaper
+  name: Paths, names and patterns are quoted into SBPL
+  source: component.path-types
+  destination: component.escaper
+  assets:
+  - asset.policy-paths
+  attributes:
+    crosses: []
+- id: flow.plan-to-backend
+  name: The plan is handed to a spawn backend to apply
+  source: component.lowering
+  destination: component.spawn-backends
+  assets:
+  - asset.lowered-plan
+  attributes:
+    crosses:
+    - tz.policy-crate
+    - tz.backend
+- id: flow.table-to-tests
+  name: The lowering table is read as a test fixture
+  source: component.lowering-table
+  destination: component.assurance
+  assets:
+  - asset.lowering-table
+  attributes:
+    crosses:
+    - tz.ci
+threats:
+- id: threat.format-drops-restriction
+  name: Reading a stored policy ignores an unknown field or skips a constructor check, so a restriction written
+    by a newer writer, or an invalid path or glob, is silently dropped or accepted
+  categories:
+  - Tampering
+  cwes:
+  - CWE-20
+  - CWE-502
+  risk:
+    impact: 80
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-021
+    assets:
+    - asset.stored-policy
+    - asset.policy
+    status: mitigated
+    actor: actor.config-source
+    disposition: threat
+    elements:
+    - component.data-format
+    - flow.config-to-format
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.glob-metachar-widening
+  name: Glob or regular-expression characters in a resolved path are read as pattern syntax, so a rule for one directory
+    matches others (escape class R-03)
+  categories:
+  - Tampering
+  - Elevation of Privilege
+  cwes:
+  - CWE-185
+  - CWE-625
+  risk:
+    impact: 90
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.policy-paths
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.path-source
+    constitution: II. Types over strings (a glob is never inferred from a string)
+    disposition: threat
+    elements:
+    - flow.names-to-policy
+    - component.path-types
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.guard-broadens
+  name: The limits guard shrinks an oversized profile by merging rules into a broader one (a common prefix or parent
+    subtree), so the plan allows more than the policy
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-183
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-020
+    assets:
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed (the limits guard never broadens an allow)
+    disposition: threat
+    elements:
+    - component.limits-guard
+    - flow.lowering-to-guard
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.hard-deny-missing-or-shadowed
+  name: The hard-deny tier is missing, not emitted last, or a later allow follows a deny-within-allow rule, so last-match-wins
+    evaluation lets an allow override a hard deny or a protect/hide rule
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-696
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-009
+    assets:
+    - asset.hard-deny-tier
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.contributor
+    constitution: II. Types over strings (every policy emits the hard-deny tier last)
+    disposition: threat
+    elements:
+    - component.lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.identifier-injection
+  name: A grant name or other identifier that becomes part of profile syntax (an extension class, a parameter name)
+    carries quotes or spaces and changes the profile
+  categories:
+  - Tampering
+  cwes:
+  - CWE-74
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.policy
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.config-source
+    disposition: threat
+    elements:
+    - component.intent-layer
+    - component.escaper
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.lossy-path
+  name: A path with non-UTF-8 bytes or a control character is converted lossily or dropped, so the emitted rule
+    names a different file than the policy
+  categories:
+  - Tampering
+  cwes:
+  - CWE-176
+  risk:
+    impact: 70
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.policy-paths
+    status: mitigated
+    actor: actor.path-source
+    constitution: II. Types over strings (paths are byte-exact and never lossy)
+    disposition: threat
+    elements:
+    - component.path-types
+    - component.escaper
+    profile: stride
+    severity: medium
+    technique: data-tampering-at-rest
+- id: threat.lowering-panic
+  name: An adversarial stored document or policy makes parsing or lowering panic or run unbounded, taking down the
+    harness that tried to build a sandbox
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-248
+  risk:
+    impact: 50
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-023
+    assets:
+    - asset.stored-policy
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.config-source
+    disposition: threat
+    elements:
+    - component.data-format
+    - component.lowering
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.overclaimed-enforcement
+  name: Crate docs or tests present a lowered profile, or its successful compilation, as evidence that a child is
+    caged, although nothing in this feature applies a plan
+  categories:
+  - Spoofing
+  - Repudiation
+  cwes:
+  - CWE-1059
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-024
+    assets:
+    - asset.lowering-table
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle (comparing emitted SBPL is not evidence of enforcement)
+    disposition: threat
+    elements:
+    - component.lowering-table
+    - component.assurance
+    profile: stride
+    severity: high
+    technique: false-evidence
+- id: threat.oversize-profile
+  name: A policy with thousands of rules or a path over the inline literal cap yields a profile libsandbox rejects
+    without a message or aborts the calling process on, or the long path is truncated
+  categories:
+  - Denial of Service
+  - Tampering
+  cwes:
+  - CWE-400
+  - CWE-130
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-019
+    assets:
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.harness-author
+    disposition: threat
+    elements:
+    - component.limits-guard
+    - component.escaper
+    - component.spawn-backends
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.quote-injection
+  name: A directory name containing a quote or backslash ends the SBPL string early, so the path source injects
+    profile syntax (an allow, or a sandbox-off modifier) into every policy that names it
+  categories:
+  - Tampering
+  - Elevation of Privilege
+  cwes:
+  - CWE-74
+  - CWE-116
+  risk:
+    impact: 95
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.policy-paths
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.path-source
+    constitution: II. Types over strings (untrusted data reaches SBPL only through one audited, fuzzed escaper or
+      param)
+    disposition: threat
+    elements:
+    - flow.names-to-policy
+    - flow.paths-to-escaper
+    - component.escaper
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.raw-layer-sandbox-off
+  name: A raw Seatbelt rule, built in code or read from a stored document, carries (with no-sandbox), (with no-profile)
+    or extra syntax through an unchecked operation name, so the child's next exec runs unsandboxed (escape class
+    R-11)
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-74
+  risk:
+    impact: 95
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-011
+    assets:
+    - asset.raw-layers
+    - asset.lowered-plan
+    status: mitigated
+    actor: actor.config-source
+    constitution: I. Fail closed ((with no-sandbox) and (with no-profile) cannot be expressed)
+    disposition: threat
+    elements:
+    - component.raw-layers
+    - flow.config-to-format
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.relative-path-silent
+  name: A relative, home-relative or dot-dot path is accepted and emitted, so the rule silently matches nothing
+    or something other than intended (lexical half of escape class R-02)
+  categories:
+  - Tampering
+  cwes:
+  - CWE-22
+  - CWE-41
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.policy-paths
+    status: mitigated
+    actor: actor.harness-author
+    constitution: I. Fail closed (a relative or unexpanded path is a typed error)
+    disposition: threat
+    elements:
+    - component.path-types
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.silent-degradation
+  name: A construct a target cannot express (protect on Landlock-only T2, a literal or glob on Linux, loopback ports
+    on T2) or a tier below the one asked for is lowered to a weaker plan without a typed gap, so the child gets
+    less isolation than the caller asked for
+  categories:
+  - Elevation of Privilege
+  - Repudiation
+  cwes:
+  - CWE-636
+  - CWE-693
+  risk:
+    impact: 90
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-014
+    assets:
+    - asset.lowered-plan
+    - asset.policy
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker (CapabilityGap; Linux never BestEffort)
+    disposition: threat
+    elements:
+    - component.lowering
+    - flow.harness-to-lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.table-drift
+  name: The published lowering table and the actual lowering disagree, so authors choose a target trusting an outcome
+    (exact) the code does not deliver
+  categories:
+  - Repudiation
+  - Tampering
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-016
+    assets:
+    - asset.lowering-table
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.lowering-table
+    - flow.contributor-to-lowering
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.unrecorded-degradation
+  name: An allowed degradation or a hard-deny waiver is applied but not listed in the plan, so receipts later cannot
+    show that the run was weaker than the policy
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-778
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-009
+    assets:
+    - asset.lowered-plan
+    - asset.hard-deny-tier
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed (a degradation is recorded)
+    disposition: threat
+    elements:
+    - component.lowering
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.abs-path-validation
+  name: The absolute-path constructor refuses empty, relative, tilde, dot, dot-dot, empty-component, trailing-slash
+    and NUL inputs with typed errors and stores exact bytes
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.relative-path-silent
+    - threat.lossy-path
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/path.rs
+    - crates/procage-policy/src/glob.rs
+    - crates/procage-policy/tests/paths.rs
+    - crates/procage-policy/tests/escaping.rs
+- id: mitigation.closed-raw-layer
+  name: The Seatbelt layer has a closed operation list proven to compile, an unstable escape hatch limited to [a-z0-9*-],
+    no modifier type except the run tag, and validated identifiers for grant and parameter names
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.raw-layer-sandbox-off
+    - threat.identifier-injection
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage-policy/src/seatbelt.rs
+    - crates/procage-policy/src/name.rs
+    - crates/procage-policy/src/policy.rs
+    - tests/kernel_facts/tests/policy_compiles.rs
+- id: mitigation.exact-rewrite-only
+  name: The limits guard only merges adjacent rules with the same effect and operation; a reference evaluator compares
+    guarded and unguarded profiles over generated requests
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.guard-broadens
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - crates/procage-policy/src/sbpl.rs
+    - crates/procage-policy/tests/limits.rs
+    - crates/procage-policy/tests/common/mod.rs
+- id: mitigation.fixed-precedence
+  name: Lowering sorts rules into fixed precedence (allows, then protect and hide, then the hard-deny tier last),
+    lists every waiver, and a test asserts the tier is last and present for every reference policy and shuffled
+    rule order
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.hard-deny-missing-or-shadowed
+    - threat.unrecorded-degradation
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage-policy/src/lower/mod.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/tests/gaps.rs
+    - crates/procage-policy/tests/precedence.rs
+- id: mitigation.limits-and-params
+  name: A configurable rule limit fails with a typed error naming limit and count; a quoted value over the inline
+    cap becomes a named parameter whose exact value travels in the plan
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.oversize-profile
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - crates/procage-policy/src/sbpl.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/tests/limits.rs
+- id: mitigation.no-enforcement-wording
+  name: Crate docs describe what lowering produces, never that it is enforced; the libsandbox compile test is labelled
+    a well-formedness check
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.overclaimed-enforcement
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-011
+    touchpoints:
+    - crates/procage-policy/src/lowering.md
+    - crates/procage-policy/tests/lowering_table.rs
+    - crates/procage-policy/src/lib.rs
+    - tests/kernel_facts/tests/policy_compiles.rs
+- id: mitigation.single-escaper
+  name: One quoting function escapes backslash and quote and refuses NUL, control characters and invalid UTF-8;
+    every emitter calls it; a decoder test and a fuzz target check that every output reads back to the exact input
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.quote-injection
+    - threat.lossy-path
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/sbpl.rs
+    - crates/procage-policy/tests/escaping.rs
+    - crates/procage-policy/fuzz/fuzz_targets/quote.rs
+- id: mitigation.strict-format
+  name: The data format is versioned, refuses unknown fields and routes every value through its constructor; reading
+    and lowering are fuzzed for panics and round-trip
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.format-drops-restriction
+    - threat.lowering-panic
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - crates/procage-policy/src/format.rs
+    - crates/procage-policy/tests/format.rs
+    - crates/procage-policy/fuzz/fuzz_targets/format.rs
+    - crates/procage-policy/fuzz/fuzz_targets/lower.rs
+- id: mitigation.table-as-fixture
+  name: The lowering table in the crate docs is parsed by a test that lowers each construct for each target and
+    asserts the stated outcome
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.table-drift
+    status: verified
+    kind: detective
+    requirements:
+    - SR-006
+    touchpoints:
+    - crates/procage-policy/src/lowering.md
+    - crates/procage-policy/tests/lowering_table.rs
+    - crates/procage-policy/src/lib.rs
+    - tests/kernel_facts/tests/policy_compiles.rs
+- id: mitigation.typed-gaps
+  name: Lowering returns every capability gap for a construct the target cannot express exactly; an approximation
+    is accepted only when allowed by name and is listed as a degradation; tiers and Landlock versions below the
+    minimum are refused, never substituted
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.silent-degradation
+    - threat.unrecorded-degradation
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage-policy/src/lower/mod.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/tests/gaps.rs
+    - crates/procage-policy/tests/precedence.rs
+- id: mitigation.typed-patterns
+  name: Literal, subtree and glob are distinct types; the glob compiler escapes every non-glob character and anchors
+    the pattern; unsupported wildcard syntax is refused
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.glob-metachar-widening
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/path.rs
+    - crates/procage-policy/src/glob.rs
+    - crates/procage-policy/tests/paths.rs
+    - crates/procage-policy/tests/escaping.rs
+requirements:
+- id: SR-001
+  statement: Every path, name and pattern text emitted into SBPL MUST pass through the one quoting function or be
+    passed as a named parameter; the function MUST escape backslash and quote and MUST refuse NUL, control characters
+    and invalid UTF-8 with a typed error, and every accepted value MUST decode back to the exact input.
+  priority: P1
+  mitigations:
+  - mitigation.single-escaper
+  acceptance:
+  - given: a subtree named /tmp/a"b\c(d)
+    then: the profile holds one subtree rule whose quoted string decodes to exactly those bytes and adds no other
+      syntax
+    when: the policy is lowered for macOS
+  - given: a path containing a newline or a non-UTF-8 byte
+    then: lowering fails with a typed error and the path is not altered or dropped
+    when: it is lowered for macOS
+  - given: at least 10,000 generated byte strings and the fuzz corpus
+    then: each result either decodes to its input or is refused
+    when: each is quoted
+  tasks: []
+- id: SR-002
+  statement: Literal, subtree and glob MUST be distinct kinds chosen by the author; a glob MUST lower to one anchored
+    pattern in which every non-glob character is escaped, and unsupported wildcard syntax MUST be refused.
+  priority: P1
+  mitigations:
+  - mitigation.typed-patterns
+  acceptance:
+  - given: a subtree whose name contains * ? [ ] . + ( ) |
+    then: it is emitted as a subtree, not a pattern
+    when: it is lowered for macOS
+  - given: the glob /work/**/*.rs
+    then: the result is one pattern anchored at both ends with the dot escaped
+    when: it is lowered for macOS
+  - given: a glob containing [ or {
+    then: it is refused with a typed error
+    when: it is constructed
+  tasks: []
+- id: SR-003
+  statement: A policy path MUST be exact bytes of an absolute, lexically normal path; empty, relative, tilde, dot,
+    dot-dot, empty-component, trailing-slash and NUL inputs MUST be refused with typed errors and nothing is silently
+    resolved.
+  priority: P1
+  mitigations:
+  - mitigation.abs-path-validation
+  acceptance:
+  - given: relative/dir, ~/dir, /a/../b, /a//b, /a/ or a NUL byte
+    then: each is refused with an error naming its reason
+    when: each is used as a policy path
+  - given: a valid path with non-UTF-8 bytes
+    then: the bytes are identical
+    when: it is stored and read back
+  tasks: []
+- id: SR-004
+  statement: No value of the Seatbelt layer, including deserialised values, MUST be able to produce (with no-sandbox),
+    (with no-profile) or any modifier other than the run tag; operation names outside the closed list MUST be accepted
+    only behind the unstable option and only if they match [a-z0-9*-]+; grant and parameter names MUST be short
+    identifiers.
+  priority: P1
+  mitigations:
+  - mitigation.closed-raw-layer
+  acceptance:
+  - given: an unstable operation name containing a parenthesis, space or quote
+    then: it is refused
+    when: it is constructed or read from a document
+  - given: every operation in the closed list
+    then: each compiles
+    when: each is compiled through libsandbox on the development Mac
+  - given: a grant name containing a quote, space or slash
+    then: it is refused
+    when: it is constructed
+  tasks: []
+- id: SR-005
+  statement: Lowering MUST return the complete list of capability gaps for constructs the target cannot express
+    exactly; an approximation MUST be accepted only when the caller allowed that construct by name and MUST then
+    be listed as a degradation in the plan; tier T2 with a Landlock version below 4 MUST be refused and no other
+    tier substituted.
+  priority: P1
+  mitigations:
+  - mitigation.typed-gaps
+  acceptance:
+  - given: a policy with a protect rule and a glob rule
+    then: lowering fails listing both gaps with construct, target and tier
+    when: it is lowered for Linux T2 without allowed degradations
+  - given: a single-file rule and the single-file approximation allowed by name
+    then: a plan is returned and its degradations name that construct
+    when: it is lowered for Linux
+  - given: tier T2 with Landlock version 3
+    then: it fails with a typed tier error and returns no plan
+    when: lowering runs
+  tasks: []
+- id: SR-006
+  statement: The lowering table published in the crate docs MUST be the fixture of a test that lowers each construct
+    for each target and asserts the stated outcome.
+  priority: P2
+  mitigations:
+  - mitigation.table-as-fixture
+  acceptance:
+  - given: a row of the table changed without a matching change to lowering (or the reverse)
+    then: they fail naming the construct and target
+    when: the tests run
+  tasks: []
+- id: SR-007
+  statement: Every plan MUST place allows first, then protect and hide rules, then the hard-deny tier last, regardless
+    of input order, and MUST list every hard-deny waiver; a waiver MUST name a known class.
+  priority: P1
+  mitigations:
+  - mitigation.fixed-precedence
+  acceptance:
+  - given: any reference policy with its rules shuffled
+    then: the profile is byte-identical and its last rules are the hard-deny tier
+    when: it is lowered for macOS
+  - given: a policy waiving one hard-deny class by name
+    then: that class is absent and the plan lists the waiver
+    when: it is lowered
+  tasks: []
+- id: SR-008
+  statement: The limits guard MUST only apply rewrites that match exactly the same requests and MUST never broaden
+    an allow.
+  priority: P1
+  mitigations:
+  - mitigation.exact-rewrite-only
+  acceptance:
+  - given: generated profiles and at least 10,000 generated requests
+    then: every decision is identical
+    when: guarded and unguarded profiles are evaluated by the reference evaluator
+  tasks: []
+- id: SR-009
+  statement: Lowering for macOS MUST fail with a typed limit error naming the limit and the count when the profile
+    exceeds the configured rule limit, and MUST emit a quoted value over the inline cap as a named parameter whose
+    exact value the plan carries.
+  priority: P2
+  mitigations:
+  - mitigation.limits-and-params
+  acceptance:
+  - given: a policy one rule over the configured limit
+    then: it fails naming the limit and the count
+    when: it is lowered for macOS
+  - given: a path whose quoted form is longer than 1016 bytes
+    then: the profile references a parameter and the plan holds the exact path bytes
+    when: it is lowered for macOS
+  tasks: []
+- id: SR-010
+  statement: The data format MUST be versioned, MUST refuse unknown fields, MUST apply every constructor check on
+    reading, and reading and lowering MUST never panic on any input.
+  priority: P1
+  mitigations:
+  - mitigation.strict-format
+  acceptance:
+  - given: a document with an unknown field
+    then: reading fails naming the field
+    when: it is read
+  - given: a document with a relative path or a malformed glob
+    then: reading fails with the constructor's error
+    when: it is read
+  - given: the fuzz targets for reading and lowering
+    then: no panic occurs and every accepted document round-trips
+    when: each runs at least 60 seconds
+  tasks: []
+- id: SR-011
+  statement: Crate docs MUST describe what lowering produces and MUST NOT claim that a profile or plan is enforced;
+    the libsandbox compile test MUST be described as a well-formedness check only.
+  priority: P2
+  mitigations:
+  - mitigation.no-enforcement-wording
+  acceptance:
+  - given: the policy crate docs and the compile test
+    then: no sentence states or implies that a child is caged by them
+    when: they are reviewed
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-30
+  requirement: SR-001
+  method: test
+  evidence: crates/procage-policy/tests/escaping.rs::quoting_round_trips_or_refuses; crates/procage-policy/tests/escaping.rs::a_hostile_directory_name_stays_one_subpath;
+    crates/procage-policy/tests/gaps.rs::a_control_character_is_unrepresentable_on_macos
+  result: pass
+  verdict: verified
+  justification: 10,000 generated byte strings either decode back exactly with a strict decoder or are refused with
+    the stated reason. A subtree named with quote, backslash and parentheses lowers to exactly one subtree rule
+    that decodes to the name, with no syntax outside the quotes. Newline and non-UTF-8 paths give Unrepresentable
+    gaps on macOS. The quote fuzz target ran 12.7M executions without a crash, and injecting a missing quote escape
+    fails two tests.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-002.2026-10-30
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-policy/tests/escaping.rs::generated_globs_escape_every_literal; crates/procage-policy/tests/escaping.rs::a_glob_becomes_one_anchored_escaped_pattern;
+    crates/procage-policy/tests/escaping.rs::unsupported_glob_syntax_is_refused
+  result: pass
+  verdict: verified
+  justification: A subtree containing * ? [ ] stays a subpath and is never a regex. /work/**/*.rs lowers to the
+    anchored pattern with the dot escaped. For 10,000 generated globs an independent check confirms every literal
+    is escaped. [ and { are refused. The glob fuzz target ran 5.9M executions, and injecting an unescaped dot fails
+    two tests.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-003.2026-10-30
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-policy/tests/paths.rs::each_refusal_names_its_reason; crates/procage-policy/tests/paths.rs::bytes_are_kept_exactly;
+    crates/procage-policy/tests/paths.rs::generated_inputs_match_the_rules
+  result: pass
+  verdict: verified
+  justification: Each of relative, ~, .., ., //, trailing slash and NUL is refused with its typed reason. Non-UTF-8
+    bytes are kept exactly. 10,000 generated inputs match an independent statement of the rules, and injecting acceptance
+    of .. fails two tests.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-004.2026-10-30
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-policy/tests/escaping.rs::identifiers_cannot_carry_syntax; crates/procage-policy/tests/format.rs::invalid_values_are_refused_with_the_constructor_message;
+    tests/kernel_facts/tests/policy_compiles.rs::every_operation_of_the_closed_list_compiles
+  result: pass
+  verdict: verified
+  justification: Operation names with a parenthesis, space or quote, and the name default, are refused when built
+    and when read from a document. Grant names with a quote, space or slash are refused. The raw rule type has no
+    modifier field, and every reference profile contains no (with ...) except the tag. All 112 operations of the
+    closed list compile through libsandbox on macOS 26.6.2.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-005.2026-10-30
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-policy/tests/gaps.rs::every_gap_is_listed_and_no_plan_is_returned; crates/procage-policy/tests/gaps.rs::an_allowed_approximation_is_recorded_once;
+    crates/procage-policy/tests/gaps.rs::tiers_below_their_minimum_are_refused
+  result: pass
+  verdict: verified
+  justification: Protect, glob and loopback on T2 return all three typed gaps, sorted, and no plan. An allowed literal
+    approximation gives exactly one recorded degradation, while an unsupported construct stays a gap even when allowed.
+    T2 at ABI 3 and T1 at ABI 0 return LandlockTooOld, and a returned plan names the requested tier.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-006.2026-10-30
+  requirement: SR-006
+  method: test
+  evidence: crates/procage-policy/tests/lowering_table.rs::every_row_matches_the_lowering; crates/procage-policy/tests/lowering_table.rs::a_changed_cell_is_detected
+  result: pass
+  verdict: verified
+  justification: The test parses the rustdoc lowering table and lowers each of the 32 constructs for macOS, T1 and
+    T2 at several ABIs. It asserts the exact, approximated, unsupported or n/a semantics with and without permission.
+    Changing the fs-protect T2 cell fails the test.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-007.2026-10-30
+  requirement: SR-007
+  method: test
+  evidence: crates/procage-policy/tests/precedence.rs::rule_order_never_changes_the_plan; crates/procage-policy/tests/precedence.rs::blocks_are_in_fixed_order_and_the_tier_is_last;
+    crates/procage-policy/tests/precedence.rs::waivers_remove_exactly_their_class_and_are_listed
+  result: pass
+  verdict: verified
+  justification: 50 shuffles of every reference policy give identical plans on 13 targets. No allow follows a deny,
+    and the hard-deny tier is last. A raw allow lands before protect and the tier. Each waiver removes exactly its
+    class's rules and is listed. Moving the tier before deny-within-allow fails the test.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-008.2026-10-30
+  requirement: SR-008
+  method: test
+  evidence: crates/procage-policy/tests/limits.rs::merging_never_changes_a_decision; crates/procage-policy/tests/limits.rs::merged_rules_never_mix_effects
+  result: pass
+  verdict: verified
+  justification: A reference last-match-wins evaluator gives identical decisions for 10,000 generated rule lists
+    × 8 requests before and after merge_adjacent. Injecting a merge that ignores the effect fails both tests.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-009.2026-10-30
+  requirement: SR-009
+  method: test
+  evidence: crates/procage-policy/tests/limits.rs::over_the_limit_fails_closed; crates/procage-policy/tests/escaping.rs::long_values_go_through_a_parameter;
+    tests/kernel_facts/tests/policy_compiles.rs::a_parameter_backed_long_path_compiles
+  result: pass
+  verdict: verified
+  justification: 2,001 rules that cannot merge give LimitExceeded naming limit 2000 and the count, and configured
+    limits are honoured. A path whose quoted form is just over 1016 bytes is emitted as (param "P0"), with its exact
+    value in the plan, and libsandbox compiles it only when the parameter is supplied.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-010.2026-10-30
+  requirement: SR-010
+  method: test
+  evidence: crates/procage-policy/tests/format.rs::unknown_fields_are_refused; crates/procage-policy/tests/format.rs::invalid_values_are_refused_with_the_constructor_message;
+    crates/procage-policy/tests/format.rs::versions_other_than_one_are_refused; crates/procage-policy/tests/format.rs::mutated_documents_never_panic_and_accepted_ones_round_trip
+  result: pass
+  verdict: verified
+  justification: Unknown fields at the top level, in FsRule and in a struct variant are refused, naming the field.
+    Relative paths, bad globs, unknown classes and operations, and invalid grant names and ports give the constructor's
+    error. Versions other than 1 are refused. 10,000 mutated documents never panic, and the accepted ones round-trip.
+    The format and lower fuzz targets each ran 60 s (5.0M and 378k executions) without a crash.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+- id: verification.sr-011.2026-10-30
+  requirement: SR-011
+  method: review
+  evidence: crates/procage-policy/src/lowering.md:24; crates/procage-policy/src/lib.rs:19; tests/kernel_facts/tests/policy_compiles.rs:1;
+    specs/003-policy-ir/quickstart.md#Recorded-outcomes
+  result: pass
+  verdict: verified
+  justification: I reviewed the crate docs, the lowering table and the compile test, and recorded the review in
+    the quickstart (scenario 11). The docs state what lowering produces, and that a plan says nothing about enforcement
+    until procage cages a real child. The compile test is labelled well-formedness only. A scan for enforce, protects,
+    prevents, blocks and guarantee finds only these disclaimers.
+  verified_at: '2026-10-30T06:14:44Z'
+  commit: 24f3263
+decisions: []

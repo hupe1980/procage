@@ -1,0 +1,25 @@
+verdicts:
+  - requirement: SR-001
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/fit.rs::a_gap_without_a_named_relaxation_changes_nothing
+    result: pass
+    justification: Unnamed gaps are returned and the policy is unchanged; approximations_are_never_relaxed and only_the_rule_the_gap_names_is_left_out cover the other two scenarios (a stray subject relaxes nothing); tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named shows Cage::fit failing with exactly the signal gap when its relaxation is missing.
+  - requirement: SR-002
+    verdict: verified
+    method: test
+    evidence: tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named
+    result: pass
+    justification: On T2 the list holds exactly the four relaxations applied (five below ABI 6), and Cage::fit builds the list from every applied relaxation (src/linux/mod.rs, src/macos/mod.rs).
+  - requirement: SR-003
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/fit.rs::lifts_come_from_lowering
+    result: pass
+    justification: Signals at ABI 5 lift at ABI 6 without T1; protect lifts with T1; sockets lift with T1 only at maximum 8 and at ABI 9 with maximum 12; macOS and unreported gaps are unknown; the Linux caged test asserts the same lifts through Cage::fit.
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named
+    result: pass
+    justification: The fitted T2 cage refuses an outside write (EACCES) and any socket (EPERM) while the relaxed .git is writable and .env readable.

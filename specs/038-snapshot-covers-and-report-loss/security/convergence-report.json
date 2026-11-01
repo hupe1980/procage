@@ -1,0 +1,38 @@
+{
+  "feature": "038-snapshot-covers-and-report-loss",
+  "commit": "09db927",
+  "timestamp": "2026-11-01T17:16:20Z",
+  "status": "CONVERGED",
+  "threats": {
+    "total": 2,
+    "open_blocking": []
+  },
+  "requirements": {
+    "total": 2,
+    "verified": [
+      "SR-001",
+      "SR-002"
+    ],
+    "implemented_unverified": [],
+    "partial": [],
+    "missing": []
+  },
+  "expired_decisions": [],
+  "drift": [],
+  "appended_tasks": [],
+  "already_open_tasks_for": [],
+  "verdicts": {
+    "SR-001": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it; crates/procage/src/linux/spawn.rs (mounts, optional); crates/procage/src/linux/sys.rs (ChildMount optional, child loop); just linux-t1 (spawn 47/47, escape 22/22 with and without reporting)",
+      "justification": "The churn test (300 T1 spawns while a socket is bound and removed) failed at spawn 3 before the fix and passes after it. Only cover groups are marked optional; the child skips an optional mount only on ENOENT and then skips the remount of the same target; any other error, and every declared mount, still fails the spawn. The T1 mask tests and escape suite pass unchanged."
+    },
+    "SR-002": {
+      "verdict": "verified",
+      "method": "review",
+      "evidence": "crates/procage/src/violation.rs (module docs, Coverage::Observed, Violations::complete); site/content/docs/violations.md (Live, complete and honest)",
+      "justification": "Both say an empty record never proves nothing was denied, that Linux reports refused system calls only, and that macOS drops reports under heavy load, with the measurement (82 of 640 missing from an independent log stream, 16 runs in parallel, none in serial runs). No remaining text calls a complete Observed record proof."
+    }
+  }
+}

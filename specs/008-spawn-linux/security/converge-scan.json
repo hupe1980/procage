@@ -1,0 +1,814 @@
+{
+  "feature": "008-spawn-linux",
+  "commit": "fbf108d",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "On both tiers the child MUST be refused every file access its policy's rules and grants do not allow, and a grant MUST apply only to the spawn it was bound for.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "read on R and write on W, on T1 and T2",
+          "then": "only the first two succeed",
+          "when": "the child reads R/f, writes W/g, reads a file outside both and writes R/h"
+        },
+        {
+          "given": "a grant bound for one spawn",
+          "then": "it is refused",
+          "when": "a second spawn without the binding reads the path"
+        }
+      ],
+      "mitigations": [
+        "mitigation.landlock-ruleset"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] [SR-008] [SR-009] [SR-010] Write `src/linux/sys.rs` (the only unsafe module on Linux): Landlock ruleset and rules, `ChildPlan::run` with the call sequence of plan.md, step codes, the probe child, `close_range` with fallback, kill helpers and `/proc` children; extend `tests/unsafe_confined.rs` to both `sys` modules."
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-004] [SR-005] Write `src/linux/mod.rs` and `src/linux/spawn.rs`: `Cage` (tier choice, lowering, seccomp build, `Unsupported` cases), `CageOptions`, `Grants`, `SpawnError`, `Step`, `Unsupported`, `GrantError`, the per-spawn ruleset with grant fds, the T1 mount list with locked flags, id maps, error decoding; `src/linux/child.rs`; `pub mod linux` in `src/lib.rs`."
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-009] Write `tests/spawn_linux.rs` with the harness (`child_entry`, `PROCAGE_EXPECT_TIER` check) and tests `fs_read_write_outside` (US1-1), grant per spawn, `network_none` (US1-2, host loopback listener), `hard_deny_syscalls` (US1-3), `probe_reports_tier` (US1-4). On T2 every write rule covers `trust-handoff` (unsupported), so T2 runs of write scenarios waive that class by name and assert the waiver is listed."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/linux/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The child MUST be refused ptrace, io_uring_setup, bpf, keyctl, perf_event_open, userfaultfd, unshare, mount and the other hard-deny syscalls with EPERM, on both tiers.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "any policy on T1 and T2",
+          "then": "each fails with EPERM",
+          "when": "the child calls ptrace, io_uring_setup, bpf, keyctl, unshare and mount"
+        }
+      ],
+      "mitigations": [
+        "mitigation.seccomp-hard-deny"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] Write `src/linux/seccomp.rs`: syscall table per architecture, BPF builder (arch check, x32 kill, one block per rule, EPERM/ENOSYS), and unit tests with a classic-BPF interpreter covering every condition, a foreign architecture and an x32 number."
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] [SR-008] [SR-009] [SR-010] Write `src/linux/sys.rs` (the only unsafe module on Linux): Landlock ruleset and rules, `ChildPlan::run` with the call sequence of plan.md, step codes, the probe child, `close_range` with fallback, kill helpers and `/proc` children; extend `tests/unsafe_confined.rs` to both `sys` modules."
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-009] Write `tests/spawn_linux.rs` with the harness (`child_entry`, `PROCAGE_EXPECT_TIER` check) and tests `fs_read_write_outside` (US1-1), grant per spawn, `network_none` (US1-2, host loopback listener), `hard_deny_syscalls` (US1-3), `probe_reports_tier` (US1-4). On T2 every write rule covers `trust-handoff` (unsupported), so T2 runs of write scenarios waive that class by name and assert the waiver is listed."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/linux/seccomp.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The seccomp filter MUST kill a syscall made through a foreign architecture or the x32 ABI.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the built filter",
+          "then": "the verdict is kill",
+          "when": "it is evaluated for a foreign audit architecture and for an x32 syscall number"
+        }
+      ],
+      "mitigations": [
+        "mitigation.seccomp-hard-deny"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] Write `src/linux/seccomp.rs`: syscall table per architecture, BPF builder (arch check, x32 kill, one block per rule, EPERM/ENOSYS), and unit tests with a classic-BPF interpreter covering every condition, a foreign architecture and an x32 number."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/linux/seccomp.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Preparation MUST fail with a named capability gap for every construct the tier cannot enforce unless that degradation is allowed by name, and MUST fail with Unsupported on a host without the required Landlock ABI or when a tier the host lacks is requested.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T2 and Protect inside a write rule",
+          "then": "it fails with a gap naming fs-protect, and with that degradation allowed the plan lists it",
+          "when": "the cage is prepared"
+        },
+        {
+          "given": "a host without user namespaces",
+          "then": "it fails with Unsupported",
+          "when": "T1 is requested"
+        }
+      ],
+      "mitigations": [
+        "mitigation.tier-gaps"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-004] [SR-006] [SR-007] [SR-009] [SR-012] Rework `crates/procage-policy/src/lower/linux.rs`: coverage-aware data classes (exact / T1 approximated / T2 unsupported, `classes` filled when in force), `Namespaces.pid` false, gaps for loopback and proxy networks, unix sockets below ABI 9, hide on T2, glob allow rules, and signals below ABI 6; update `crates/procage-policy/src/lowering.md` and the fixtures in `crates/procage-policy/tests/{lowering_table,gaps,precedence}.rs`."
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US2] [SR-004] Write `src/linux/probe.rs`: `probe()` cached per process; tier T1 / T2 / none with ABI, errata and the user-namespace errno."
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-004] [SR-005] Write `src/linux/mod.rs` and `src/linux/spawn.rs`: `Cage` (tier choice, lowering, seccomp build, `Unsupported` cases), `CageOptions`, `Grants`, `SpawnError`, `Step`, `Unsupported`, `GrantError`, the per-spawn ruleset with grant fds, the T1 mount list with locked flags, id maps, error decoding; `src/linux/child.rs`; `pub mod linux` in `src/lib.rs`."
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-004] [SR-005] Add tests: `t2_protect_is_a_gap` and the allowed-degradation case, requesting T1 on T2 is `Unsupported`, a missing policy path fails before any child runs, a forced step failure is reported with the step and the target did not run (US2-1..4)."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/probe.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "A failing step in the child MUST be reported as Apply with the step and errno, and the target MUST NOT run; the child MUST verify seccomp filter mode and Landlock before exec.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a forced failure in a child step",
+          "then": "the error names the step and the target did not run",
+          "when": "spawning"
+        }
+      ],
+      "mitigations": [
+        "mitigation.verify-and-step-errors"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] [SR-008] [SR-009] [SR-010] Write `src/linux/sys.rs` (the only unsafe module on Linux): Landlock ruleset and rules, `ChildPlan::run` with the call sequence of plan.md, step codes, the probe child, `close_range` with fallback, kill helpers and `/proc` children; extend `tests/unsafe_confined.rs` to both `sys` modules."
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-004] [SR-005] Write `src/linux/mod.rs` and `src/linux/spawn.rs`: `Cage` (tier choice, lowering, seccomp build, `Unsupported` cases), `CageOptions`, `Grants`, `SpawnError`, `Step`, `Unsupported`, `GrantError`, the per-spawn ruleset with grant fds, the T1 mount list with locked flags, id maps, error decoding; `src/linux/child.rs`; `pub mod linux` in `src/lib.rs`."
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-004] [SR-005] Add tests: `t2_protect_is_a_gap` and the allowed-degradation case, requesting T1 on T2 is `Unsupported`, a missing policy path fails before any child runs, a forced step failure is reported with the step and the target did not run (US2-1..4)."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/linux/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "On Linux the secret paths in every home MUST stay unreadable to the child on T1 even under a covering read rule, and on T2 a covering rule or grant MUST be a gap or a refused grant, unless the secrets class is waived by name.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T1 and read on a home with .ssh and .aws",
+          "then": "both are refused or empty and listing the home succeeds",
+          "when": "the child lists them"
+        },
+        {
+          "given": "T2 and a grant bound to a home that holds .ssh",
+          "then": "the grant is refused naming secrets",
+          "when": "spawning"
+        }
+      ],
+      "mitigations": [
+        "mitigation.linux-class-masks"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-006] [SR-007] Add the frozen Linux lists and homes to `crates/procage-policy/src/presets.rs` per FR-013 (`SECRETS_HOME_LINUX`, `PERSISTENCE_HOME_LINUX`, `PERSISTENCE_SYSTEM_LINUX`, `LINUX_HOMES`) and `linux_class_paths(class) -> Option<ClassPaths>`; pin them in `crates/procage-policy/tests/presets.rs`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-006] [SR-007] Add `Mount::Pin`, `ClassPaths` and `LinuxPlan.classes` to `crates/procage-policy/src/linux.rs`."
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-004] [SR-006] [SR-007] [SR-009] [SR-012] Rework `crates/procage-policy/src/lower/linux.rs`: coverage-aware data classes (exact / T1 approximated / T2 unsupported, `classes` filled when in force), `Namespaces.pid` false, gaps for loopback and proxy networks, unix sockets below ABI 9, hide on T2, glob allow rules, and signals below ABI 6; update `crates/procage-policy/src/lowering.md` and the fixtures in `crates/procage-policy/tests/{lowering_table,gaps,precedence}.rs`."
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] [SR-011] Write `src/linux/classes.rs`: homes (`/root`, `/home/*`, the caller's `$HOME`), the bounded walk of writable roots (no symlink following, `SpawnError::Walk` over the bound), the mount list for each class (mask secrets, read-only handoff and persistence, pin `.git`), and the T2 grant overlap check (`GrantError::CoversClass`)."
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] [SR-011] Add tests: `t1_secrets_masked`, `t1_trust_handoff` (hooks, `.vscode`, `.bashrc` refused; `.git` rename refused; objects and `src` writable), the waiver case, `t2_workspace_is_a_gap` and its waiver, `t2_grant_covering_secrets_refused`, `walk_bound_fails`, `walk_skips_symlinks`."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/classes.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "On T1 the child MUST NOT write existing trust-handoff or persistence paths under writable rules or in homes, nor rename or remove an existing .git, while .git/objects and ordinary files stay writable; on T2 a covering write rule MUST be a gap.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T1 and write on W with .git/hooks, .vscode and .bashrc",
+          "then": "each is refused and W/.git/objects/x and W/src/x succeed",
+          "when": "the child writes each and renames .git"
+        },
+        {
+          "given": "T2 and write on W",
+          "then": "it fails with a gap naming hd-trust-handoff, and with the class waived the plan lists the waiver",
+          "when": "the cage is prepared"
+        },
+        {
+          "given": "trust-handoff waived on T1",
+          "then": "it succeeds",
+          "when": "the child writes W/.git/hooks/x"
+        }
+      ],
+      "mitigations": [
+        "mitigation.linux-class-masks"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-006] [SR-007] Add the frozen Linux lists and homes to `crates/procage-policy/src/presets.rs` per FR-013 (`SECRETS_HOME_LINUX`, `PERSISTENCE_HOME_LINUX`, `PERSISTENCE_SYSTEM_LINUX`, `LINUX_HOMES`) and `linux_class_paths(class) -> Option<ClassPaths>`; pin them in `crates/procage-policy/tests/presets.rs`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-006] [SR-007] Add `Mount::Pin`, `ClassPaths` and `LinuxPlan.classes` to `crates/procage-policy/src/linux.rs`."
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-004] [SR-006] [SR-007] [SR-009] [SR-012] Rework `crates/procage-policy/src/lower/linux.rs`: coverage-aware data classes (exact / T1 approximated / T2 unsupported, `classes` filled when in force), `Namespaces.pid` false, gaps for loopback and proxy networks, unix sockets below ABI 9, hide on T2, glob allow rules, and signals below ABI 6; update `crates/procage-policy/src/lowering.md` and the fixtures in `crates/procage-policy/tests/{lowering_table,gaps,precedence}.rs`."
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] [SR-011] Write `src/linux/classes.rs`: homes (`/root`, `/home/*`, the caller's `$HOME`), the bounded walk of writable roots (no symlink following, `SpawnError::Walk` over the bound), the mount list for each class (mask secrets, read-only handoff and persistence, pin `.git`), and the T2 grant overlap check (`GrantError::CoversClass`)."
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] [SR-011] Add tests: `t1_secrets_masked`, `t1_trust_handoff` (hooks, `.vscode`, `.bashrc` refused; `.git` rename refused; objects and `src` writable), the waiver case, `t2_workspace_is_a_gap` and its waiver, `t2_grant_covering_secrets_refused`, `walk_bound_fails`, `walk_skips_symlinks`."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/classes.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "On T1 the child MUST hold no capabilities and MUST NOT undo a mount (umount, remount, new namespace).",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T1 with a protected subtree",
+          "then": "the sets are empty and both calls fail and the subtree stays read-only (EROFS)",
+          "when": "the child reads its capability sets and tries umount and a rw remount"
+        }
+      ],
+      "mitigations": [
+        "mitigation.no-caps-locked-mounts"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] [SR-008] [SR-009] [SR-010] Write `src/linux/sys.rs` (the only unsafe module on Linux): Landlock ruleset and rules, `ChildPlan::run` with the call sequence of plan.md, step codes, the probe child, `close_range` with fallback, kill helpers and `/proc` children; extend `tests/unsafe_confined.rs` to both `sys` modules."
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US5] [SR-008] [SR-009] Add T1 tests: protect gives `EROFS`; hide is empty and unreadable; capability sets empty; `umount` and a rw remount refused."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "With Network::None the child MUST NOT reach any socket endpoint on T1 or T2.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "Network::None and a listener on the host loopback",
+          "then": "it fails on both tiers",
+          "when": "the child connects"
+        }
+      ],
+      "mitigations": [
+        "mitigation.netns-or-socket-deny"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-004] [SR-006] [SR-007] [SR-009] [SR-012] Rework `crates/procage-policy/src/lower/linux.rs`: coverage-aware data classes (exact / T1 approximated / T2 unsupported, `classes` filled when in force), `Namespaces.pid` false, gaps for loopback and proxy networks, unix sockets below ABI 9, hide on T2, glob allow rules, and signals below ABI 6; update `crates/procage-policy/src/lowering.md` and the fixtures in `crates/procage-policy/tests/{lowering_table,gaps,precedence}.rs`."
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] [SR-008] [SR-009] [SR-010] Write `src/linux/sys.rs` (the only unsafe module on Linux): Landlock ruleset and rules, `ChildPlan::run` with the call sequence of plan.md, step codes, the probe child, `close_range` with fallback, kill helpers and `/proc` children; extend `tests/unsafe_confined.rs` to both `sys` modules."
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-009] Write `tests/spawn_linux.rs` with the harness (`child_entry`, `PROCAGE_EXPECT_TIER` check) and tests `fs_read_write_outside` (US1-1), grant per spawn, `network_none` (US1-2, host loopback listener), `hard_deny_syscalls` (US1-3), `probe_reports_tier` (US1-4). On T2 every write rule covers `trust-handoff` (unsupported), so T2 runs of write scenarios waive that class by name and assert the waiver is listed."
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US5] [SR-008] [SR-009] Add T1 tests: protect gives `EROFS`; hide is empty and unreadable; capability sets empty; `umount` and a rw remount refused."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/sys/macos.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "The Linux child MUST get macOS hygiene parity, with only standard and handed-over descriptors, the denylisted environment dropped, its own session, and the tree killed on drop.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a leaked descriptor and passthrough env with GITHUB_TOKEN",
+          "then": "neither reaches the child and a handed-over descriptor does",
+          "when": "spawning"
+        },
+        {
+          "given": "a child with a grandchild",
+          "then": "both are gone",
+          "when": "the handle drops"
+        }
+      ],
+      "mitigations": [
+        "mitigation.hygiene-parity"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] [SR-008] [SR-009] [SR-010] Write `src/linux/sys.rs` (the only unsafe module on Linux): Landlock ruleset and rules, `ChildPlan::run` with the call sequence of plan.md, step codes, the probe child, `close_range` with fallback, kill helpers and `/proc` children; extend `tests/unsafe_confined.rs` to both `sys` modules."
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[US4] [SR-010] Add tests: base V1 runs `sh -c`, `cat`, `ls` and refuses the home; leaked and handed-over fds; drop kills a grandchild; passthrough env drops; `tmpdir`; session; rlimits; 100 spawns from a multithreaded parent (constitution IV)."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "src/unix.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-011",
+      "statement": "The spawn-time walk MUST NOT follow symbolic links and MUST fail the spawn when a tree exceeds the bound.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a writable tree with a symlink to a directory outside it",
+          "then": "the walk does not enter the target",
+          "when": "spawning"
+        },
+        {
+          "given": "a bound lower than the tree size",
+          "then": "the spawn fails naming the tree",
+          "when": "spawning"
+        }
+      ],
+      "mitigations": [
+        "mitigation.bounded-walk"
+      ],
+      "tasks": [
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] [SR-011] Write `src/linux/classes.rs`: homes (`/root`, `/home/*`, the caller's `$HOME`), the bounded walk of writable roots (no symlink following, `SpawnError::Walk` over the bound), the mount list for each class (mask secrets, read-only handoff and persistence, pin `.git`), and the T2 grant overlap check (`GrantError::CoversClass`)."
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US3] [SR-006] [SR-007] [SR-011] Add tests: `t1_secrets_masked`, `t1_trust_handoff` (hooks, `.vscode`, `.bashrc` refused; `.git` rename refused; objects and `src` writable), the waiver case, `t2_workspace_is_a_gap` and its waiver, `t2_grant_covering_secrets_refused`, `walk_bound_fails`, `walk_skips_symlinks`."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/linux/classes.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-012",
+      "statement": "The lowering table MUST state each Linux outcome as the backend applies it, including the gaps this feature leaves, and the docs MUST keep the escape statuses unchanged.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the lowering table fixture test",
+          "then": "every Linux cell matches the lowering and names the gaps",
+          "when": "it runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.honest-linux-docs"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-004] [SR-006] [SR-007] [SR-009] [SR-012] Rework `crates/procage-policy/src/lower/linux.rs`: coverage-aware data classes (exact / T1 approximated / T2 unsupported, `classes` filled when in force), `Namespaces.pid` false, gaps for loopback and proxy networks, unix sockets below ABI 9, hide on T2, glob allow rules, and signals below ABI 6; update `crates/procage-policy/src/lowering.md` and the fixtures in `crates/procage-policy/tests/{lowering_table,gaps,precedence}.rs`."
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[SR-012] Docs: `src/linux/mod.rs` module docs (observed behaviour, not yet done), `src/lib.rs` status, README, THREAT_MODEL release status (escape statuses unchanged), the `presets` module Linux note."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lowering.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/lowering_table.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.foreign-abi-bypass",
+    "threat.fs-outside-policy",
+    "threat.hygiene-leak",
+    "threat.kernel-surface-syscall",
+    "threat.linux-overclaim",
+    "threat.linux-secret-read",
+    "threat.linux-trust-handoff",
+    "threat.mount-undo",
+    "threat.network-exfil",
+    "threat.silent-downgrade",
+    "threat.step-failure-runs-target",
+    "threat.walk-shaped-by-earlier-run"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-009",
+      "summary": "Requirement 'SR-009' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-010",
+      "summary": "Requirement 'SR-010' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-011",
+      "summary": "Requirement 'SR-011' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-012",
+      "summary": "Requirement 'SR-012' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 12,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 12
+    },
+    "threats_by_severity": {
+      "high": 9,
+      "critical": 3
+    },
+    "mitigations": 10,
+    "requirements": 12,
+    "requirements_with_tasks": 12,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 12
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

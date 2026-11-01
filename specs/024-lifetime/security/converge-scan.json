@@ -1,0 +1,584 @@
+{
+  "feature": "024-lifetime",
+  "commit": "99c653d",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "Under the default lifetime on Linux, setsid and setpgid MUST fail with EPERM in every caged process on tiers T1 and T2, and dropping the handle MUST kill a double-forked descendant.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the default lifetime on T1 and on T2",
+          "then": "both fail with EPERM",
+          "when": "a caged process calls setsid and setpgid"
+        },
+        {
+          "given": "a double-forked descendant on T1 and on T2",
+          "then": "the descendant is dead within two seconds",
+          "when": "the handle is dropped"
+        }
+      ],
+      "mitigations": [
+        "mitigation.linux-group-lock"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-001] [SR-007] Linux lowering in crates/procage-policy/src/lower/linux.rs: with `fork` and `Lifetime::Run` push `deny(Setsid)`, `deny(Setpgid)` and ledger `LifetimeRun` Exact; with `Tree` ledger `LifetimeTree` Exact; new constructs `lifetime-run`, `lifetime-tree` in crates/procage-policy/src/lower/mod.rs; tests for both values and for `fork: false` (no lock, no entry)"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] Linux: update src/linux/child.rs docs (under `Run` the group kill reaches every descendant, also after exit); add `testing::try_session()` in src/linux/mod.rs returning the errno of `setsid()` and `setpgid(0, 0)`"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] Escape canaries in tests/escape_macos.rs and tests/escape_linux.rs: un-ignore `r23_a_double_forked_descendant_dies_with_the_run` (Linux: the intermediate's `setsid` fails, the sleeper stays in the group); add `r23_descendants_of_an_exited_child_die_with_the_run` (child starts a sleeper, exits, is waited for, then dropped)"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US3] [SR-001] Linux canaries in tests/escape_linux.rs: `r23_sessions_are_locked` (default: setsid and setpgid EPERM on T1, T2) and `r23_tree_lifetime_allows_sessions` (`Tree`: both succeed); macOS canary in tests/escape_macos.rs `r23_tree_lifetime_still_reaps` (US3/AC2: with `Tree` a double-forked descendant dies on drop)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/seccomp.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "On macOS, ending a forking run MUST kill every process whose sandbox carries the run's marker, including a double-forked descendant in its own session reparented to launchd.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a double-forked descendant in its own session on macOS",
+          "then": "the descendant is dead within two seconds",
+          "when": "the handle is dropped"
+        }
+      ],
+      "mitigations": [
+        "mitigation.macos-marker-scan"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-006] Add to src/macos/sys.rs: `all_pids()` (`proc_listallpids`, growing buffer), `same_user_live(pid)` (`proc_pidinfo` SHORTBSDINFO: uid == getuid, status != SZOMB), `Libsandbox::allows_name(pid, op, name) -> Result<bool, i32>` (sandbox_check with filter type 2; \u22121 \u2192 Err); and in src/macos/lifetime.rs `scan(run)` and a generic `reap(scan, kill, rounds)` returning `Err(survivors)`; unit test of `reap` with an always-live scanner"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] [SR-006] Kill path in src/macos/child.rs: after walk + `killpg`, `reap` by marker (64 rounds, 1 ms pause), then wait; survivors \u2192 `io::Error::other(\"processes of the run survived: [..]\")` keeping the run; clean \u2192 free slot, `run = None`; `detach` retires; update the type docs (run ends at drop/kill_all; exited child does not end it)"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] Escape canaries in tests/escape_macos.rs and tests/escape_linux.rs: un-ignore `r23_a_double_forked_descendant_dies_with_the_run` (Linux: the intermediate's `setsid` fails, the sleeper stays in the group); add `r23_descendants_of_an_exited_child_die_with_the_run` (child starts a sleeper, exits, is waited for, then dropped)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/lifetime.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "Descendants of a child that exited and was reaped before the run ended MUST be killed when the handle is dropped, on macOS and on Linux T1 and T2.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a child that started a background descendant and exited",
+          "then": "the descendant is dead within two seconds",
+          "when": "the caller waits for it and drops the handle"
+        }
+      ],
+      "mitigations": [
+        "mitigation.linux-group-lock",
+        "mitigation.macos-marker-scan"
+      ],
+      "tasks": [
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] [SR-006] Kill path in src/macos/child.rs: after walk + `killpg`, `reap` by marker (64 rounds, 1 ms pause), then wait; survivors \u2192 `io::Error::other(\"processes of the run survived: [..]\")` keeping the run; clean \u2192 free slot, `run = None`; `detach` retires; update the type docs (run ends at drop/kill_all; exited child does not end it)"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] Linux: update src/linux/child.rs docs (under `Run` the group kill reaches every descendant, also after exit); add `testing::try_session()` in src/linux/mod.rs returning the errno of `setsid()` and `setpgid(0, 0)`"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/seccomp.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/lifetime.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "The macOS marker MUST be part of the compiled profile, MUST grant no access to an existing resource, and MUST NOT match the caller, unsandboxed processes, or a sandbox that allows all lookups.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a running cage and an allow-all sandbox and the caller",
+          "then": "only the cage's processes match",
+          "when": "each is checked for the run's marker"
+        },
+        {
+          "given": "the lowered profile",
+          "then": "they use a literal name and no extension filter",
+          "when": "its marker rules are inspected"
+        }
+      ],
+      "mitigations": [
+        "mitigation.immutable-marker"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-004] [SR-007] macOS lowering in crates/procage-policy/src/lower/macos.rs: with `fork`, append the marker block after every other block (`(deny mach-lookup (global-name-prefix (param \"procage-run-prefix\")))`, `(allow mach-lookup (global-name (param \"procage-run-marker\")))`), public consts `RUN_PREFIX_PARAM`, `RUN_MARKER_PARAM`, a plan flag `run_marker: bool`, ledger entries; tests: block is last, literal params, no `extension` filter, absent without fork"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-004] [SR-005] Create src/macos/lifetime.rs: process prefix `org.procage.run.<pid hex>.<RandomState hex>.`, slot pool (`Mutex<BTreeSet<u32>>` in use + retired), `Run { slot }` with `marker()`, `probe()`, `free()`, `retire()`; params for a slot; unit tests (lowest free slot, retired never reused, names match `[0-9a-z.]`)"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-005] [SR-004] Wire spawning in src/macos/mod.rs: `Cage` keeps slot-0 bytecode (compiled at `with_options` with slot-0 params when `run_marker`); `spawn_with_fds` takes a slot, binds the params, gets bytecode from the cache (compile on miss, before fork), probes `allows_name` once (VI), frees the slot on any spawn error; `Child::new` gets the `Run`"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[US1] [SR-004] Marker tests in tests/spawn_macos.rs: a run's child matches its marker; the caller, an `(allow default)` `sandbox-exec` process and a second run do not; spawning one forking policy twice compiles once (via `testing` hooks in src/macos/mod.rs)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/lifetime.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "Two live runs of one caller MUST NOT share a marker; dropping one run's handle MUST leave the other run's processes alive; a marker MUST be reused only after a kill that found no survivor, and never after detach.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "two concurrent runs from the same cage with descendants in their own sessions",
+          "then": "the other run's descendants are still alive",
+          "when": "one handle is dropped"
+        },
+        {
+          "given": "a detached child",
+          "then": "it gets a different marker",
+          "when": "another child is spawned"
+        }
+      ],
+      "mitigations": [
+        "mitigation.slot-discipline"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-004] [SR-005] Create src/macos/lifetime.rs: process prefix `org.procage.run.<pid hex>.<RandomState hex>.`, slot pool (`Mutex<BTreeSet<u32>>` in use + retired), `Run { slot }` with `marker()`, `probe()`, `free()`, `retire()`; params for a slot; unit tests (lowest free slot, retired never reused, names match `[0-9a-z.]`)"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-005] [SR-004] Wire spawning in src/macos/mod.rs: `Cage` keeps slot-0 bytecode (compiled at `with_options` with slot-0 params when `run_marker`); `spawn_with_fds` takes a slot, binds the params, gets bytecode from the cache (compile on miss, before fork), probes `allows_name` once (VI), frees the slot on any spawn error; `Child::new` gets the `Run`"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US2] [SR-005] Canaries in tests/escape_macos.rs: `r23_concurrent_runs_are_separate` (two runs from one cage, drop one, the other's sleeper lives) and `r23_a_detached_run_keeps_its_marker` (detach A, run and drop B, A's sleeper lives; then kill it)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/lifetime.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "kill_all MUST NOT return Ok while a process of the run is known to live; after the round limit it MUST return an error naming the survivors.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a search that keeps finding a live process of the run",
+          "then": "kill_all returns an error with its pid",
+          "when": "the round limit is reached"
+        }
+      ],
+      "mitigations": [
+        "mitigation.bounded-rounds"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-006] Add to src/macos/sys.rs: `all_pids()` (`proc_listallpids`, growing buffer), `same_user_live(pid)` (`proc_pidinfo` SHORTBSDINFO: uid == getuid, status != SZOMB), `Libsandbox::allows_name(pid, op, name) -> Result<bool, i32>` (sandbox_check with filter type 2; \u22121 \u2192 Err); and in src/macos/lifetime.rs `scan(run)` and a generic `reap(scan, kill, rounds)` returning `Err(survivors)`; unit test of `reap` with an always-live scanner"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-003] [SR-006] Kill path in src/macos/child.rs: after walk + `killpg`, `reap` by marker (64 rounds, 1 ms pause), then wait; survivors \u2192 `io::Error::other(\"processes of the run survived: [..]\")` keeping the run; clean \u2192 free slot, `run = None`; `detach` retires; update the type docs (run ends at drop/kill_all; exited child does not end it)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/lifetime.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "The lifetime setting MUST appear in the lowering ledger on both systems and in the lowering table; the Linux lock MUST be pinned per architecture; the frozen presets MUST carry the default lifetime.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a policy with each lifetime value",
+          "then": "the ledger reports the setting and the Linux seccomp rules contain the lock only for the default",
+          "when": "it is lowered for Linux and macOS"
+        },
+        {
+          "given": "every frozen preset",
+          "then": "its lifetime is the default",
+          "when": "it is built"
+        }
+      ],
+      "mitigations": [
+        "mitigation.ledger-and-pins"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-007] Add `Lifetime { Run (default), Tree }` (serde kebab-case `\"run\"`/`\"tree\"`) and `Process.lifetime` in crates/procage-policy/src/policy.rs; re-export where `Signals` is exported; serde round-trip test incl. a document without `lifetime` parsing as `Run`"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[P] [SR-007] Add `Syscall::Setsid` (\"setsid\") and `Syscall::Setpgid` (\"setpgid\") in crates/procage-policy/src/linux.rs and their x86_64/aarch64 numbers in src/linux/seccomp.rs `native_number`; extend the per-arch tests"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-001] [SR-007] Linux lowering in crates/procage-policy/src/lower/linux.rs: with `fork` and `Lifetime::Run` push `deny(Setsid)`, `deny(Setpgid)` and ledger `LifetimeRun` Exact; with `Tree` ledger `LifetimeTree` Exact; new constructs `lifetime-run`, `lifetime-tree` in crates/procage-policy/src/lower/mod.rs; tests for both values and for `fork: false` (no lock, no entry)"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-004] [SR-007] macOS lowering in crates/procage-policy/src/lower/macos.rs: with `fork`, append the marker block after every other block (`(deny mach-lookup (global-name-prefix (param \"procage-run-prefix\")))`, `(allow mach-lookup (global-name (param \"procage-run-marker\")))`), public consts `RUN_PREFIX_PARAM`, `RUN_MARKER_PARAM`, a plan flag `run_marker: bool`, ledger entries; tests: block is last, literal params, no `extension` filter, absent without fork"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[P] [SR-007] Document the setting in crates/procage-policy/src/lowering.md (rows for both systems) and in crates/procage-policy/src/presets.rs (presets carry `Lifetime::Run`, a tightening); test that every preset has `Lifetime::Run`"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lowering.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/seccomp.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "R-23 MUST be marked mitigated only with the double-fork and exited-child canaries as evidence, passing on macOS and Linux T1 and T2, and the catalog gate MUST pass.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the catalog",
+          "then": "R-23 is mitigated with existing canary tests as evidence",
+          "when": "the gate runs"
+        },
+        {
+          "given": "the escape suite on macOS, T1 and T2",
+          "then": "the R-23 canaries pass and none is ignored",
+          "when": "it runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.canary-evidence"
+      ],
+      "tasks": [
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-008] Escape canaries in tests/escape_macos.rs and tests/escape_linux.rs: un-ignore `r23_a_double_forked_descendant_dies_with_the_run` (Linux: the intermediate's `setsid` fails, the sleeper stays in the group); add `r23_descendants_of_an_exited_child_die_with_the_run` (child starts a sleeper, exits, is waited for, then dropped)"
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[SR-008] Mark R-23 `mitigated` in THREAT_MODEL.md with the canaries as evidence; drop it from \"does not yet\" and \"Open variants\", describe the Linux `Tree` residual and the macOS pid-reuse window; update tests/threat_model.rs (R-23 status); update README.md and src/lib.rs lifetime claims"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/escape_macos.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.cross-run-kill",
+    "threat.daemon-outlives-run",
+    "threat.kill-false-success",
+    "threat.marker-evasion",
+    "threat.orphan-after-exit",
+    "threat.overclaimed-lifetime",
+    "threat.silent-lifetime-weakening"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 7,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 7
+    },
+    "threats_by_severity": {
+      "high": 4,
+      "critical": 2,
+      "medium": 1
+    },
+    "mitigations": 7,
+    "requirements": 8,
+    "requirements_with_tasks": 8,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 8
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

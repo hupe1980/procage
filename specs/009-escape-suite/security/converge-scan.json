@@ -1,0 +1,498 @@
+{
+  "feature": "009-escape-suite",
+  "commit": "b295ea6",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "Every active canary MUST assert the specific refusal (errno or typed error) and MUST include a positive control showing the same operation succeeds where the policy allows it.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a canary for a file-based class",
+          "then": "the control succeeds and the attempt fails with the expected errno",
+          "when": "the child attempts the escape and the control"
+        },
+        {
+          "given": "a canary whose attempt target does not exist",
+          "then": "it fails rather than passes",
+          "when": "it runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.positive-control"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-005] [SR-006] Create tests/escape_macos.rs: module docs (what a canary is, positive control, `open:` ignores, fails on `AlreadySandboxed`), harness (`scratch`, `base_v1`, `child_policy`, `child_command`, `finish`, `in_child`, `child_entry` with ops), and canaries for R-02, R-03, R-04, R-05, R-06, R-07, R-09, R-10, R-11, R-12 per research.md R5, each with its control"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-006] Add macOS canaries for R-21, R-22, R-23 (kill, persistence; double fork open), R-24, R-25 and open canaries R-08, R-26 in tests/escape_macos.rs; open canaries kill every pid they learn before asserting"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-005] [SR-006] Create tests/escape_linux.rs: module docs, harness (tiers, `PROCAGE_EXPECT_TIER` check via the probe, `child_entry` with ops), and canaries for R-02, R-04, R-07, R-09, R-10, R-21, R-22, R-24, R-30 per research.md R5 on every tier the host offers (typed refusal on T2 where the construct is a gap)"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-006] Add Linux canaries for R-23 (kill, persistence via fake home; double fork open), R-25, R-28, R-29 (waived-class controls printing `informative=`), and open canaries R-08, R-26 in tests/escape_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "A syscall canary MUST report whether its lane was informative, and a kernel-surface class MUST NOT be marked mitigated from uninformative lanes alone.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the Docker default seccomp lane",
+          "then": "it passes and prints which attempts were uninformative",
+          "when": "the R-28 canary runs"
+        },
+        {
+          "given": "the T1 lane",
+          "then": "the uncaged controls succeed and the caged attempts fail with EPERM",
+          "when": "the R-28 and R-29 canaries run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.positive-control",
+        "mitigation.informative-report"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-005] [SR-006] Create tests/escape_linux.rs: module docs, harness (tiers, `PROCAGE_EXPECT_TIER` check via the probe, `child_entry` with ops), and canaries for R-02, R-04, R-07, R-09, R-10, R-21, R-22, R-24, R-30 per research.md R5 on every tier the host offers (typed refusal on T2 where the construct is a gap)"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-006] Add Linux canaries for R-23 (kill, persistence via fake home; double fork open), R-25, R-28, R-29 (waived-class controls printing `informative=`), and open canaries R-08, R-26 in tests/escape_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "quickstart.md",
+            "exists": false
+          },
+          {
+            "path": "tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The gate MUST reject a mitigated or detected class without a non-ignored canary on every listed platform, evidence outside the platform escape-suite files, ignored canaries as evidence, and a mitigated class that has an open canary.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a class marked mitigated with a macOS canary only but listing Linux",
+          "then": "exactly the per-platform evidence rule fires",
+          "when": "the gate runs"
+        },
+        {
+          "given": "evidence naming an ignored canary",
+          "then": "the ignored-evidence rule fires",
+          "when": "the gate runs"
+        },
+        {
+          "given": "an open canary for a mitigated class",
+          "then": "the open-canary rule fires",
+          "when": "the gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.gate-rules"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-003] [SR-004] Extend tests/threat_model.rs per contracts/catalog.md: status `partial` (allowed for mitigate and detect), evidence restricted to `tests/escape_macos.rs` / `tests/escape_linux.rs` with the row-id prefix, new rules `evidence-ignored`, `evidence-platform`, `canary-missing`, `open-canary`, `open-variant-note` (`### Open variants` entries `- **R-NN** \u2026`); `evidence-required` covers partial; parse `#[ignore` on the attribute lines above each `fn`"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-003] [SR-004] Add defect-injection tests in tests/threat_model.rs, one per new rule (mitigated with one platform's evidence only, ignored evidence, missing canary, open canary on a mitigated row, partial without a note, evidence in another test file), each asserting exactly that rule fires; update the existing `valid_evidence_is_accepted` and `evidence_in_library_source_is_caught` fixtures to the new location rule"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-004] Update THREAT_MODEL.md: the status field text (adds `partial`), each row's status and evidence from T009, a `### Open variants` subsection with an entry per partial (and open planned) class, the \"In this version none has\" sentence, and the release-status list of open variants"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Every class MUST have a canary per listed platform, and a partial class MUST have an entry under Open variants; the release status MUST name every open class.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a class with no canary for one listed platform",
+          "then": "the coverage rule fires",
+          "when": "the gate runs"
+        },
+        {
+          "given": "a partial class without a note",
+          "then": "the open-variant rule fires",
+          "when": "the gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.gate-rules"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-003] [SR-004] Extend tests/threat_model.rs per contracts/catalog.md: status `partial` (allowed for mitigate and detect), evidence restricted to `tests/escape_macos.rs` / `tests/escape_linux.rs` with the row-id prefix, new rules `evidence-ignored`, `evidence-platform`, `canary-missing`, `open-canary`, `open-variant-note` (`### Open variants` entries `- **R-NN** \u2026`); `evidence-required` covers partial; parse `#[ignore` on the attribute lines above each `fn`"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-003] [SR-004] Add defect-injection tests in tests/threat_model.rs, one per new rule (mitigated with one platform's evidence only, ignored evidence, missing canary, open canary on a mitigated row, partial without a note, evidence in another test file), each asserting exactly that rule fires; update the existing `valid_evidence_is_accepted` and `evidence_in_library_source_is_caught` fixtures to the new location rule"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-003] [SR-004] Update THREAT_MODEL.md: the status field text (adds `partial`), each row's status and evidence from T009, a `### Open variants` subsection with an entry per partial (and open planned) class, the \"In this version none has\" sentence, and the release-status list of open variants"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "The suite MUST fail, never skip, when the parent is already sandboxed or the host tier differs from the expected tier, and every CI lane MUST run it with its expected tier.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a T2 container with PROCAGE_EXPECT_TIER=T1",
+          "then": "it fails with a tier mismatch",
+          "when": "the Linux suite runs"
+        },
+        {
+          "given": "the CI workflow",
+          "then": "every macOS and Linux lane runs the suite and Linux lanes set the expected tier",
+          "when": "it is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.no-skip"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-005] [SR-006] Create tests/escape_macos.rs: module docs (what a canary is, positive control, `open:` ignores, fails on `AlreadySandboxed`), harness (`scratch`, `base_v1`, `child_policy`, `child_command`, `finish`, `in_child`, `child_entry` with ops), and canaries for R-02, R-03, R-04, R-05, R-06, R-07, R-09, R-10, R-11, R-12 per research.md R5, each with its control"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-005] [SR-006] Create tests/escape_linux.rs: module docs, harness (tiers, `PROCAGE_EXPECT_TIER` check via the probe, `child_entry` with ops), and canaries for R-02, R-04, R-07, R-09, R-10, R-21, R-22, R-24, R-30 per research.md R5 on every tier the host offers (typed refusal on T2 where the construct is a gap)"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[P] [US3] [SR-005] Update .github/workflows/ci.yml: macOS lanes run `--test escape_macos`; Linux lanes (Ubuntu shipped T2, Ubuntu lifted T1, Debian container T2) run `--test spawn_linux --test escape_linux` with `PROCAGE_EXPECT_TIER`; the preview lane runs them without an expected tier"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[P] [US3] [SR-005] Update justfile: an `escape` recipe for macOS; `linux` and `linux-t1` run `escape_linux` too; keep `ci-all` complete"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          },
+          {
+            "path": "tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Canaries MUST NOT write outside scratch directories, write the real pasteboard, launch applications, or leave processes running.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a full suite run including the open canaries",
+          "then": "no canary process is alive and no file outside scratch directories changed",
+          "when": "it ends"
+        }
+      ],
+      "mitigations": [
+        "mitigation.scratch-only"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-005] [SR-006] Create tests/escape_macos.rs: module docs (what a canary is, positive control, `open:` ignores, fails on `AlreadySandboxed`), harness (`scratch`, `base_v1`, `child_policy`, `child_command`, `finish`, `in_child`, `child_entry` with ops), and canaries for R-02, R-03, R-04, R-05, R-06, R-07, R-09, R-10, R-11, R-12 per research.md R5, each with its control"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-006] Add macOS canaries for R-21, R-22, R-23 (kill, persistence; double fork open), R-24, R-25 and open canaries R-08, R-26 in tests/escape_macos.rs; open canaries kill every pid they learn before asserting"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-005] [SR-006] Create tests/escape_linux.rs: module docs, harness (tiers, `PROCAGE_EXPECT_TIER` check via the probe, `child_entry` with ops), and canaries for R-02, R-04, R-07, R-09, R-10, R-21, R-22, R-24, R-30 per research.md R5 on every tier the host offers (typed refusal on T2 where the construct is a gap)"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-006] Add Linux canaries for R-23 (kill, persistence via fake home; double fork open), R-25, R-28, R-29 (waived-class controls printing `informative=`), and open canaries R-08, R-26 in tests/escape_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "For each system at least one covered mitigation MUST be removed in a defect-injection run and a canary MUST fail; at least five defects in total.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a mitigation removed from the code",
+          "then": "the canary for its class fails",
+          "when": "the suite runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.defect-injection"
+      ],
+      "tasks": [
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US1] [SR-007] Defect injection per quickstart.md step 5 (a\u2013e), one at a time, reverted after; record which canary failed in specs/009-escape-suite/quickstart.md"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "src/macos/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.canary-side-effect",
+    "threat.false-pass",
+    "threat.hidden-open-variant",
+    "threat.mitigation-regression",
+    "threat.overclaimed-status",
+    "threat.silent-skip",
+    "threat.surviving-descendant",
+    "threat.uninformative-lane"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 8,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 8
+    },
+    "threats_by_severity": {
+      "high": 7,
+      "critical": 1
+    },
+    "mitigations": 6,
+    "requirements": 7,
+    "requirements_with_tasks": 7,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 7
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

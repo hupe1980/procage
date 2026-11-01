@@ -1,0 +1,468 @@
+otmVersion: 0.2.0
+project:
+  id: 026-consumer-api
+  name: Consumer API before the freeze
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child (adaptive, same uid as the caller)
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a program that embeds procage (a harness, for example)
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the environment decision, the native module or the lowering options
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network-boundary surface; the environment is handed from the caller to its own child
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.env-decision: credential exposure through the environment is threat.env-clear-ignored;
+      the native module and lowering option carry no credentials'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no stored data
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.env-decision: the format check runs once per process on a fixed probe command'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Environment decision
+    reason: represented as component.env-decision
+  - entity: Native module
+    reason: represented as component.native
+  extends: null
+  generated: '2026-11-01T17:28:34Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 74e344613b546c6673f69cbba720620faec37de0f28bc99cbae97937106ee0b8
+  - path: spec.md
+    sha256: c3f01cc94533eb37b2540e4e0fda88d493452dcf0024dacd5b900bf7c84540c6
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.caller
+  name: The calling process and its environment
+  risk:
+    trustRating: 90
+- id: tz.repo
+  name: procage repository (code, docs, tests)
+  risk:
+    trustRating: 70
+assets:
+- id: asset.api-contract
+  name: The portable surface and lowering options consumers write against before the freeze
+  risk:
+    availability: 40
+    confidentiality: 0
+    integrity: 80
+  attributes:
+    type: configuration
+    source: spec.md#US2
+    classification: public
+- id: asset.caller-env
+  name: Secrets in the calling process's environment (tokens, keys, agent sockets)
+  risk:
+    availability: 10
+    confidentiality: 100
+    integrity: 30
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+components:
+- id: component.env-decision
+  name: procage's environment decision (hygiene::environment and the spawn paths of both backends)
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-001
+- id: component.lower-options
+  name: LowerOptions::accept_spawn_masks
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-007
+- id: component.native
+  name: procage::native and the common subset
+  type: library
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-005
+dataflows:
+- id: flow.contract
+  name: Consumers build against the native module and options
+  source: actor.consumer
+  destination: component.native
+  assets:
+  - asset.api-contract
+  attributes:
+    crosses:
+    - tz.repo
+- id: flow.env
+  name: The caller's environment and the command's variables become the child's environment
+  source: component.env-decision
+  destination: tz.cage
+  assets:
+  - asset.caller-env
+  attributes:
+    crosses:
+    - tz.caller
+    - tz.cage
+threats:
+- id: threat.env-clear-ignored
+  name: A consumer calls env_clear and sets its own variables under a passthrough policy, and procage passes the
+    caller's whole environment, secrets included, to caged code
+  categories:
+  - Information Disclosure
+  risk:
+    comment: happened in a consumer harness
+    impact: 90
+    likelihood: 70
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.caller-env
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.env-decision
+    - flow.env
+    profile: stride
+    severity: critical
+    technique: sensitive-data-exposure
+- id: threat.env-observer-unreliable
+  name: The env_clear observation silently stops working (std changes its formatting) or is fooled by argument or
+    variable values, so passthrough leaks again or an environment is wrongly cleared
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.caller-env
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.env-decision
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.native-drift
+  name: The native module's common subset diverges between systems, so portable consumer code fails to build on
+    one system or behaves differently
+  categories:
+  - Tampering
+  risk:
+    impact: 40
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.api-contract
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.native
+    - flow.contract
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.overbroad-acceptance
+  name: accept_spawn_masks accepts more than the data-driven class approximations (a glob rule, hide on T2), silently
+    weakening a cage
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.api-contract
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.lower-options
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.checked-observer
+  name: The observer parses only the structured env field line, is self-checked once per process, and a failed check
+    refuses passthrough spawns
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.env-observer-unreliable
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    - SR-003
+    touchpoints:
+    - src/unix.rs
+- id: mitigation.exact-acceptance
+  name: accept_spawn_masks inserts exactly three constructs, pinned by a test, and degradations still list them
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.overbroad-acceptance
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage-policy/src/lower/mod.rs
+- id: mitigation.honour-env-clear
+  name: The spawn paths observe env_clear and then pass no caller variable under any policy
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.env-clear-ignored
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - src/hygiene.rs
+    - src/unix.rs
+- id: mitigation.portable-test
+  name: A test uses only procage::native on both systems
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.native-drift
+    status: verified
+    kind: detective
+    requirements:
+    - SR-004
+    touchpoints:
+    - src/lib.rs
+    - tests/native.rs
+requirements:
+- id: SR-001
+  statement: When a command called env_clear, no variable of the caller MUST reach the child under passthrough or
+    allowlist policies, on macOS and Linux T1 and T2.
+  priority: P1
+  mitigations:
+  - mitigation.honour-env-clear
+  acceptance:
+  - given: a secret in the caller's environment and a passthrough policy
+    then: the child's environment holds A and no caller variable
+    when: the command calls env_clear and sets A=1
+  - given: an allowlist naming PATH
+    then: the child does not get the caller's PATH
+    when: the command calls env_clear
+  tasks: []
+- id: SR-002
+  statement: If procage cannot observe env_clear, a passthrough spawn MUST fail before forking with a typed error.
+  priority: P1
+  mitigations:
+  - mitigation.checked-observer
+  acceptance:
+  - given: an observer whose self-check fails
+    then: the spawn fails with the typed error and no child runs
+    when: a passthrough policy spawns
+  tasks: []
+- id: SR-003
+  statement: The observer MUST NOT report a clear because of argument or variable values that contain its marker
+    text, and MUST report clear exactly when env_clear was called.
+  priority: P1
+  mitigations:
+  - mitigation.checked-observer
+  acceptance:
+  - given: commands with and without env_clear whose arguments and values contain the marker text
+    then: only the cleared ones are reported as cleared
+    when: they are observed
+  tasks: []
+- id: SR-004
+  statement: Code using only procage::native and the common subset MUST compile and run a caged command on macOS
+    and Linux.
+  priority: P2
+  mitigations:
+  - mitigation.portable-test
+  acceptance:
+  - given: the portable test
+    then: it passes without cfg in its body
+    when: it runs on macOS, T1 and T2
+  tasks: []
+- id: SR-005
+  statement: accept_spawn_masks MUST accept exactly the secrets, trust-handoff and persistence approximations, and
+    they MUST appear in the plan's degradations.
+  priority: P2
+  mitigations:
+  - mitigation.exact-acceptance
+  acceptance:
+  - given: a policy reading / on T1
+    then: it lowers and its degradations name the classes
+    when: lowered with accept_spawn_masks
+  - given: a policy with a glob rule on Linux
+    then: it is still refused
+    when: lowered with accept_spawn_masks
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-31
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_macos.rs::env_clear_keeps_the_caller_environment_out, tests/spawn_linux.rs::env_clear_keeps_the_caller_environment_out
+  result: pass
+  verdict: verified
+  justification: An uncaged runner holding PROCAGE_SECRET spawns caged children whose command called env_clear and
+    set A, under passthrough and under an allowlist naming the secret and PATH; both children see exactly A and
+    PROCAGE_CHILD, on macOS and Linux T1/T2. With the clear ignored the test fails with the whole caller environment.
+  verified_at: '2026-10-31T18:35:16Z'
+  commit: 89fe752
+- id: verification.sr-002.2026-10-31
+  requirement: SR-002
+  method: test
+  evidence: src/unix.rs::tests::the_decision_fails_closed_only_for_passthrough, src/macos/mod.rs:614, src/linux/mod.rs:644
+  result: pass
+  verdict: verified
+  justification: The decision returns an error for passthrough whenever the observer failed its check or saw an
+    unknown shape, and keeps allowlists working; both spawn paths map the error to Unsupported::EnvClear before
+    forking (macOS before taking a run marker; Linux at the environment step, which precedes the fork).
+  verified_at: '2026-10-31T18:35:16Z'
+  commit: 89fe752
+- id: verification.sr-003.2026-10-31
+  requirement: SR-003
+  method: test
+  evidence: src/unix.rs::tests::values_cannot_fake_a_clear, src/unix.rs::tests::the_observer_works_with_this_std,
+    src/unix.rs::tests::an_unexpected_shape_is_unknown
+  result: pass
+  verdict: verified
+  justification: Arguments, values, program name and working directory containing the marker lines do not report
+    a clear; env_clear does; the self-check passes on std 1.99 (macOS and Linux) and an unexpected shape is unknown.
+  verified_at: '2026-10-31T18:35:16Z'
+  commit: 89fe752
+- id: verification.sr-004.2026-10-31
+  requirement: SR-004
+  method: test
+  evidence: tests/native.rs::a_granted_file_is_read_through_the_common_subset, tests/native.rs::kill_all_and_detach_have_the_same_meaning,
+    tests/native.rs::errors_explain_themselves
+  result: pass
+  verdict: verified
+  justification: The test file uses only procage::native with no cfg in its bodies, and passes on macOS, Linux T2
+    and T1.
+  verified_at: '2026-10-31T18:35:16Z'
+  commit: 89fe752
+- id: verification.sr-005.2026-10-31
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-policy/tests/gaps.rs::reading_everything_on_t1_needs_exactly_the_spawn_masks
+  result: pass
+  verdict: verified
+  justification: Reading / on T1 is refused naming hd-secrets without options; accept_spawn_masks holds exactly
+    the three constructs; the plan lowers with them listed in its degradations; adding a glob rule is still refused.
+  verified_at: '2026-10-31T18:35:16Z'
+  commit: 89fe752
+decisions: []

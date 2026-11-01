@@ -1,0 +1,446 @@
+otmVersion: 0.2.0
+project:
+  id: 029-exec-entry
+  name: Exec entry - a helper becomes the caged command
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child (adaptive, same uid as the caller)
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a helper program and of the outside code that starts and kills it
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the exec entry, the session step or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network-boundary surface; the environment is handed from the caller to its own child
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.exec: the environment rules are the spawn path''s (spec 026); exposure through a
+      partly confined helper is threat.partial-confinement'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no stored data
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.exec: exec adds no loop or allocation beyond spawn'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Exec entry
+    reason: represented as component.exec
+  - entity: Session mode
+    reason: part of component.exec (the session step)
+  extends: null
+  generated: '2026-11-01T17:28:35Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: d0aec2389ced78ded228c0876937028632d46ec0d6334571aad32dd8e0e1b22a
+  - path: spec.md
+    sha256: 0936905d6ab1ccd2a29abb0c92f4d02e2bed01b5d2624a322981b5a6c271a5e6
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The command after exec and its descendants
+  risk:
+    trustRating: 5
+- id: tz.helper
+  name: The helper process before exec (unconfined, trusted)
+  risk:
+    trustRating: 80
+- id: tz.outside
+  name: The outside code that starts, waits for and kills the helper
+  risk:
+    trustRating: 90
+assets:
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.lifetime
+  name: The outside code's ability to end the command and everything it started
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#US2
+    classification: internal
+components:
+- id: component.docs
+  name: The helper example and the crate docs on exec lifetime
+  type: document
+  parent:
+    trustZone: tz.outside
+  attributes:
+    source: spec.md#FR-008
+- id: component.exec
+  name: Cage::exec and Cage::exec_with_fds on both backends (pre-checks, session keep, step sequence, execvp)
+  type: library
+  parent:
+    trustZone: tz.helper
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.become
+  name: The helper confines itself and executes the command
+  source: component.exec
+  destination: tz.cage
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.helper
+    - tz.cage
+- id: flow.kill
+  name: The outside code kills the helper's pid or process group
+  source: tz.outside
+  destination: tz.cage
+  assets:
+  - asset.lifetime
+  attributes:
+    crosses:
+    - tz.outside
+    - tz.cage
+threats:
+- id: threat.exec-weaker-than-spawn
+  name: The exec path applies less than spawn for the same policy (a skipped step, the lifetime lock, the descriptor
+    sweep or the environment rules), so caged code reaches host state
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.exec
+    - flow.become
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.helper-outlived
+  name: The outside code kills the helper but the command or its descendants keep running (a new session, a lost
+    group, a dead parent)
+  categories:
+  - Denial of Service
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.lifetime
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.kill
+    - component.exec
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.lifetime-overclaimed
+  name: The docs claim that killing the helper ends every descendant on macOS, where a descendant in its own session
+    is not reached
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.lifetime
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.docs
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.partial-confinement
+  name: exec fails after the process has changed and the helper carries on partly confined or, worse, runs the command
+    or other code with only some restrictions
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.exec
+    profile: stride
+    severity: high
+    technique: broken-access-control
+mitigations:
+- id: mitigation.checks-first
+  name: All refusals happen before the first change; later failures are documented as fatal for the helper
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.partial-confinement
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - src/macos/mod.rs
+    - src/linux/mod.rs
+    - src/unix.rs
+- id: mitigation.honest-lifetime-docs
+  name: Docs and threat model state the exec lifetime per system
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.lifetime-overclaimed
+    status: verified
+    kind: detective
+    requirements:
+    - SR-004
+    touchpoints:
+    - src/lib.rs
+    - THREAT_MODEL.md
+- id: mitigation.same-process
+  name: The command keeps the helper's pid and group; Linux keeps the lock and the parent-death signal
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.helper-outlived
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - src/macos/sys.rs
+    - src/linux/sys.rs
+- id: mitigation.shared-sequence
+  name: exec and spawn share one preparation and the same child step sequence; only the session step differs (keep)
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.exec-weaker-than-spawn
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - src/macos/mod.rs
+    - src/linux/mod.rs
+    - src/macos/sys.rs
+    - src/linux/sys.rs
+requirements:
+- id: SR-001
+  statement: A command run with exec MUST be confined like a spawned one for the same policy - writes outside the
+    grant and the environment rules are enforced - on macOS and Linux T1 and T2.
+  priority: P1
+  mitigations:
+  - mitigation.shared-sequence
+  acceptance:
+  - given: a helper that execs a shell in a cage with a write grant
+    then: the inside write succeeds and the outside one fails
+    when: the shell writes inside and outside the grant
+  - given: a secret in the helper's environment and env_clear on the command
+    then: the secret is absent
+    when: the command prints its environment
+  tasks: []
+- id: SR-002
+  statement: Each refusal that can be known before the first change (tmpdir grant, missing program, multithreaded
+    caller on Linux T1, environment decision) MUST return an error and leave the helper unconfined.
+  priority: P1
+  mitigations:
+  - mitigation.checks-first
+  acceptance:
+  - given: each misuse
+    then: it returns its typed error and an outside write by the helper still succeeds
+    when: exec is called
+  tasks: []
+- id: SR-003
+  statement: The exec'd command MUST keep the helper's pid and process group, and a kill of that group MUST end
+    the command and a background descendant on macOS and Linux; on Linux a descendant MUST NOT be able to start
+    its own session.
+  priority: P1
+  mitigations:
+  - mitigation.same-process
+  acceptance:
+  - given: a helper started in its own process group whose command starts a background sleeper
+    then: the command and the sleeper are gone
+    when: the outside code kills the group
+  - given: the exec'd command
+    then: the pid is the helper's
+    when: it prints its pid
+  tasks: []
+- id: SR-004
+  statement: The docs MUST state the lifetime of an exec'd command on each system, including that macOS does not
+    reach a descendant in its own session.
+  priority: P2
+  mitigations:
+  - mitigation.honest-lifetime-docs
+  acceptance:
+  - given: the crate docs and the threat model
+    then: both state the per-system lifetime and the macOS limit
+    when: read for exec
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-31
+  requirement: SR-001
+  method: test
+  evidence: tests/exec.rs::becomes_the_command, tests/exec.rs::env_clear_keeps_secrets_out
+  result: pass
+  verdict: verified
+  justification: A helper execs a shell in a cage with a write rule; the shell's write inside succeeds and outside
+    is denied, and with env_clear under passthrough the command sees only A=1 although the helper's environment
+    holds a secret; macOS, Linux T1 and T2. Both paths share prepare and the child sequence (only the session mode
+    differs).
+  verified_at: '2026-10-31T18:55:52Z'
+  commit: 6d05458
+- id: verification.sr-002.2026-10-31
+  requirement: SR-002
+  method: test
+  evidence: tests/exec.rs::the_tmpdir_grant_is_refused, tests/exec.rs::a_missing_program_is_refused, tests/exec.rs::a_threaded_caller_is_refused_on_t1
+  result: pass
+  verdict: verified
+  justification: Each misuse returns its typed error (GrantError::TmpdirWithExec, an Io NotFound naming the program,
+    Unsupported::ExecThreads with the thread count) and the test process then writes outside every policy successfully.
+    The environment refusal is the spawn path's (spec 026, unit-tested there).
+  verified_at: '2026-10-31T18:55:52Z'
+  commit: 6d05458
+- id: verification.sr-003.2026-10-31
+  requirement: SR-003
+  method: test
+  evidence: tests/exec.rs::becomes_the_command, tests/exec.rs::a_group_kill_ends_everything, tests/exec.rs::descendants_cannot_leave_the_group
+  result: pass
+  verdict: verified
+  justification: The command prints the helper's pid; killing the group of a shell that started the helper (not
+    led by it) ends the command and its background sleeper on macOS and Linux, and fails if exec starts a session
+    (negative control); on Linux a descendant's setsid fails.
+  verified_at: '2026-10-31T18:55:52Z'
+  commit: 6d05458
+- id: verification.sr-004.2026-10-31
+  requirement: SR-004
+  method: review
+  evidence: src/lib.rs:45, THREAT_MODEL.md:34, src/macos/mod.rs:629
+  result: pass
+  verdict: verified
+  justification: The crate docs' Helpers section, the exec rustdoc on both backends and the threat model's release
+    status state the per-system lifetime, including that macOS does not reach a descendant in its own session and
+    pointing to Cage::spawn.
+  verified_at: '2026-10-31T18:55:52Z'
+  commit: 6d05458
+decisions: []

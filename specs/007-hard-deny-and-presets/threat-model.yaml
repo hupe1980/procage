@@ -1,0 +1,649 @@
+otmVersion: 0.2.0
+project:
+  id: 007-hard-deny-and-presets
+  name: Data-driven hard denies and frozen presets
+threatspec:
+  actors:
+  - id: actor.child-code
+    name: Adaptive code running as the user inside the caged child
+    trust: untrusted
+  - id: actor.contributor
+    name: Contributor who edits the class lists or presets
+    trust: semi-trusted
+  - id: actor.harness-author
+    name: Harness author who picks a preset or grants broad trees
+    trust: semi-trusted
+  - id: actor.unsandboxed-tool
+    name: An unsandboxed tool that later runs or reads what the sandbox wrote (git, the shell, an editor, launchd)
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: no-threat-detected
+    reason: 'checked asset.secrets: patterns cover every home under /Users, so another user''s readable files are
+      denied too'
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: 'no network-boundary surface: lists and presets are compiled into the profile in the caller process'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked asset.presets and asset.class-lists: waivers are listed in the plan and presets carry name
+      and version in the policy data'
+    technique: missing-audit-trail
+  - disposition: no-threat-detected
+    reason: 'checked component.class-lowering: the classes add a fixed set of about 40 patterns, merged into a handful
+      of rules, far under the rule limit'
+    technique: resource-exhaustion
+  - disposition: no-threat-detected
+    reason: 'checked component.class-lowering: patterns are constants passed through the glob compiler and the one
+      quoting function'
+    technique: injection
+  - disposition: no-threat-detected
+    reason: 'checked component.presets: presets only build ordinary policies; they cannot add raw rules or remove
+      hard-deny classes'
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: procage calls no language model (LLM-driven code is the adversary inside
+      the child)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface; overclaiming in docs is modelled under STRIDE as threat.overclaimed-enforcement
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage executes only the program its caller names; the adversary inside the child is modelled under
+      STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Data-driven hard-deny class
+    reason: represented as asset.class-lists (the frozen lists) and component.class-lowering (their emission)
+  - entity: Pattern
+    reason: folded into asset.class-lists (the patterns are the lists' entries)
+  extends: null
+  generated: '2026-11-01T17:26:08Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 7acdf99917111f3aaec37ae2ec37fb94f1de11d7b4bb87de509b4facc698aed4
+  - path: spec.md
+    sha256: 79aa8fd9ae2d7ee30233b43e4ca70830f60e850a08b67d1d005d7d4862d13ac6
+  surfaces:
+  - external-input
+  - persistent-store
+  version: '0.1'
+trustZones:
+- id: tz.child
+  name: Caged child
+  risk:
+    trustRating: 5
+- id: tz.policy
+  name: procage-policy lowering and presets
+  risk:
+    trustRating: 80
+- id: tz.user
+  name: The user's session outside the sandbox (shell, git, editor, launchd)
+  risk:
+    trustRating: 80
+assets:
+- id: asset.class-lists
+  name: The frozen pattern lists of the data classes
+  risk:
+    availability: 40
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-005
+    classification: public
+- id: asset.handoff-files
+  name: Files unsandboxed tools later execute or read as configuration (git hooks and config, rc files, editor and
+    agent config, PATH bins)
+  risk:
+    availability: 30
+    confidentiality: 20
+    integrity: 100
+  attributes:
+    type: configuration
+    source: spec.md#FR-003
+    classification: internal
+- id: asset.persistence-locations
+  name: Launch agents, launch daemons and login items
+  risk:
+    availability: 30
+    confidentiality: 10
+    integrity: 100
+  attributes:
+    type: configuration
+    source: spec.md#FR-004
+    classification: internal
+- id: asset.presets
+  name: The frozen presets V1
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-007
+    classification: public
+- id: asset.secrets
+  name: Credentials and private data in home directories (SSH, cloud, keychains, browsers, mail)
+  risk:
+    availability: 30
+    confidentiality: 100
+    integrity: 80
+  attributes:
+    type: credential
+    source: spec.md#FR-002
+    classification: confidential
+components:
+- id: component.class-lowering
+  name: Lowering of the data classes into the hard-deny tier
+  type: library
+  parent:
+    trustZone: tz.policy
+  attributes:
+    source: spec.md#FR-001
+- id: component.docs
+  name: Class and preset docs and the lowering table
+  type: document
+  parent:
+    trustZone: tz.policy
+  attributes:
+    source: spec.md#FR-010
+- id: component.presets
+  name: Preset constructors
+  type: library
+  parent:
+    trustZone: tz.policy
+  attributes:
+    source: spec.md#FR-007
+dataflows:
+- id: flow.author-picks-preset
+  name: The harness author builds a policy from a preset
+  source: actor.harness-author
+  destination: component.presets
+  assets:
+  - asset.presets
+  attributes:
+    crosses:
+    - tz.policy
+- id: flow.child-reads-secrets
+  name: The child reads files under a granted home
+  source: actor.child-code
+  destination: component.class-lowering
+  assets:
+  - asset.secrets
+  attributes:
+    crosses:
+    - tz.child
+    - tz.policy
+- id: flow.child-writes-handoff
+  name: The child writes into a granted workspace or home
+  source: actor.child-code
+  destination: component.class-lowering
+  assets:
+  - asset.handoff-files
+  - asset.persistence-locations
+  attributes:
+    crosses:
+    - tz.child
+    - tz.policy
+- id: flow.contributor-edits
+  name: A change edits the lists or presets
+  source: actor.contributor
+  destination: component.presets
+  assets:
+  - asset.class-lists
+  - asset.presets
+  attributes:
+    crosses:
+    - tz.policy
+- id: flow.tool-runs-handoff
+  name: An unsandboxed tool later runs what was written
+  source: actor.unsandboxed-tool
+  destination: component.class-lowering
+  assets:
+  - asset.handoff-files
+  attributes:
+    crosses:
+    - tz.user
+threats:
+- id: threat.case-variant-bypass
+  name: A path spelled in another case (.SSH, .GIT/HOOKS, .ZSHRC) escapes a case-sensitive pattern on a case-insensitive
+    volume
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-178
+  risk:
+    impact: 85
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.secrets
+    - asset.handoff-files
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - component.class-lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.git-broken
+  name: The trust-handoff patterns are so broad that git cannot write objects, refs or the index, and harness authors
+    waive the whole class to get work done
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-1188
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.handoff-files
+    status: mitigated
+    actor: actor.harness-author
+    disposition: threat
+    elements:
+    - component.class-lowering
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.linux-silently-weaker
+  name: A Linux plan omits the data classes without saying so, so a future Linux spawn grants secrets or handoff
+    files that macOS denies
+  categories:
+  - Repudiation
+  - Information Disclosure
+  cwes:
+  - CWE-1059
+  risk:
+    impact: 80
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.secrets
+    - asset.handoff-files
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed
+    disposition: threat
+    elements:
+    - component.docs
+    - component.class-lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.list-or-preset-drift
+  name: A later change silently loosens a class list or a preset version, weakening every policy that relies on
+    it
+  categories:
+  - Tampering
+  cwes:
+  - CWE-1357
+  risk:
+    impact: 75
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-008
+    assets:
+    - asset.class-lists
+    - asset.presets
+    status: mitigated
+    actor: actor.contributor
+    constitution: VII. Presets are versioned and frozen
+    disposition: threat
+    elements:
+    - flow.contributor-edits
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.persistence-plant
+  name: The child plants a launch agent or login item that runs outside any run (escape class R-23)
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-912
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.persistence-locations
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-writes-handoff
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.secret-read-in-granted-tree
+  name: A policy grants a broad tree (the home directory) and the child reads SSH keys, cloud credentials, keychains
+    or browser data from it
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-552
+  risk:
+    impact: 95
+    likelihood: 70
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.secrets
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-reads-secrets
+    - component.class-lowering
+    profile: stride
+    severity: critical
+    technique: sensitive-data-exposure
+- id: threat.trust-handoff-write
+  name: The child writes a git hook, git config, shell rc file, editor or agent configuration, or a PATH binary
+    that an unsandboxed tool later runs (escape class R-07)
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  cwes:
+  - CWE-494
+  risk:
+    impact: 95
+    likelihood: 70
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.handoff-files
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - flow.child-writes-handoff
+    - flow.tool-runs-handoff
+    profile: stride
+    severity: critical
+    technique: data-tampering-at-rest
+mitigations:
+- id: mitigation.case-folded-patterns
+  name: Patterns are compiled to case-folded regexes; tests use upper-case spellings
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.case-variant-bypass
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage-policy/src/glob.rs
+    - tests/spawn_macos.rs
+- id: mitigation.handoff-and-persistence-classes
+  name: trust-handoff and persistence deny writes to the listed paths anywhere or in every home, last in the profile;
+    git objects, refs and index stay writable
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.trust-handoff-write
+    - threat.persistence-plant
+    - threat.git-broken
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/presets.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - tests/spawn_macos.rs
+- id: mitigation.linux-pending-explicit
+  name: The lowering table marks the data classes as pending on Linux and the 008 spec carries their implementation
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.linux-silently-weaker
+    status: verified
+    kind: detective
+    requirements:
+    - SR-006
+    touchpoints:
+    - crates/procage-policy/src/lowering.md
+- id: mitigation.pinned-lists-and-presets
+  name: Tests pin every class list and every preset V1
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.list-or-preset-drift
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage-policy/tests/presets.rs
+- id: mitigation.secrets-class
+  name: secrets denies read and write of the listed home paths for every home under /Users, last in the profile,
+    waivable only by name
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.secret-read-in-granted-tree
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/presets.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - tests/spawn_macos.rs
+requirements:
+- id: SR-001
+  statement: With a read grant on the home directory, the listed secret paths MUST stay unreadable to the child
+    unless the secrets class is waived by name.
+  priority: P1
+  mitigations:
+  - mitigation.secrets-class
+  acceptance:
+  - given: read access to HOME
+    then: each is refused and listing HOME succeeds
+    when: the child lists ~/.ssh, ~/.aws and ~/.gnupg
+  - given: secrets waived
+    then: it succeeds and the plan lists the waiver
+    when: the child lists ~/.ssh
+  tasks: []
+- id: SR-002
+  statement: With write access to a workspace, the child MUST NOT create or modify git hooks, git config, .gitmodules,
+    shell rc files, editor or agent config directories or tool config files, while git objects, refs and the index
+    stay writable; waiving trust-handoff by name allows them.
+  priority: P1
+  mitigations:
+  - mitigation.handoff-and-persistence-classes
+  acceptance:
+  - given: write access to a workspace with .git
+    then: each is refused and .git/objects/x succeeds
+    when: the child creates .git/hooks/pre-commit, .zshrc, .envrc and .vscode/settings.json
+  - given: trust-handoff waived
+    then: it succeeds
+    when: the child creates .git/hooks/pre-commit
+  tasks: []
+- id: SR-003
+  statement: The child MUST NOT create files in launch-agent or login-item locations, even when the policy grants
+    write access there.
+  priority: P1
+  mitigations:
+  - mitigation.handoff-and-persistence-classes
+  acceptance:
+  - given: write access to ~/Library/LaunchAgents
+    then: it is refused and nothing is created
+    when: the child creates a file there
+  tasks: []
+- id: SR-004
+  statement: Data-class patterns MUST deny case variants of the listed names.
+  priority: P1
+  mitigations:
+  - mitigation.case-folded-patterns
+  acceptance:
+  - given: read access to HOME
+    then: it is refused
+    when: the child lists ~/.SSH
+  - given: a writable workspace with .git
+    then: each is refused
+    when: the child creates .GIT/HOOKS/x or .ZSHRC
+  tasks: []
+- id: SR-005
+  statement: The class lists and every preset V1 MUST be pinned by tests.
+  priority: P2
+  mitigations:
+  - mitigation.pinned-lists-and-presets
+  acceptance:
+  - given: each preset and class
+    then: it equals the pinned content
+    when: it is lowered or serialised
+  tasks: []
+- id: SR-006
+  statement: The lowering table and docs MUST state that Linux enforcement of the data classes is pending, and the
+    Linux spawn spec (008) MUST carry it.
+  priority: P2
+  mitigations:
+  - mitigation.linux-pending-explicit
+  acceptance:
+  - given: the lowering table and the 008 spec
+    then: the Linux cells say pending and 008 lists the requirement
+    when: reviewed
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-30
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_macos.rs::hard_deny_secrets
+  result: pass
+  verdict: verified
+  justification: With a read grant on HOME, listing HOME succeeds while listing ~/.ssh, ~/.aws and ~/.gnupg is refused
+    by the kernel. With secrets waived, ~/.ssh is listable and the plan lists the waiver. Dropping .ssh from the
+    list fails this test and the pinned fixtures.
+  verified_at: '2026-10-30T09:00:14Z'
+  commit: eb66876
+- id: verification.sr-002.2026-10-30
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_macos.rs::hard_deny_trust_handoff; tests/spawn_macos.rs::preset_agent_workspace
+  result: pass
+  verdict: verified
+  justification: In a writable workspace with .git, the child cannot create .git/hooks/pre-commit, .git/config,
+    .gitmodules, .zshrc, .envrc or src/.bashrc, cannot mkdir .vscode, and cannot rename .git; src/main.rs, .git/objects/ab
+    and notes.txt are writable. Waiving trust-handoff allows the hook. Removing the .git unlink deny fails the test.
+  verified_at: '2026-10-30T09:00:14Z'
+  commit: eb66876
+- id: verification.sr-003.2026-10-30
+  requirement: SR-003
+  method: test
+  evidence: tests/spawn_macos.rs::hard_deny_persistence
+  result: pass
+  verdict: verified
+  justification: With an explicit write grant on ~/Library/LaunchAgents, creating a plist there is refused and nothing
+    is created. The persistence class is last in the profile, so it wins over the grant.
+  verified_at: '2026-10-30T09:00:14Z'
+  commit: eb66876
+- id: verification.sr-004.2026-10-30
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_macos.rs::hard_deny_secrets; tests/spawn_macos.rs::hard_deny_trust_handoff; crates/procage-policy/src/glob.rs::tests::folding
+  result: pass
+  verdict: verified
+  justification: ~/.SSH is refused, and so are .ZSHRC and .GIT/HOOKS/post-checkout. The patterns are emitted case-folded
+    (unit test). The kernel also matches case-insensitively on this APFS volume (research R1), so the folding is
+    a second guard.
+  verified_at: '2026-10-30T09:00:14Z'
+  commit: eb66876
+- id: verification.sr-005.2026-10-30
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-policy/tests/presets.rs::every_preset_is_pinned; crates/procage-policy/tests/presets.rs::the_class_lists_are_pinned;
+    crates/procage-policy/tests/presets.rs::presets_round_trip_with_their_tag
+  result: pass
+  verdict: verified
+  justification: The lowered macOS profile of each preset V1 (workspace /work) equals its fixture, which includes
+    the full class lists. The list sizes and key patterns are asserted, and the presets round-trip with their name
+    and version tag. Injected list and preset changes failed these tests.
+  verified_at: '2026-10-30T09:00:14Z'
+  commit: eb66876
+- id: verification.sr-006.2026-10-30
+  requirement: SR-006
+  method: review
+  evidence: crates/procage-policy/src/lowering.md; crates/procage-policy/src/presets.rs:1; THREAT_MODEL.md#Release-status
+  result: pass
+  verdict: verified
+  justification: The lowering table marks hd-secrets, hd-trust-handoff and hd-persistence as n/a on Linux with the
+    note that the Linux spawn backend must implement them before it ships. The presets module docs and the threat-model
+    release status say the same, and the 008 spec carries the requirement. Escape-class statuses are unchanged and
+    the catalog gate passes.
+  verified_at: '2026-10-30T09:00:14Z'
+  commit: eb66876
+decisions: []

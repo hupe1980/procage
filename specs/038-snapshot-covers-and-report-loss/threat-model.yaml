@@ -1,0 +1,290 @@
+otmVersion: 0.2.0
+project:
+  id: 038-snapshot-covers-and-report-loss
+  name: Vanished snapshot covers and honest report loss
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that fits policies
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits reporting, lowering or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no store
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked the inputs: paths come from /proc/net/unix and directory walks, as before; only the handling
+      of a vanished path changes'
+    technique: injection
+  - disposition: no-threat-detected
+    reason: 'covered by threat.cover-skip-exposes: a skipped cover is a path that no longer exists'
+    technique: sensitive-data-exposure
+  - disposition: not-applicable
+    reason: single user
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: no principals
+    technique: broken-access-control
+  - disposition: not-applicable
+    reason: no configuration added
+    technique: privilege-escalation-via-config
+  - disposition: no-threat-detected
+    reason: no new loop or allocation; the child loop stays linear in the mounts
+    technique: resource-exhaustion
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T17:26:15Z'
+  profiles:
+  - stride
+  sources:
+  - path: plan.md
+    sha256: b31f9d3d306344646825b00b19832791e1fdd539eeec3d8ab071b4765aacc734
+  - path: spec.md
+    sha256: 29cc72cf9f7e1d76d05a69f77a06e28d17ebcbf4d062445a8284e93504686ebd
+  surfaces:
+  - external-input
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel and the unified log (logd, /usr/bin/log)
+  risk:
+    trustRating: 95
+assets:
+- id: asset.harness
+  name: 'The harness process: memory, threads, the time wait and violations() take'
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#FR-005
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.record
+  name: The violation record the harness shows its user and may act on (e.g. ask for a grant)
+  risk:
+    availability: 30
+    confidentiality: 30
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#US1
+    classification: internal
+components:
+- id: component.docs
+  name: Violation docs (crate and site)
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.mounts
+  name: T1 mount plan (parent) and the child mount sequence
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.claims
+  name: The docs tell the consumer what a record proves
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.record
+  attributes:
+    crosses: []
+- id: flow.confine
+  name: Mounts confine the child
+  source: component.mounts
+  destination: tz.cage
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+threats:
+- id: threat.cover-skip-exposes
+  name: 'Skipping a cover exposes a file or socket the cage should not reach: a declared mount skipped, a non-ENOENT
+    failure ignored, or a remount landing on the containing mount'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 70
+    likelihood: 10
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.mounts
+    - flow.confine
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.record-overclaim
+  name: The docs present an empty, complete macOS record as proof that nothing was denied, so a consumer rules the
+    sandbox out wrongly
+  categories:
+  - Repudiation
+  risk:
+    impact: 40
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.measured-docs
+  name: The docs state the measured loss and that an empty record never proves nothing was denied
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.record-overclaim
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage/src/violation.rs
+    - site/content/docs/violations.md
+- id: mitigation.optional-covers
+  name: Only snapshot covers are optional, only on ENOENT, the remount of a skipped target skipped with it; declared
+    mounts strict; churn test plus the existing mask and escape tests on T1
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.cover-skip-exposes
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/src/linux/spawn.rs
+    - crates/procage/tests/spawn_linux.rs
+requirements:
+- id: SR-001
+  statement: On Linux T1, only covers made from the file system at spawn MAY be skipped, and only when their file
+    no longer exists; mounts the policy declares MUST stay strict, and a skipped cover MUST NOT leave a remount
+    behind.
+  priority: P2
+  mitigations:
+  - mitigation.optional-covers
+  acceptance:
+  - given: a thread binding and removing a foreign socket
+    then: all succeed
+    when: 300 T1 spawns run
+  - given: the T1 escape suite and mask tests
+    then: they pass unchanged
+    when: they run with the change
+  tasks: []
+- id: SR-002
+  statement: procage MUST NOT present a complete macOS record as proof that nothing was denied; its docs MUST state
+    the measured report loss under load.
+  priority: P2
+  mitigations:
+  - mitigation.measured-docs
+  acceptance:
+  - given: the crate docs and the site page
+    then: neither calls an empty record proof, and both name the measured loss
+    when: they describe Observed and complete
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it; crates/procage/src/linux/spawn.rs
+    (mounts, optional); crates/procage/src/linux/sys.rs (ChildMount optional, child loop); just linux-t1 (spawn
+    47/47, escape 22/22 with and without reporting)
+  result: pass
+  verdict: verified
+  justification: The churn test (300 T1 spawns while a socket is bound and removed) failed at spawn 3 before the
+    fix and passes after it. Only cover groups are marked optional; the child skips an optional mount only on ENOENT
+    and then skips the remount of the same target; any other error, and every declared mount, still fails the spawn.
+    The T1 mask tests and escape suite pass unchanged.
+  verified_at: '2026-11-01T17:16:11Z'
+  commit: 09db927
+- id: verification.sr-001.2026-11-01-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it; crates/procage/src/linux/spawn.rs
+    (mounts, optional); crates/procage/src/linux/sys.rs (ChildMount optional, child loop); just linux-t1 (spawn
+    47/47, escape 22/22 with and without reporting)
+  result: pass
+  verdict: verified
+  justification: The churn test (300 T1 spawns while a socket is bound and removed) failed at spawn 3 before the
+    fix and passes after it. Only cover groups are marked optional; the child skips an optional mount only on ENOENT
+    and then skips the remount of the same target; any other error, and every declared mount, still fails the spawn.
+    The T1 mask tests and escape suite pass unchanged.
+  verified_at: '2026-11-01T17:16:20Z'
+  commit: 09db927
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: review
+  evidence: crates/procage/src/violation.rs (module docs, Coverage::Observed, Violations::complete); site/content/docs/violations.md
+    (Live, complete and honest)
+  result: pass
+  verdict: verified
+  justification: Both say an empty record never proves nothing was denied, that Linux reports refused system calls
+    only, and that macOS drops reports under heavy load, with the measurement (82 of 640 missing from an independent
+    log stream, 16 runs in parallel, none in serial runs). No remaining text calls a complete Observed record proof.
+  verified_at: '2026-11-01T17:16:11Z'
+  commit: 09db927
+- id: verification.sr-002.2026-11-01-2
+  requirement: SR-002
+  method: review
+  evidence: crates/procage/src/violation.rs (module docs, Coverage::Observed, Violations::complete); site/content/docs/violations.md
+    (Live, complete and honest)
+  result: pass
+  verdict: verified
+  justification: Both say an empty record never proves nothing was denied, that Linux reports refused system calls
+    only, and that macOS drops reports under heavy load, with the measurement (82 of 640 missing from an independent
+    log stream, 16 runs in parallel, none in serial runs). No remaining text calls a complete Observed record proof.
+  verified_at: '2026-11-01T17:16:20Z'
+  commit: 09db927
+decisions: []

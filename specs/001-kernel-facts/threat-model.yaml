@@ -1,0 +1,1648 @@
+otmVersion: 0.2.0
+project:
+  id: 001-kernel-facts
+  name: Kernel facts as regression tests
+threatspec:
+  actors:
+  - id: actor.action-publisher
+    name: Publisher of a third-party CI action
+    trust: untrusted
+  - id: actor.agent-harness
+    name: Agent harness running the suite inside its own Seatbelt sandbox
+    trust: semi-trusted
+  - id: actor.caged-child
+    name: Child process run under a profile or Landlock domain by a fact
+    trust: untrusted
+  - id: actor.dependency-publisher
+    name: Publisher of a crate dependency
+    trust: untrusted
+  - id: actor.local-process
+    name: Other processes on the host sharing /tmp and the terminal
+    trust: untrusted
+  - id: actor.maintainer
+    name: Maintainer on the reference Mac
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: 'no authentication surface: the suite authenticates no principal; CI uses the platform token only, covered
+      under privilege-escalation-via-config'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: 'no authentication surface: no component accepts identities'
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: 'no shared-tenant surface: hosted CI runners are single-job ephemeral VMs; the suite stores no tenant
+      data'
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: 'no authorization surface: the feature tests the kernel''s access control but enforces none of its own'
+    technique: broken-access-control
+  - disposition: no-threat-detected
+    reason: 'checked flow.probe-to-suite and flow.suite-to-probe: results travel as fixed exit codes and a fixed-format
+      status line, argv is built from constants and the fact id; there is no shell, SQL, template or path sink fed
+      by child output (held by SR-004)'
+    technique: injection
+  - disposition: no-threat-detected
+    reason: 'checked asset.kernel-fact and asset.question-finding: expectations live in the published test source
+      under version control, so a change is a reviewed diff; no separate mutable store exists'
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: the feature calls no language model'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: 'no output-to-sink surface: no model output exists'
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: 'no agent-autonomy surface: the feature contains no agent; an agent harness is only a possible runner,
+      covered by threat.sandboxed-runner-false-result'
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no write-capable-tool surface exposed to an agent
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no delegated-identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no external-skill-supply surface in the shipped feature; crate and CI-action supply chain is modelled
+      under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: no code-execution surface for an agent; children run fixed commands chosen by the suite (SR-004)
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent-memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no multi-agent or agent-autonomy surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no human-in-loop agent surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent-autonomy surface
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T17:26:05Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 531c0b64141dba680f95729c7a4bf0918ade323b36ccacf36dd3f6ed30698cbd
+  - path: spec.md
+    sha256: d344d6ffe86eba881b9e7369d801c1c7ff012030121dff188afa1a128783ad92
+  surfaces:
+  - external-input
+  - network-boundary
+  - persistent-store
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.caged
+  name: Caged child (Seatbelt profile or Landlock/namespace domain)
+  risk:
+    trustRating: 10
+- id: tz.container
+  name: Local Linux container (Docker Desktop VM)
+  risk:
+    trustRating: 50
+- id: tz.host
+  name: Maintainer host or CI runner, user account
+  risk:
+    trustRating: 70
+- id: tz.internet
+  name: Internet (crates.io, GitHub Actions marketplace)
+  risk:
+    trustRating: 1
+- id: tz.os
+  name: Kernel and system libraries (libsandbox, Landlock, seccomp)
+  risk:
+    trustRating: 90
+assets:
+- id: asset.ci-token
+  name: CI job token and runner
+  risk:
+    availability: 40
+    confidentiality: 80
+    integrity: 80
+  attributes:
+    type: credential
+    source: spec.md#FR-017
+    classification: secret
+- id: asset.fact-report
+  name: Fact run report (per fact pass/fail, OS build, date)
+  risk:
+    availability: 40
+    confidentiality: 20
+    integrity: 85
+  attributes:
+    type: log
+    source: spec.md#FR-004
+    classification: internal
+- id: asset.kernel-fact
+  name: Kernel fact
+  risk:
+    availability: 40
+    confidentiality: 5
+    integrity: 95
+  attributes:
+    type: business-data
+    source: spec.md#Key-Entities
+    classification: public
+- id: asset.maintainer-session
+  name: Maintainer user account, terminal and home directory
+  risk:
+    availability: 60
+    confidentiality: 80
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#User-Story-1
+    classification: confidential
+- id: asset.probe-result
+  name: Probe result (Linux)
+  risk:
+    availability: 40
+    confidentiality: 10
+    integrity: 90
+  attributes:
+    type: business-data
+    source: spec.md#Key-Entities
+    classification: public
+- id: asset.question-finding
+  name: Question finding
+  risk:
+    availability: 30
+    confidentiality: 5
+    integrity: 85
+  attributes:
+    type: business-data
+    source: spec.md#Key-Entities
+    classification: public
+- id: asset.source-tree
+  name: Published source tree and lockfile
+  risk:
+    availability: 50
+    confidentiality: 10
+    integrity: 90
+  attributes:
+    type: source-code
+    source: spec.md#FR-014
+    classification: public
+components:
+- id: component.ci-workflow
+  name: CI workflow and its lanes
+  type: service
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#FR-017
+    entity: Lane
+- id: component.container
+  name: Local Linux container run (default and unconfined seccomp)
+  type: service
+  parent:
+    trustZone: tz.container
+  attributes:
+    source: spec.md#SC-003
+- id: component.fact-suite
+  name: Fact suite (test harness that runs the catalog)
+  type: service
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#FR-001
+- id: component.kf-probe
+  name: kf-probe binary (one step per invocation)
+  type: process
+  parent:
+    trustZone: tz.caged
+  attributes:
+    source: plan.md#Project-Structure
+    path: tests/kernel_facts/src/bin/kf-probe/
+- id: component.lane
+  name: Lane
+  type: service
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#Key-Entities
+- id: component.linux-probe
+  name: Linux tier probe
+  type: process
+  parent:
+    trustZone: tz.caged
+  attributes:
+    source: spec.md#FR-009
+    entity: Probe result (Linux)
+- id: component.local-ci
+  name: Local CI command (all gates)
+  type: service
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#FR-016
+- id: component.probe-child
+  name: Probe child that performs one fact and reports the observation
+  type: process
+  parent:
+    trustZone: tz.caged
+  attributes:
+    source: spec.md#FR-003
+- id: component.question-probes
+  name: Question probes (path A layout, compile-abort threshold, extension ordering, TIOCSTI)
+  type: process
+  parent:
+    trustZone: tz.caged
+  attributes:
+    source: spec.md#FR-012
+- id: component.registry
+  name: Crate registry and action marketplace
+  type: service
+  parent:
+    trustZone: tz.internet
+  attributes:
+    source: spec.md#FR-019
+- id: component.sys-ffi
+  name: Test-only sys FFI modules (the only unsafe)
+  type: library
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: plan.md#Complexity-Tracking
+    path: tests/kernel_facts/src/sys/
+- id: component.system-sandbox
+  name: libsandbox, Seatbelt, Landlock, seccomp, namespaces
+  type: library
+  parent:
+    trustZone: tz.os
+  attributes:
+    source: spec.md#Context
+- id: component.workspace
+  name: Workspace (policy crate, facade crate, test-only sys modules)
+  type: library
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#FR-014
+dataflows:
+- id: flow.actions-fetch
+  name: CI actions fetched by the workflow
+  source: component.registry
+  destination: component.ci-workflow
+  assets:
+  - asset.ci-token
+  attributes:
+    crosses:
+    - tz.internet
+    - tz.host
+- id: flow.child-to-filesystem
+  name: Probe children create, read and delete files on the host
+  source: component.probe-child
+  destination: tz.host
+  assets:
+  - asset.maintainer-session
+  attributes:
+    crosses:
+    - tz.host
+- id: flow.child-to-terminal
+  name: Probe child's terminal access (TIOCSTI probe)
+  source: component.question-probes
+  destination: actor.maintainer
+  assets:
+  - asset.maintainer-session
+  attributes:
+    crosses:
+    - tz.host
+- id: flow.deps-fetch
+  name: Dependencies fetched into the workspace
+  source: component.registry
+  destination: component.workspace
+  assets:
+  - asset.source-tree
+  attributes:
+    crosses:
+    - tz.internet
+    - tz.host
+- id: flow.host-to-container
+  name: Workspace mounted into a local container for Linux facts
+  source: component.local-ci
+  destination: component.container
+  assets:
+  - asset.source-tree
+  - asset.maintainer-session
+  attributes:
+    crosses:
+    - tz.container
+- id: flow.linux-probe-to-suite
+  name: Linux probe returns measurements and tier
+  source: component.linux-probe
+  destination: component.fact-suite
+  assets:
+  - asset.probe-result
+  attributes:
+    crosses:
+    - tz.caged
+- id: flow.probe-to-suite
+  name: Probe child returns its observation (exit status, errno, status line)
+  source: component.probe-child
+  destination: component.fact-suite
+  assets:
+  - asset.fact-report
+  attributes:
+    crosses:
+    - tz.caged
+- id: flow.probe-to-system
+  name: Probe child compiles and applies profiles, restricts itself
+  source: component.probe-child
+  destination: component.system-sandbox
+  assets:
+  - asset.kernel-fact
+  attributes:
+    crosses:
+    - tz.os
+- id: flow.questions-to-suite
+  name: Question probes return dated findings
+  source: component.question-probes
+  destination: component.fact-suite
+  assets:
+  - asset.question-finding
+  attributes:
+    crosses:
+    - tz.caged
+- id: flow.report-to-log
+  name: Fact reports written to the terminal and CI logs
+  source: component.fact-suite
+  destination: component.lane
+  assets:
+  - asset.fact-report
+  attributes:
+    crosses: []
+- id: flow.suite-to-probe
+  name: Suite starts a probe child with a fact id and fixed arguments
+  source: component.fact-suite
+  destination: component.probe-child
+  assets:
+  - asset.kernel-fact
+  attributes:
+    crosses:
+    - tz.caged
+- id: flow.token-pipe
+  name: Extension token from ext-parent to ext-child over stdin
+  source: component.kf-probe
+  destination: component.probe-child
+  assets:
+  - asset.maintainer-session
+  attributes:
+    crosses:
+    - tz.caged
+threats:
+- id: threat.compile-abort-kills-harness
+  name: The 20,000-rule libsandbox abort, or a compile-abort bisection step, runs in the test process and kills
+    the whole run, so no other fact is reported
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-400
+  risk:
+    impact: 50
+    likelihood: 80
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.fact-report
+    status: mitigated
+    actor: actor.caged-child
+    disposition: threat
+    elements:
+    - component.question-probes
+    - flow.probe-to-system
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.container-host-exposure
+  name: The local Linux run uses a privileged container, root or a writable host mount, so a fact or escape probe
+    can modify the host workspace or Docker VM
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-250
+  risk:
+    impact: 55
+    likelihood: 25
+  attributes:
+    source: spec.md#SC-003
+    assets:
+    - asset.maintainer-session
+    - asset.source-tree
+    status: mitigated
+    actor: actor.caged-child
+    disposition: threat
+    elements:
+    - flow.host-to-container
+    - component.container
+    profile: stride
+    severity: low
+    technique: privilege-escalation-via-config
+- id: threat.escape-fact-runs-unconfined-payload
+  name: Escape facts (no-sandbox exec, inherited-fd read, setuid exec) run code unconfined or elevated; built from
+    variable input or interactive, they could run arbitrary commands or hang on a password prompt
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-78
+  - CWE-250
+  risk:
+    impact: 75
+    likelihood: 30
+  attributes:
+    source: spec.md#Fact-catalog
+    assets:
+    - asset.maintainer-session
+    status: mitigated
+    actor: actor.caged-child
+    disposition: threat
+    elements:
+    - component.probe-child
+    - flow.suite-to-probe
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.extension-token-exposure
+  name: The per-spawn sandbox extension token (a write capability for a directory) passed between ext-parent and
+    ext-child steps via argv or printed in observations is readable by other same-user processes or CI logs and
+    consumable by them
+  categories:
+  - Information Disclosure
+  - Elevation of Privilege
+  cwes:
+  - CWE-214
+  - CWE-532
+  risk:
+    impact: 45
+    likelihood: 30
+  attributes:
+    source: plan.md#Project-Structure; contracts/probe-protocol.md#Steps-macOS
+    assets:
+    - asset.maintainer-session
+    status: mitigated
+    actor: actor.local-process
+    disposition: threat
+    elements:
+    - flow.token-pipe
+    - component.kf-probe
+    profile: stride
+    severity: low
+    technique: sensitive-data-exposure
+- id: threat.false-pass-enforcement-fact
+  name: An enforcement fact passes because the child failed for an unrelated reason (missing binary, wrong path
+    spelling, setup error), so a broken enforcement looks verified
+  categories:
+  - Spoofing
+  - Tampering
+  cwes:
+  - CWE-754
+  risk:
+    impact: 90
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.kernel-fact
+    - asset.fact-report
+    status: mitigated
+    actor: actor.caged-child
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - flow.probe-to-suite
+    - component.probe-child
+    profile: stride
+    severity: high
+    technique: false-evidence
+- id: threat.ffi-misdeclaration
+  name: A wrong FFI declaration (variadic sandbox_check, apply argument struct, extension calls) causes undefined
+    behaviour, so the suite records garbage observations or corrupts memory
+  categories:
+  - Tampering
+  cwes:
+  - CWE-628
+  - CWE-119
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-015
+    assets:
+    - asset.kernel-fact
+    - asset.source-tree
+    status: mitigated
+    actor: actor.maintainer
+    constitution: IV. unsafe in sys only, with SAFETY comments
+    disposition: threat
+    elements:
+    - component.sys-ffi
+    - flow.probe-to-system
+    profile: stride
+    severity: high
+    technique: memory-safety
+- id: threat.fork-in-multithreaded-harness
+  name: A child forked from the multithreaded test runner allocates or takes locks before exec and deadlocks or
+    misbehaves, giving hangs or flaky results
+  categories:
+  - Denial of Service
+  - Tampering
+  cwes:
+  - CWE-833
+  - CWE-479
+  risk:
+    impact: 60
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.fact-report
+    status: mitigated
+    actor: actor.maintainer
+    constitution: IV. Syscalls only between fork and exec
+    disposition: threat
+    elements:
+    - component.fact-suite
+    - flow.suite-to-probe
+    profile: stride
+    severity: medium
+    technique: memory-safety
+- id: threat.malicious-dependency
+  name: A crate dependency with a known advisory, an unexpected licence or a non-registry source enters the workspace
+  categories:
+  - Tampering
+  cwes:
+  - CWE-1357
+  risk:
+    impact: 75
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-016
+    assets:
+    - asset.source-tree
+    status: mitigated
+    actor: actor.dependency-publisher
+    disposition: threat
+    elements:
+    - flow.deps-fetch
+    profile: stride
+    severity: medium
+    technique: data-tampering-in-transit
+- id: threat.planning-path-leak
+  name: The published tree cites local planning paths (the private notes directory, specs/, .specify/), exposing
+    internal notes and creating dead references
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    impact: 20
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-018
+    assets:
+    - asset.source-tree
+    status: mitigated
+    actor: actor.maintainer
+    disposition: threat
+    elements:
+    - component.workspace
+    profile: stride
+    severity: low
+    technique: sensitive-data-exposure
+- id: threat.probe-overstates-tier
+  name: The Linux probe reports a higher tier than the host supports (inferred from the kernel version, or a crashed
+    measurement counted as success), so later specs trust protection that is absent
+  categories:
+  - Spoofing
+  - Elevation of Privilege
+  cwes:
+  - CWE-754
+  risk:
+    impact: 80
+    likelihood: 35
+  attributes:
+    source: spec.md#FR-010
+    assets:
+    - asset.probe-result
+    status: mitigated
+    actor: actor.caged-child
+    constitution: I. Fail closed, never silently weaker; VI. Linux capabilities are probed, never inferred
+    disposition: threat
+    elements:
+    - component.linux-probe
+    - flow.linux-probe-to-suite
+    profile: stride
+    severity: high
+    technique: false-evidence
+- id: threat.sandboxed-runner-false-result
+  name: When the suite runs inside an agent harness's Seatbelt sandbox, applies fail or are silently ignored, so
+    enforcement facts report wrong outcomes or skip
+  categories:
+  - Spoofing
+  risk:
+    impact: 80
+    likelihood: 80
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.kernel-fact
+    - asset.fact-report
+    status: mitigated
+    actor: actor.agent-harness
+    constitution: III. The kernel is the oracle (enforcement tests fail, never skip, on AlreadySandboxed)
+    disposition: threat
+    elements:
+    - component.fact-suite
+    - flow.probe-to-system
+    profile: stride
+    severity: critical
+    technique: false-evidence
+- id: threat.secret-leak-in-reports
+  name: Probes print environment variables or contents of files they read into terminal and CI logs, leaking secrets
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-532
+  risk:
+    impact: 60
+    likelihood: 25
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.maintainer-session
+    - asset.fact-report
+    status: mitigated
+    actor: actor.caged-child
+    disposition: threat
+    elements:
+    - flow.report-to-log
+    profile: stride
+    severity: low
+    technique: sensitive-data-exposure
+- id: threat.shared-tmp-races
+  name: Facts that create files under /private/tmp or delete them race with or follow symlinks planted by other
+    local processes, writing or deleting outside the test's own files
+  categories:
+  - Tampering
+  cwes:
+  - CWE-377
+  - CWE-59
+  risk:
+    impact: 60
+    likelihood: 35
+  attributes:
+    source: spec.md#Fact-catalog
+    assets:
+    - asset.maintainer-session
+    status: mitigated
+    actor: actor.local-process
+    disposition: threat
+    elements:
+    - flow.child-to-filesystem
+    profile: stride
+    severity: medium
+    technique: data-tampering-in-transit
+- id: threat.tiocsti-injects-into-maintainer-terminal
+  name: The TIOCSTI probe injects input into the maintainer's or CI's real terminal, where it runs as the user
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  cwes:
+  - CWE-74
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-012
+    assets:
+    - asset.maintainer-session
+    status: mitigated
+    actor: actor.caged-child
+    constitution: V. Hygiene by default (no inherited controlling terminal)
+    disposition: threat
+    elements:
+    - flow.child-to-terminal
+    - component.question-probes
+    profile: stride
+    severity: high
+    technique: terminal-injection
+- id: threat.unattributed-evidence
+  name: A fact report or question finding lacks the OS build, kernel, tier or date, so nobody can tell which release
+    a fact was verified on
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-778
+  risk:
+    impact: 45
+    likelihood: 55
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.fact-report
+    - asset.question-finding
+    status: mitigated
+    actor: actor.maintainer
+    constitution: III. Findings carry the date and the macOS build or kernel release
+    disposition: threat
+    elements:
+    - flow.report-to-log
+    - flow.questions-to-suite
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.unbounded-fact-runtime
+  name: Contention trials or the compile-abort bisection hang or run for many minutes, blocking local runs and CI
+    lanes
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-400
+  - CWE-835
+  risk:
+    impact: 40
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.fact-report
+    status: mitigated
+    actor: actor.caged-child
+    disposition: threat
+    elements:
+    - component.probe-child
+    - component.question-probes
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.unpinned-ci-actions
+  name: A third-party CI action referenced by a mutable tag is replaced and runs attacker code with the job token
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  cwes:
+  - CWE-829
+  risk:
+    impact: 75
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-017
+    assets:
+    - asset.ci-token
+    - asset.source-tree
+    status: mitigated
+    actor: actor.action-publisher
+    disposition: threat
+    elements:
+    - flow.actions-fetch
+    - component.ci-workflow
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.attributed-reports
+  name: Every report and finding carries OS version and build or kernel release, architecture, tier, date, and for
+    findings the method and proven/inferred flag
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.unattributed-evidence
+    status: verified
+    kind: detective
+    requirements:
+    - SR-012
+    touchpoints:
+    - tests/kernel_facts/tests/kernel_facts.rs
+    - tests/kernel_facts/src/lib.rs
+- id: mitigation.bounded-trials
+  name: Fixed trial counts, per-child timeouts with kill, and an opt-in time-budgeted compile-abort bisection
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.unbounded-fact-runtime
+    status: verified
+    kind: corrective
+    requirements:
+    - SR-007
+    touchpoints:
+    - tests/kernel_facts/src/lib.rs
+    - tests/kernel_facts/tests/kernel_facts.rs
+    - justfile
+- id: mitigation.confined-audited-ffi
+  name: All FFI and unsafe confined to one test-only sys module per OS, symbols resolved by dynamic lookup with
+    missing symbols reported by name, variadics declared variadic, SAFETY comment on every unsafe block
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.ffi-misdeclaration
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - tests/kernel_facts/src/sys/mod.rs
+    - tests/kernel_facts/src/sys/macos.rs
+    - tests/kernel_facts/src/sys/linux.rs
+    - tests/kernel_facts/Cargo.toml
+    - Cargo.toml
+- id: mitigation.crash-isolated-children
+  name: Compile-heavy and abort-prone facts run in a separate child; an abort is an observation, never a crash of
+    the suite
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.compile-abort-kills-harness
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - tests/kernel_facts/src/lib.rs
+    - tests/kernel_facts/tests/kernel_facts.rs
+- id: mitigation.dependency-policy
+  name: Dependency policy gate (advisories, licence allowlist, registry-only sources, bans) with the lockfile committed
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.malicious-dependency
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-011
+    touchpoints:
+    - deny.toml
+    - justfile
+    - Cargo.lock
+- id: mitigation.exec-fresh-probe-binary
+  name: Facts run in a freshly exec'd probe binary (spawned via the standard process API), so no fact code runs
+    between fork and exec in the multithreaded test runner
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.fork-in-multithreaded-harness
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - tests/kernel_facts/tests/kernel_facts.rs
+    - tests/kernel_facts/src/bin/kf-probe/main.rs
+- id: mitigation.fixed-argv-no-shell
+  name: Facts execute only absolute-path, fixed-argument, non-interactive commands (no shell, no environment-derived
+    argv, setuid test non-interactive) on files the test created
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.escape-fact-runs-unconfined-payload
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - tests/kernel_facts/src/bin/kf-probe/main.rs
+    - tests/kernel_facts/src/bin/kf-probe/macos.rs
+- id: mitigation.measured-tier-floor
+  name: Each tier measurement runs in a throwaway child; failure, crash or timeout means absent; the tier is derived
+    only from measurements and never from the kernel version
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.probe-overstates-tier
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-016
+    touchpoints:
+    - tests/kernel_facts/src/bin/kf-probe/linux.rs
+    - tests/kernel_facts/tests/kernel_facts.rs
+- id: mitigation.outside-sandbox-precheck
+  name: Before any enforcement fact, check the sandbox self-check of the test process; if sandboxed, fail every
+    enforcement fact with a named message and the outside-sandbox command
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.sandboxed-runner-false-result
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - tests/kernel_facts/tests/kernel_facts.rs
+    - justfile
+- id: mitigation.pinned-least-privilege-ci
+  name: CI actions pinned by full commit SHA, workflow token permissions read-only, no secrets on fact lanes, checkout
+    without persisted credentials
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.unpinned-ci-actions
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - .github/workflows/ci.yml
+- id: mitigation.planning-path-gate
+  name: A local CI gate fails when the published tree mentions the private notes directory, specs/ or .specify/
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.planning-path-leak
+    status: verified
+    kind: detective
+    requirements:
+    - SR-015
+    touchpoints:
+    - justfile
+- id: mitigation.positive-controls
+  name: Every enforcement fact pairs the denied action with a control run of the same action that must succeed,
+    and matches the specific errno or exit code expected
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.false-pass-enforcement-fact
+    status: verified
+    kind: detective
+    requirements:
+    - SR-002
+    touchpoints:
+    - tests/kernel_facts/tests/kernel_facts.rs
+    - tests/kernel_facts/src/bin/kf-probe/macos.rs
+    - tests/kernel_facts/src/bin/kf-probe/linux.rs
+- id: mitigation.private-pty
+  name: The TIOCSTI probe runs on a pseudo-terminal pair the probe creates and owns, detached from the inherited
+    controlling terminal, and injects only an inert marker without newline
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.tiocsti-injects-into-maintainer-terminal
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - tests/kernel_facts/src/bin/kf-probe/macos.rs
+    - tests/kernel_facts/src/sys/macos.rs
+- id: mitigation.private-scratch-dirs
+  name: Each fact uses its own freshly created, 0700, canonicalised temp directory; names under shared /tmp are
+    unique and created exclusively; nothing in $HOME is written
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.shared-tmp-races
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - tests/kernel_facts/src/lib.rs
+- id: mitigation.report-redaction
+  name: Probes report byte counts, errno and exit codes, never file contents or environment values
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.secret-leak-in-reports
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-014
+    touchpoints:
+    - tests/kernel_facts/src/lib.rs
+    - tests/kernel_facts/src/bin/kf-probe/main.rs
+- id: mitigation.token-over-pipe
+  name: Extension tokens are passed to the child only over its stdin pipe, never in argv or env, never printed;
+    the granted directory is a 0700 scratch dir, and the token is released after the run
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.extension-token-exposure
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-017
+    touchpoints:
+    - tests/kernel_facts/src/bin/kf-probe/macos.rs
+- id: mitigation.unprivileged-container
+  name: Local Linux runs never use --privileged or host networking, run as a non-root user, and mount the workspace
+    read-only with a container-local target directory
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.container-host-exposure
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-013
+    touchpoints:
+    - justfile
+requirements:
+- id: SR-001
+  statement: The fact suite MUST fail, never skip or pass, every enforcement fact when the test process is already
+    inside a Seatbelt sandbox, and the failure message MUST name the condition and the outside-sandbox command.
+  priority: P1
+  mitigations:
+  - mitigation.outside-sandbox-precheck
+  acceptance:
+  - given: the suite is started under a Seatbelt profile (e.g. sandbox-exec or an agent harness)
+    then: it fails with an already-sandboxed message naming the outside-sandbox command; no enforcement fact reports
+      pass or skip
+    when: an enforcement fact runs
+  tasks: []
+- id: SR-002
+  statement: Every enforcement fact MUST include a control run of the same action without the restriction that succeeds,
+    and MUST match the specific expected errno, exit code or data, never just "the child failed".
+  priority: P1
+  mitigations:
+  - mitigation.positive-controls
+  acceptance:
+  - given: an enforcement fact whose target file is missing
+    then: the control run fails and the fact reports a setup failure, not a pass
+    when: the fact runs
+  - given: a denied action that fails with an unexpected errno
+    then: the fact fails and reports expected and observed errno
+    when: the fact runs
+  tasks: []
+- id: SR-003
+  statement: The TIOCSTI probe MUST operate only on a pseudo-terminal pair it creates, after detaching from any
+    controlling terminal, and MUST NOT write a newline or command text.
+  priority: P1
+  mitigations:
+  - mitigation.private-pty
+  acceptance:
+  - given: the maintainer runs the suite in an interactive terminal
+    then: no character appears in, or is executed by, the maintainer's terminal; the observation is read back from
+      the probe's own pty
+    when: the TIOCSTI probe runs
+  tasks: []
+- id: SR-004
+  statement: Facts MUST execute only absolute-path commands with constant arguments, never through a shell or with
+    arguments derived from the environment, and any setuid exec MUST be non-interactive and time-bounded.
+  priority: P2
+  mitigations:
+  - mitigation.fixed-argv-no-shell
+  acceptance:
+  - given: the probe source
+    then: no fact execs a shell or builds argv from environment variables
+    when: it is reviewed or grepped
+  - given: the setuid fact on a host where sudo would prompt
+    then: it completes within its timeout without prompting
+    when: it runs
+  tasks: []
+- id: SR-005
+  statement: Facts MUST create and touch files only in their own freshly created 0700 temp directory (or under unique,
+    exclusively created names where a fact needs /private/tmp itself), MUST NOT write under $HOME, and MUST remove
+    what they create.
+  priority: P2
+  mitigations:
+  - mitigation.private-scratch-dirs
+  acceptance:
+  - given: a pre-existing symlink at a predictable /tmp name
+    then: they neither follow it nor write through it
+    when: the /tmp facts run
+  - given: a full suite run
+    then: no files created by the suite remain and nothing under $HOME changed
+    when: it finishes
+  tasks: []
+- id: SR-006
+  statement: Every fact that may abort inside a system library MUST run in a separate child process, and an abort
+    MUST be recorded as an observation while the suite continues.
+  priority: P1
+  mitigations:
+  - mitigation.crash-isolated-children
+  acceptance:
+  - given: the 20,000-rule fact
+    then: the fact records the abort signal and every later fact still runs
+    when: libsandbox aborts
+  tasks: []
+- id: SR-007
+  statement: Timing-dependent facts MUST use fixed trial counts and per-child timeouts that kill the child and fail
+    the fact; the compile-abort bisection MUST be opt-in and time-budgeted.
+  priority: P2
+  mitigations:
+  - mitigation.bounded-trials
+  acceptance:
+  - given: a child that hangs
+    then: it is killed and the fact fails with a timeout
+    when: its timeout expires
+  - given: the default test command
+    then: the compile-abort bisection does not run; the asserting fact checks only the recorded bracket edges
+    when: it runs
+  tasks: []
+- id: SR-008
+  statement: Fact code MUST NOT run between fork and exec in the test runner process; each fact runs in a freshly
+    exec'd probe binary, and fork-then-apply code exists only in that binary and issues syscalls only.
+  priority: P2
+  mitigations:
+  - mitigation.exec-fresh-probe-binary
+  acceptance:
+  - given: the test harness source
+    then: it contains no pre_exec closure or raw fork; children start through the standard process API
+    when: it is reviewed
+  tasks: []
+- id: SR-009
+  statement: All unsafe code MUST be confined to one test-only sys module per OS, with a SAFETY comment on every
+    unsafe block; private symbols MUST be resolved by dynamic lookup and a missing symbol MUST fail its fact by
+    name.
+  priority: P1
+  mitigations:
+  - mitigation.confined-audited-ffi
+  acceptance:
+  - given: the workspace
+    then: unsafe_code is forbidden in every module except the sys modules, and every unsafe block has a SAFETY comment
+    when: lints run
+  - given: a symbol name that does not exist
+    then: the fact fails reporting the symbol as unavailable and the suite continues
+    when: it is resolved
+  tasks: []
+- id: SR-010
+  statement: The CI workflow MUST pin every third-party action to a full commit SHA, set token permissions to read-only,
+    use no secrets on fact lanes, and check out without persisted credentials.
+  priority: P2
+  mitigations:
+  - mitigation.pinned-least-privilege-ci
+  acceptance:
+  - given: the CI workflow file
+    then: every uses reference has a 40-hex SHA, permissions is contents read, and no secrets reference appears
+    when: it is checked
+  tasks: []
+- id: SR-011
+  statement: The local CI command MUST run a dependency policy check (advisories, licence allowlist, crates.io-only
+    sources, bans), and the lockfile MUST be part of the tree.
+  priority: P2
+  mitigations:
+  - mitigation.dependency-policy
+  acceptance:
+  - given: a dependency with a disallowed licence or a git source
+    then: it fails at the dependency gate
+    when: the local CI command runs
+  tasks: []
+- id: SR-012
+  statement: Every fact report and question finding MUST record OS version and build or kernel release, architecture,
+    tier (Linux), and date; question findings MUST also record the method and whether the answer is proven or inferred.
+  priority: P2
+  mitigations:
+  - mitigation.attributed-reports
+  acceptance:
+  - given: any suite run
+    then: its header contains OS build or kernel, architecture, date and tier
+    when: the report is printed
+  tasks: []
+- id: SR-013
+  statement: Local Linux fact runs MUST NOT use privileged containers or host networking, MUST run the facts as
+    a non-root user, and MUST mount the host workspace read-only.
+  priority: P3
+  mitigations:
+  - mitigation.unprivileged-container
+  acceptance:
+  - given: the documented container recipe
+    then: it has no --privileged, no host network, a read-only source mount and a non-root user
+    when: it is inspected
+  tasks: []
+- id: SR-014
+  statement: Probes MUST report byte counts, errno values and exit codes only, never file contents or environment
+    variable values.
+  priority: P3
+  mitigations:
+  - mitigation.report-redaction
+  acceptance:
+  - given: the inherited-fd fact reads a file
+    then: the report shows the byte count, not the contents
+    when: it reports
+  tasks: []
+- id: SR-015
+  statement: The local CI command MUST fail when any published file mentions the private notes directory, specs/
+    or .specify/.
+  priority: P3
+  mitigations:
+  - mitigation.planning-path-gate
+  acceptance:
+  - given: a source comment citing a private research note
+    then: the planning-path gate fails naming the file
+    when: the local CI command runs
+  tasks: []
+- id: SR-016
+  statement: The Linux probe MUST derive the tier only from measurements taken in throwaway children, MUST treat
+    a failed, crashed or timed-out measurement as absent, and MUST NOT consult the kernel version string for capabilities.
+  priority: P1
+  mitigations:
+  - mitigation.measured-tier-floor
+  acceptance:
+  - given: a container with default seccomp
+    then: it reports T2 with user namespaces absent (EPERM)
+    when: the probe runs
+  - given: a measurement child that crashes
+    then: the capability counts as absent and the tier is not raised
+    when: the probe derives the tier
+  tasks: []
+- id: SR-017
+  statement: Sandbox extension tokens MUST be passed between steps only over a stdin pipe, MUST NOT appear in argv,
+    environment or observations, and MUST grant only a 0700 scratch directory.
+  priority: P3
+  mitigations:
+  - mitigation.token-over-pipe
+  acceptance:
+  - given: the KF-M20 and KF-M25 steps run
+    then: no token string appears; the child reads it from stdin
+    when: argv, env and the report are inspected
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-29
+  requirement: SR-001
+  method: test
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::main (sandbox precheck); run under sandbox-exec recorded in
+    quickstart.md scenario 3
+  result: pass
+  verdict: verified
+  justification: Ran the suite under sandbox-exec; header showed sandboxed yes and all 16 enforcement facts failed
+    with the outside-sandbox message, none skipped or passed.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-001.2026-10-29-2
+  requirement: SR-001
+  method: test
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::main (sandbox precheck); run under sandbox-exec recorded in
+    quickstart.md scenario 3
+  result: pass
+  verdict: verified
+  justification: Ran the suite under sandbox-exec; header showed sandboxed yes and all 16 enforcement facts failed
+    with the outside-sandbox message, none skipped or passed.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-002.2026-10-29
+  requirement: SR-002
+  method: review
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::control (maps a failed control to SetupFailed); ::expect
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The unexpected-errno scenario was observed (KF-M25 and KF-L07 failed with expected and observed
+    values), but no test exercises a failing control run turning into SETUP-FAILED.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-002.2026-10-29-2
+  requirement: SR-002
+  method: test
+  evidence: tests/kernel_facts/src/lib.rs::tests::controls_and_expectations
+  result: pass
+  verdict: verified
+  justification: A failed control run becomes SetupFailed, a wrong errno fails with expected errno=1 and the observed
+    errno=13, and a crashed step is never judged; the unexpected-errno path was also observed in real runs.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-003.2026-10-29
+  requirement: SR-003
+  method: review
+  evidence: tests/kernel_facts/src/bin/kf-probe/macos.rs::tiocsti_child (setsid, then opens the probe's own pty
+    slave; stdin /dev/null; single byte, no newline)
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The control is in place and was run, but no test asserts that the inherited terminal is untouched
+    (e.g. that the child has no controlling terminal before opening the pty).
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-003.2026-10-29-2
+  requirement: SR-003
+  method: test
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::m26 (KF-M26 asserts ctty_before_errno=6)
+  result: pass
+  verdict: verified
+  justification: After setsid the child cannot open /dev/tty (ENXIO) before it opens its own pty, so the inherited
+    terminal is out of reach; the byte is a constant 'k' with no newline.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-004.2026-10-29
+  requirement: SR-004
+  method: review
+  evidence: tests/kernel_facts/src/bin/kf-probe/macos.rs SETUID_ARGV and nested(); main.rs::scratch_arg; grep for
+    shells and fork in the runner and probe found none
+  result: pass
+  verdict: verified
+  justification: Every exec uses an absolute constant path or current_exe with constant step names and validated
+    scratch paths; sudo runs with -n, stdin /dev/null and a 10 s deadline, and completed in 0.03 s.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-004.2026-10-29-2
+  requirement: SR-004
+  method: review
+  evidence: tests/kernel_facts/src/bin/kf-probe/macos.rs SETUID_ARGV and nested(); main.rs::scratch_arg; grep for
+    shells and fork in the runner and probe found none
+  result: pass
+  verdict: verified
+  justification: Every exec uses an absolute constant path or current_exe with constant step names and validated
+    scratch paths; sudo runs with -n, stdin /dev/null and a 10 s deadline, and completed in 0.03 s.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-005.2026-10-29
+  requirement: SR-005
+  method: review
+  evidence: tests/kernel_facts/src/lib.rs::Scratch (exclusive 0700 create, canonicalised, removed on drop); lib.rs::tests::scratch_is_private_and_removed
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: Private, removed scratch dirs are unit-tested and no procage-kf-* remained after full runs, but
+    no test exercises the pre-planted-symlink scenario.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-005.2026-10-29-2
+  requirement: SR-005
+  method: test
+  evidence: tests/kernel_facts/src/lib.rs::tests::planted_symlinks_are_not_followed; ::tests::scratch_is_private_and_removed
+  result: pass
+  verdict: verified
+  justification: Exclusive directory and file creation both fail on a planted symlink and leave its target unchanged;
+    scratch dirs are 0700 and removed; no procage-kf-* remained after full runs.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-006.2026-10-29
+  requirement: SR-006
+  method: test
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::m17 (KF-M17 observes exit=signal:6 in a child; later facts
+    KF-M18…M28 ran in the same run)
+  result: pass
+  verdict: verified
+  justification: The 20,000-rule abort is recorded as an observation and the suite continued to completion in every
+    full run.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-006.2026-10-29-2
+  requirement: SR-006
+  method: test
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::m17 (KF-M17 observes exit=signal:6 in a child; later facts
+    KF-M18…M28 ran in the same run)
+  result: pass
+  verdict: verified
+  justification: The 20,000-rule abort is recorded as an observation and the suite continued to completion in every
+    full run.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-007.2026-10-29
+  requirement: SR-007
+  method: review
+  evidence: tests/kernel_facts/src/lib.rs::run_step (deadline, SIGKILL, Exit::Timeout); justfile bisect recipe (PROCAGE_KF_BISECT
+    opt-in)
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The default run never bisects (KF-M24 took 62 s against 776 s with bisection), but no test shows
+    a hanging child being killed and reported as a timeout.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-007.2026-10-29-2
+  requirement: SR-007
+  method: test
+  evidence: tests/kernel_facts/src/lib.rs::tests::hanging_child_is_killed
+  result: pass
+  verdict: verified
+  justification: A 30 s child under a 200 ms timeout is killed and reported as Exit::Timeout well within 5 s; the
+    bisection runs only with PROCAGE_KF_BISECT=1.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-008.2026-10-29
+  requirement: SR-008
+  method: review
+  evidence: tests/kernel_facts/tests/kernel_facts.rs (steps only via run_step/Command); the only fork is tests/kernel_facts/src/sys/macos.rs::PreparedExec::spawn,
+    exercised by KF-M18
+  result: pass
+  verdict: verified
+  justification: The runner has no pre_exec or fork. The one fork window issues dup2, __mac_syscall, execve and
+    _exit on memory prepared before fork, and passed 200/200 under contention.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-008.2026-10-29-2
+  requirement: SR-008
+  method: review
+  evidence: tests/kernel_facts/tests/kernel_facts.rs (steps only via run_step/Command); the only fork is tests/kernel_facts/src/sys/macos.rs::PreparedExec::spawn,
+    exercised by KF-M18
+  result: pass
+  verdict: verified
+  justification: The runner has no pre_exec or fork. The one fork window issues dup2, __mac_syscall, execve and
+    _exit on memory prepared before fork, and passed 200/200 under contention.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-009.2026-10-29
+  requirement: SR-009
+  method: review
+  evidence: Cargo.toml / tests/kernel_facts/Cargo.toml lints (unsafe_code forbid/deny, undocumented_unsafe_blocks
+    deny); tests/kernel_facts/src/sys/mod.rs; sys/macos.rs::Sandbox::load
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The lint scenario is verified (an injected unsafe failed the lint gate; 29 unsafe blocks match
+    29 SAFETY comments), but resolving a nonexistent symbol is not tested.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-009.2026-10-29-2
+  requirement: SR-009
+  method: test
+  evidence: tests/kernel_facts/src/sys/macos.rs::tests::missing_symbol_is_named
+  result: pass
+  verdict: verified
+  justification: An unknown symbol is returned by name; every real symbol resolves. Lints confine unsafe to sys,
+    with SAFETY comments enforced by clippy.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-010.2026-10-29
+  requirement: SR-010
+  method: review
+  evidence: .github/workflows/ci.yml:9 (permissions contents read), :27/:35 (40-hex SHA pins), persist-credentials
+    false on every checkout
+  result: pass
+  verdict: verified
+  justification: Every uses reference is pinned to a full commit SHA, the token is read-only, and no secrets are
+    referenced.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-010.2026-10-29-2
+  requirement: SR-010
+  method: review
+  evidence: .github/workflows/ci.yml:9 (permissions contents read), :27/:35 (40-hex SHA pins), persist-credentials
+    false on every checkout
+  result: pass
+  verdict: verified
+  justification: Every uses reference is pinned to a full commit SHA, the token is read-only, and no secrets are
+    referenced.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-011.2026-10-29
+  requirement: SR-011
+  method: test
+  evidence: justfile deny recipe (cargo deny --workspace check); quickstart.md scenario 9 (GPL path dependency caught)
+  result: pass
+  verdict: verified
+  justification: An injected GPL-3.0 path dependency failed the gate after the --workspace fix; the lockfile is
+    in the tree and the deny config allows crates.io only.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-011.2026-10-29-2
+  requirement: SR-011
+  method: test
+  evidence: justfile deny recipe (cargo deny --workspace check); quickstart.md scenario 9 (GPL path dependency caught)
+  result: pass
+  verdict: verified
+  justification: An injected GPL-3.0 path dependency failed the gate after the --workspace fix; the lockfile is
+    in the tree and the deny config allows crates.io only.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-012.2026-10-29
+  requirement: SR-012
+  method: test
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::header; target/kernel-facts/report-*.txt; question finding
+    doc comments on m23/m25/m26 and the compile-abort bracket constants
+  result: pass
+  verdict: verified
+  justification: Every run printed OS build or kernel, arch, UTC date and tier. Each finding records date, build,
+    method and whether it is measured or inferred.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-012.2026-10-29-2
+  requirement: SR-012
+  method: test
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::header; target/kernel-facts/report-*.txt; question finding
+    doc comments on m23/m25/m26 and the compile-abort bracket constants
+  result: pass
+  verdict: verified
+  justification: Every run printed OS build or kernel, arch, UTC date and tier. Each finding records date, build,
+    method and whether it is measured or inferred.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-013.2026-10-29
+  requirement: SR-013
+  method: review
+  evidence: justfile kf-linux and kf-linux-t1 recipes
+  result: pass
+  verdict: verified
+  justification: Both recipes run as user 65534, mount the source read-only, and use neither --privileged nor host
+    networking; both ran successfully.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-013.2026-10-29-2
+  requirement: SR-013
+  method: review
+  evidence: justfile kf-linux and kf-linux-t1 recipes
+  result: pass
+  verdict: verified
+  justification: Both recipes run as user 65534, mount the source read-only, and use neither --privileged nor host
+    networking; both ran successfully.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-014.2026-10-29
+  requirement: SR-014
+  method: test
+  evidence: tests/kernel_facts/src/lib.rs::emit (asserts the observation alphabet) and ::tests::observations; KF-M19
+    reports fd_bytes=16, never contents
+  result: pass
+  verdict: verified
+  justification: Observations are restricted to numbers, flags and tokens by construction. The inherited-fd fact
+    reports the byte count only.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-014.2026-10-29-2
+  requirement: SR-014
+  method: test
+  evidence: tests/kernel_facts/src/lib.rs::emit (asserts the observation alphabet) and ::tests::observations; KF-M19
+    reports fd_bytes=16, never contents
+  result: pass
+  verdict: verified
+  justification: Observations are restricted to numbers, flags and tokens by construction. The inherited-fd fact
+    reports the byte count only.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-015.2026-10-29
+  requirement: SR-015
+  method: test
+  evidence: justfile planning-paths recipe; quickstart.md scenario 10
+  result: pass
+  verdict: verified
+  justification: An injected planning path in src/lib.rs failed the gate, and the clean tree passes.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-015.2026-10-29-2
+  requirement: SR-015
+  method: test
+  evidence: justfile planning-paths recipe; quickstart.md scenario 10
+  result: pass
+  verdict: verified
+  justification: An injected planning path in src/lib.rs failed the gate, and the clean tree passes.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-016.2026-10-29
+  requirement: SR-016
+  method: review
+  evidence: tests/kernel_facts/tests/kernel_facts.rs::linux::Probe::measure; just kf-linux (tier T2, userns errno
+    1)
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The default-seccomp container scenario passed (T2 with userns EPERM), but no test shows a crashed
+    measurement counted as absent.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-016.2026-10-29-2
+  requirement: SR-016
+  method: test
+  evidence: tests/kernel_facts/src/lib.rs::tests::broken_measurements_are_absent
+  result: pass
+  verdict: verified
+  justification: Signal, timeout and error exits count as absent even with ok=1 printed, and derive_tier never rises
+    without every capability; the default-seccomp container measured T2 with userns EPERM.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+- id: verification.sr-017.2026-10-29
+  requirement: SR-017
+  method: review
+  evidence: tests/kernel_facts/src/bin/kf-probe/macos.rs::ext_parent (token written to the child's stdin, never
+    in argv or emit) and ::ext_child (reads stdin)
+  result: pass
+  verdict: verified
+  justification: The token goes only through the stdin pipe, the argv carries the scratch path and order only, and
+    no emit call includes it; the granted directories are inside a 0700 scratch.
+  verified_at: '2026-10-29T20:19:03Z'
+  commit: 24f3263
+- id: verification.sr-017.2026-10-29-2
+  requirement: SR-017
+  method: review
+  evidence: tests/kernel_facts/src/bin/kf-probe/macos.rs::ext_parent (token written to the child's stdin, never
+    in argv or emit) and ::ext_child (reads stdin)
+  result: pass
+  verdict: verified
+  justification: The token goes only through the stdin pipe, the argv carries the scratch path and order only, and
+    no emit call includes it; the granted directories are inside a 0700 scratch.
+  verified_at: '2026-10-29T20:25:18Z'
+  commit: 24f3263
+decisions: []

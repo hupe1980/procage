@@ -1,0 +1,439 @@
+{
+  "feature": "010-violations",
+  "commit": "7b50b8c",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "A violation MUST be attributed only by the exact marker of a live run of this process on the last line of the message; a path containing a newline and another tag MUST stay with the run that caused it.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "two runs and a path containing a newline followed by the other run's marker",
+          "then": "the violation is in the first run's record with the full path, and not in the other's",
+          "when": "the first run is denied that path"
+        },
+        {
+          "given": "a message whose last line is no live marker",
+          "then": "it is ignored",
+          "when": "it is parsed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.last-line"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[P] [SR-001] `Violation`, `DeniedBy`, `Coverage`, `Violations` (cap 10,000, dropped count) and the pure parser (last line = exact live marker; target may contain newlines; unknown code kept) with unit tests incl. a newline-forged target, in src/violation.rs; exports in src/lib.rs and `procage::native`"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] tests/spawn_macos.rs: hidden read + outside write listed with `Hide`/`NotGranted`, complete within 1 s of exit; a `secrets`-class path read \u2192 `HardDeny(Secrets)`; protect write \u2192 `Protect`; set-user-id exec \u2192 `HardDeny(Privilege)`; two concurrent runs keep their own; a running child's record is incomplete; a cage without the option reports `Off` and starts no helper; a newline-forged path stays with its run; slot reuse after a late denial keeps it in the first record; no violation from the lifetime probe"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/macos/violations.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/violation.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "A run slot MUST NOT be freed before a fence passed after the run ended.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a run denied just before it ends",
+          "then": "the denial is in the first record and not in the second",
+          "when": "its slot is reused by the next run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.fence-before-free"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-005] Wiring in src/macos/mod.rs and src/macos/child.rs: `CageOptions::with_violations`; slot 0 compiled for reporting cages; a run slot per spawn for every reporting spawn; sink registered before the fork; `Child::violations` (fence after exit, complete flag), `violation_receiver` (bounded 1,024, once); `kill_all` runs the marker search only for forking policies and fences before freeing, retiring the slot on timeout"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] tests/spawn_macos.rs: hidden read + outside write listed with `Hide`/`NotGranted`, complete within 1 s of exit; a `secrets`-class path read \u2192 `HardDeny(Secrets)`; protect write \u2192 `Protect`; set-user-id exec \u2192 `HardDeny(Privilege)`; two concurrent runs keep their own; a running child's record is incomplete; a cage without the option reports `Off` and starts no helper; a newline-forged path stays with its run; slot reuse after a late denial keeps it in the first record; no violation from the lifetime probe"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/macos/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/violations.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "Without reporting the rendered profile MUST equal the lowering fixtures recorded before this feature; with reporting only rule messages MUST differ, the run-marker block MUST carry none, and the escape suite MUST pass with reporting on.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "every lowering fixture",
+          "then": "removing the messages gives the same text, and without reporting it equals the fixture",
+          "when": "rendered with and without reporting"
+        },
+        {
+          "given": "the macOS escape suite",
+          "then": "every canary still holds",
+          "when": "run with reporting on"
+        }
+      ],
+      "mitigations": [
+        "mitigation.identical-off"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-003] `DenyReason` with `code`/`from_code`, `Rule::reason`, and `write_profile` rendering messages only with reporting on (run-marker parameter, `string-append` for explicit denies) in crates/procage-policy/src/sbpl.rs; `LowerOptions::with_violations` replacing `tag`/`with_tag` in crates/procage-policy/src/lower/mod.rs; re-exports in crates/procage-policy/src/lib.rs"
+        },
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-003] Set reasons in crates/procage-policy/src/lower/macos.rs: hard-deny rules and data-class paths \u2192 `HardDeny(class)`, protect/hide fs and hidden-socket denies \u2192 `Protect`/`Hide`, raw layer denies \u2192 `Layer`; the run-marker block none"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[P] [SR-003] Policy tests in crates/procage-policy/tests: code round-trip; every lowering fixture renders byte-identical without the option; with it, stripping messages gives the same text; the marker block carries no message; update tests that used `Tag` with `LowerOptions`"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] [SR-003] tests/escape_macos.rs: run the escape canaries also with reporting on"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/sbpl.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "A run record MUST keep at most a fixed number of violations and count the rest; the receiver MUST be bounded.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "more distinct denials than the cap",
+          "then": "it holds the cap and counts the dropped ones",
+          "when": "the record is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.cap"
+      ],
+      "tasks": [
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US3] [SR-004] [SR-006] [SR-007] tests/spawn_macos.rs: the first reporting spawn is ready within 2 s; the receiver yields a violation before exit; the integrity check refuses a group-writable or user-owned binary (unit test on a temp file) with `Unavailable`; a detached run's slot is not reused; more denials than a lowered test cap counts dropped; a helper killed mid-run marks the record incomplete with `Unavailable` and the next spawn restarts it; a process that started the helper and is killed leaves no helper (exec harness or subprocess test)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/violation.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "A record MUST say complete only after a fence passed after the child exited, and MUST state its coverage (off, unavailable with reason, not observed on this platform); docs MUST call reporting best-effort and diagnostic.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a running child",
+          "then": "it is not complete",
+          "when": "the record is read"
+        },
+        {
+          "given": "a cage without reporting, or Linux",
+          "then": "coverage says off or not observed, never complete with zero violations as a claim",
+          "when": "the record is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.honest-record"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-002] [SR-005] Wiring in src/macos/mod.rs and src/macos/child.rs: `CageOptions::with_violations`; slot 0 compiled for reporting cages; a run slot per spawn for every reporting spawn; sink registered before the fork; `Child::violations` (fence after exit, complete flag), `violation_receiver` (bounded 1,024, once); `kill_all` runs the marker search only for forking policies and fences before freeing, retiring the slot on timeout"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [US2] [SR-001] [SR-002] [SR-005] tests/spawn_macos.rs: hidden read + outside write listed with `Hide`/`NotGranted`, complete within 1 s of exit; a `secrets`-class path read \u2192 `HardDeny(Secrets)`; protect write \u2192 `Protect`; set-user-id exec \u2192 `HardDeny(Privilege)`; two concurrent runs keep their own; a running child's record is incomplete; a cage without the option reports `Off` and starts no helper; a newline-forged path stays with its run; slot reuse after a late denial keeps it in the first record; no violation from the lifetime probe"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[SR-005] Linux: `CageOptions::with_violations`, `Child::violations` (`Off`/`NotObserved`), `violation_receiver` \u2192 `None` in src/linux/mod.rs and src/linux/child.rs; tests/native.rs shape test on both"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[SR-005] Docs: crate section \"Violations\" with the example in src/lib.rs (best-effort, diagnostic, dedup, admin accounts, `Cage::exec` has none), README, THREAT_MODEL.md (R-17 status, reporting is not a control)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/violation.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "The helper MUST run absolute /usr/bin/log under /bin/sh, both passing the integrity check (owned by root, not group- or world-writable, on a read-only volume), with an empty environment and no inherited descriptors, and MUST end when the process that started it dies.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a process that started the helper",
+          "then": "no helper of it remains within a second",
+          "when": "it is killed with SIGKILL"
+        },
+        {
+          "given": "a helper path that fails the integrity check",
+          "then": "it runs nothing and coverage is unavailable with the reason",
+          "when": "the monitor starts"
+        }
+      ],
+      "mitigations": [
+        "mitigation.watchdog"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-007] Monitor in src/macos/violations.rs: `/bin/sh` watchdog running absolute `/usr/bin/log stream --style ndjson` with the predicate (marker prefix), empty environment, reader thread with `serde_json`, sinks by marker, ready handshake (\u2264 2 s), fences (\u2264 1 s), integrity check of `/bin/sh` and `/usr/bin/log` (root-owned, not group/world-writable, read-only volume) via `on_read_only_volume` in src/macos/sys.rs, `Down(reason)` and restart; fences as denials of a forked child (`install_fence` in src/macos/sys.rs; multithreaded-parent test); `serde_json` macOS dependency in Cargo.toml"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US3] [SR-004] [SR-006] [SR-007] tests/spawn_macos.rs: the first reporting spawn is ready within 2 s; the receiver yields a violation before exit; the integrity check refuses a group-writable or user-owned binary (unit test on a temp file) with `Unavailable`; a detached run's slot is not reused; more denials than a lowered test cap counts dropped; a helper killed mid-run marks the record incomplete with `Unavailable` and the next spawn restarts it; a process that started the helper and is killed leaves no helper (exec harness or subprocess test)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/macos/violations.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Waiting for the helper, a fence or a slot release MUST be bounded; a timeout MUST leave the record incomplete instead of blocking.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a helper that never answers",
+          "then": "it returns within the limit, incomplete",
+          "when": "violations() is called after exit"
+        }
+      ],
+      "mitigations": [
+        "mitigation.bounded-waits"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-006] [SR-007] Monitor in src/macos/violations.rs: `/bin/sh` watchdog running absolute `/usr/bin/log stream --style ndjson` with the predicate (marker prefix), empty environment, reader thread with `serde_json`, sinks by marker, ready handshake (\u2264 2 s), fences (\u2264 1 s), integrity check of `/bin/sh` and `/usr/bin/log` (root-owned, not group/world-writable, read-only volume) via `on_read_only_volume` in src/macos/sys.rs, `Down(reason)` and restart; fences as denials of a forked child (`install_fence` in src/macos/sys.rs; multithreaded-parent test); `serde_json` macOS dependency in Cargo.toml"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US3] [SR-004] [SR-006] [SR-007] tests/spawn_macos.rs: the first reporting spawn is ready within 2 s; the receiver yields a violation before exit; the integrity check refuses a group-writable or user-owned binary (unit test on a temp file) with `Unavailable`; a detached run's slot is not reused; more denials than a lowered test cap counts dropped; a helper killed mid-run marks the record incomplete with `Unavailable` and the next spawn restarts it; a process that started the helper and is killed leaves no helper (exec harness or subprocess test)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/macos/violations.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.enforcement-claim",
+    "threat.false-complete",
+    "threat.forged-attribution",
+    "threat.helper-leak",
+    "threat.profile-drift",
+    "threat.record-flood",
+    "threat.slot-reuse",
+    "threat.wait-hang"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 8,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 8
+    },
+    "threats_by_severity": {
+      "low": 4,
+      "medium": 3,
+      "high": 1
+    },
+    "mitigations": 7,
+    "requirements": 7,
+    "requirements_with_tasks": 7,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 1,
+      "medium": 6
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

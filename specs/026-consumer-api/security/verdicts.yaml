@@ -1,0 +1,31 @@
+verdicts:
+  - requirement: SR-001
+    verdict: verified
+    method: test
+    evidence: tests/spawn_macos.rs::env_clear_keeps_the_caller_environment_out, tests/spawn_linux.rs::env_clear_keeps_the_caller_environment_out
+    result: pass
+    justification: An uncaged runner holding PROCAGE_SECRET spawns caged children whose command called env_clear and set A, under passthrough and under an allowlist naming the secret and PATH; both children see exactly A and PROCAGE_CHILD, on macOS and Linux T1/T2. With the clear ignored the test fails with the whole caller environment.
+  - requirement: SR-002
+    verdict: verified
+    method: test
+    evidence: src/unix.rs::tests::the_decision_fails_closed_only_for_passthrough, src/macos/mod.rs:614, src/linux/mod.rs:644
+    result: pass
+    justification: The decision returns an error for passthrough whenever the observer failed its check or saw an unknown shape, and keeps allowlists working; both spawn paths map the error to Unsupported::EnvClear before forking (macOS before taking a run marker; Linux at the environment step, which precedes the fork).
+  - requirement: SR-003
+    verdict: verified
+    method: test
+    evidence: src/unix.rs::tests::values_cannot_fake_a_clear, src/unix.rs::tests::the_observer_works_with_this_std, src/unix.rs::tests::an_unexpected_shape_is_unknown
+    result: pass
+    justification: Arguments, values, program name and working directory containing the marker lines do not report a clear; env_clear does; the self-check passes on std 1.99 (macOS and Linux) and an unexpected shape is unknown.
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: tests/native.rs::a_granted_file_is_read_through_the_common_subset, tests/native.rs::kill_all_and_detach_have_the_same_meaning, tests/native.rs::errors_explain_themselves
+    result: pass
+    justification: The test file uses only procage::native with no cfg in its bodies, and passes on macOS, Linux T2 and T1.
+  - requirement: SR-005
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/gaps.rs::reading_everything_on_t1_needs_exactly_the_spawn_masks
+    result: pass
+    justification: Reading / on T1 is refused naming hd-secrets without options; accept_spawn_masks holds exactly the three constructs; the plan lowers with them listed in its degradations; adding a glob rule is still refused.

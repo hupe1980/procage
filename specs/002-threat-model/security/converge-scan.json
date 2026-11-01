@@ -1,0 +1,622 @@
+{
+  "feature": "002-threat-model",
+  "commit": "24f3263",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "The catalog gate MUST fail when a row has status mitigated or detected and its evidence is empty or names a test that does not exist in the repository, and the README and crate docs MUST NOT state enforcement in the present tense while no sandboxing API ships.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a row marked mitigated with empty evidence",
+          "then": "it fails naming the id and the evidence rule",
+          "when": "the gate runs"
+        },
+        {
+          "given": "a row marked detected whose evidence names a non-existent test",
+          "then": "it fails naming the id and the unresolved reference",
+          "when": "the gate runs"
+        },
+        {
+          "given": "the README and crate docs of a release with no sandboxing API",
+          "then": "no sentence describes enforcement in the present tense",
+          "when": "they are reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.evidence-gate"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] Rewrite the crate docs in `src/lib.rs`: what procage is *for* (planned), an explicit status (0.0.x, no API, enforces nothing) and an intra-doc link to [`threat_model`]. Remove the present-tense \"it applies Seatbelt profiles\" [SR-001]"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[P] [US1] Rewrite the `README.md` intro in the same honest tense. Add a `## Threat model` section summarising adversary, scope and strength in five lines or fewer, with a link to `THREAT_MODEL.md` [SR-001]"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[US3] Implement `evidence-required` (status mitigated/detected with an empty evidence list), `evidence-location` (the ref must start with `tests/`, must not be under `tests/kernel_facts/`, must end with `.rs` and have the form `path::fn`) and `evidence-missing` (the file exists and contains `fn <name>`) in `tests/threat_model.rs` [SR-001] [SR-002]"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US3] Add injection unit tests in `tests/threat_model.rs`. Each test applies one mutation to the real `THREAT_MODEL.md` text (or to README/lib.rs) and asserts that exactly the expected rule fires, naming the expected subject [SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [SR-007]"
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[US3] Add a positive test in `tests/threat_model.rs`: R-10 `mitigated` with evidence naming an existing test function in `tests/threat_model.rs` passes every rule. This shows that the evidence rule accepts valid evidence [SR-001]"
+        },
+        {
+          "id": "T020",
+          "done": true,
+          "text": "Review pass over `README.md`, `src/lib.rs`, `THREAT_MODEL.md` and `SECURITY.md`. Confirm: no present-tense enforcement claim (SR-001 scenario 3); no open user action, token reference or unpublished decision (SR-008); no exploit steps in any row (SR-010). Record the result in `quickstart.md` [SR-001] [SR-008] [SR-010]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "README.md",
+            "exists": true
+          },
+          {
+            "path": "src/lib.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "Evidence for mitigated or detected MUST resolve to a test function in an integration-test location that runs a caged child; references into library source or unit tests MUST fail the gate.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "evidence pointing at a unit test inside the library source",
+          "then": "it fails naming the id and the location rule",
+          "when": "the gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.evidence-location-rule"
+      ],
+      "tasks": [
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[US3] Implement `evidence-required` (status mitigated/detected with an empty evidence list), `evidence-location` (the ref must start with `tests/`, must not be under `tests/kernel_facts/`, must end with `.rs` and have the form `path::fn`) and `evidence-missing` (the file exists and contains `fn <name>`) in `tests/threat_model.rs` [SR-001] [SR-002]"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US3] Add injection unit tests in `tests/threat_model.rs`. Each test applies one mutation to the real `THREAT_MODEL.md` text (or to README/lib.rs) and asserts that exactly the expected rule fires, naming the expected subject [SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [SR-007]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The gate MUST fail when any id in the published-id baseline is absent from the catalog or an id appears twice.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the R-22 row deleted",
+          "then": "it fails naming R-22 as missing",
+          "when": "the gate runs"
+        },
+        {
+          "given": "a second row with id R-10",
+          "then": "it fails naming R-10 as duplicated",
+          "when": "the gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.published-id-baseline"
+      ],
+      "tasks": [
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US2] Add `const PUBLISHED` (the 20 ids, append-only, with a comment saying so) and the checks `baseline-missing`, `baseline-unknown`, `duplicate-id`, `disposition-status` and `harness-note` in `tests/threat_model.rs` [SR-003]"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US3] Add injection unit tests in `tests/threat_model.rs`. Each test applies one mutation to the real `THREAT_MODEL.md` text (or to README/lib.rs) and asserts that exactly the expected rule fires, naming the expected subject [SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [SR-007]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "The gate MUST reject, not skip, any row in the catalog section that does not parse into every field with an allowed value, and MUST fail when the parsed row count differs from the baseline count.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a row with status \"done\"",
+          "then": "it fails naming the id, the field and the allowed values",
+          "when": "the gate runs"
+        },
+        {
+          "given": "a row with a missing column",
+          "then": "it fails naming the line instead of ignoring the row",
+          "when": "the gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.strict-row-parser"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "Create `tests/threat_model.rs` (std only) with the types from data-model.md: `Platforms`, `Disposition`, `Status`, `EvidenceRef`, `EscapeClass`, `Rule`, `Violation`, plus `Display` printing `threat-model gate: <rule>: <subject>: <detail>`. Add file loading relative to `env!(\"CARGO_MANIFEST_DIR\")` and a `#[test] fn gate()` that prints every violation and fails if there is any [SR-004]"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "Implement `parse_catalog(doc) -> (Vec<EscapeClass>, Vec<Violation>)` in `tests/threat_model.rs`. It finds `## Escape classes` and the first table, requires the exact header, and needs exactly 8 cells per row. It parses the enums, `\u2014` as an empty list and `, ` lists. Every malformed row is a `row-format` or `value` violation, never skipped [SR-004]"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US3] Add injection unit tests in `tests/threat_model.rs`. Each test applies one mutation to the real `THREAT_MODEL.md` text (or to README/lib.rs) and asserts that exactly the expected rule fires, naming the expected subject [SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [SR-007]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "The gate MUST fail when an observed-on entry names a kernel fact absent from the kernel-facts catalog.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a row citing KF-M99",
+          "then": "it fails naming the id and KF-M99",
+          "when": "the gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.kernel-fact-resolution"
+      ],
+      "tasks": [
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[US2] Implement the `kernel-fact` check in `tests/threat_model.rs`. It collects the `id: \"KF-\u2026\"` literals from `tests/kernel_facts/tests/kernel_facts.rs` and resolves each observed-on id against them [SR-005]"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US3] Add injection unit tests in `tests/threat_model.rs`. Each test applies one mutation to the real `THREAT_MODEL.md` text (or to README/lib.rs) and asserts that exactly the expected rule fires, naming the expected subject [SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [SR-007]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "tests/kernel_facts/tests/kernel_facts.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "The threat model MUST come from one source file that the crate package includes, and the crate documentation MUST build from the packaged crate alone with warnings as errors.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the packaged crate",
+          "then": "it contains the threat-model file",
+          "when": "its file list is inspected"
+        },
+        {
+          "given": "the unpacked package",
+          "then": "the build succeeds and the threat-model page is present",
+          "when": "its docs are built with warnings denied"
+        }
+      ],
+      "mitigations": [
+        "mitigation.single-source-embedding"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "Create `src/threat_model.rs` containing only `#![doc = include_str!(\"../THREAT_MODEL.md\")]`, add `pub mod threat_model;` to `src/lib.rs`, and add `\"/THREAT_MODEL.md\"` to the `include` list in `Cargo.toml` [SR-006]"
+        },
+        {
+          "id": "T019",
+          "done": true,
+          "text": "Add a `package-docs` recipe to `justfile` and to `ci`. It checks that `cargo package --list -p procage --allow-dirty` lists `THREAT_MODEL.md`, packages with `--no-verify`, unpacks into `mktemp -d` outside the workspace, and runs `RUSTDOCFLAGS=\"-D warnings\" cargo doc --no-deps` there [SR-006]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "Cargo.toml",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          },
+          {
+            "path": "src/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "The gate MUST fail when a required threat-model heading (adversary, assets, trusted, in scope, out of scope, strength, dependencies, non-goals, release status, escape classes) is missing or the release-status section does not name the crate's current version.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the out-of-scope heading removed",
+          "then": "it fails naming the missing heading",
+          "when": "the gate runs"
+        },
+        {
+          "given": "a release-status section naming 0.0.0 while the crate is 0.0.1",
+          "then": "it fails naming both versions",
+          "when": "the gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.required-sections-check"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[P] Create a `THREAT_MODEL.md` skeleton at the repository root with the ten `## ` headings in the order from research R7 (Release status \u2026 Escape classes) and an empty catalog table header from `contracts/catalog-format.md`. It must build with `cargo doc` [SR-007]"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US1] Implement the `heading` (required headings in order), `release-status` (`procage {CARGO_PKG_VERSION}` inside Release status) and `link` (README \u2192 `THREAT_MODEL.md`; `src/lib.rs` has `pub mod threat_model;` and a doc link to `threat_model`) checks in `tests/threat_model.rs` [SR-007]"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[US3] Add injection unit tests in `tests/threat_model.rs`. Each test applies one mutation to the real `THREAT_MODEL.md` text (or to README/lib.rs) and asserts that exactly the expected rule fires, naming the expected subject [SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [SR-007]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "tests/threat_model.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "The planning-path gate MUST scan the threat-model document and the security policy, and the published files MUST NOT contain internal planning content (open user actions, unpublished decisions).",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a planning path injected into the threat-model document",
+          "then": "it fails naming the file",
+          "when": "the planning-path gate runs"
+        },
+        {
+          "given": "the finished document",
+          "then": "it contains no open user action or unpublished decision from the planning notes",
+          "when": "it is reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.planning-gate-coverage"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] Write the prose sections of `THREAT_MODEL.md`. Base them on the design threat model, with no planning paths and no internal content: [SR-008]"
+        },
+        {
+          "id": "T018",
+          "done": true,
+          "text": "Add `THREAT_MODEL.md` and `SECURITY.md` to the `paths` array of the `planning-paths` recipe in `justfile`. Verify that an injected `specs/` reference in `SECURITY.md` fails the recipe [SR-008]"
+        },
+        {
+          "id": "T020",
+          "done": true,
+          "text": "Review pass over `README.md`, `src/lib.rs`, `THREAT_MODEL.md` and `SECURITY.md`. Confirm: no present-tense enforcement claim (SR-001 scenario 3); no open user action, token reference or unpublished decision (SR-008); no exploit steps in any row (SR-010). Record the result in `quickstart.md` [SR-001] [SR-008] [SR-010]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "SECURITY.md",
+            "exists": true
+          },
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "The repository MUST contain a security policy that names a private reporting route, asks reporters not to file escapes as public issues, and refers to the threat model for scope.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the repository root",
+          "then": "it names a private route, asks for no public issue and links the threat model",
+          "when": "a reporter opens the security policy"
+        }
+      ],
+      "mitigations": [
+        "mitigation.private-reporting-policy"
+      ],
+      "tasks": [
+        {
+          "id": "T017",
+          "done": true,
+          "text": "[US4] Create `SECURITY.md`. It names GitHub private vulnerability reporting (`https://github.com/hupe1980/procage/security/advisories/new`) and asks reporters not to open public issues for escapes. It refers to `THREAT_MODEL.md` for scope, and states supported versions: 0.0.x has no sandboxing API, and security fixes start with the first release that enforces [SR-009]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/sys/macos.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "SECURITY.md",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "Catalog rows MUST describe classes at the level of a one-line description with public sources and MUST NOT include exploit steps, payloads or proofs of concept.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "the published catalog",
+          "then": "no row contains commands, payloads or exploit steps",
+          "when": "it is reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.class-level-descriptions"
+      ],
+      "tasks": [
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US2] Fill the catalog table in `THREAT_MODEL.md` with the 20 rows R-02\u2026R-12, R-21\u2026R-26 and R-28\u2026R-30. Each row has a class-level one-line description (no exploit steps or payloads), platforms, a disposition per research R3, status `planned` (mitigate/detect) or `documented` (harness), evidence `\u2014`, and observed-on per research R6. Above the table, state the recording releases and date, and explain the numbering gaps [SR-010]"
+        },
+        {
+          "id": "T020",
+          "done": true,
+          "text": "Review pass over `README.md`, `src/lib.rs`, `THREAT_MODEL.md` and `SECURITY.md`. Confirm: no present-tense enforcement claim (SR-001 scenario 3); no open user action, token reference or unpublished decision (SR-008); no exploit steps in any row (SR-010). Record the result in `quickstart.md` [SR-001] [SR-008] [SR-010]"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "THREAT_MODEL.md",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.catalog-as-exploit-guide",
+    "threat.dangling-kernel-observation",
+    "threat.divergent-or-missing-published-copy",
+    "threat.evidence-not-a-caged-test",
+    "threat.malformed-row-skipped",
+    "threat.missing-scope-section",
+    "threat.overclaimed-enforcement",
+    "threat.planning-content-leak",
+    "threat.public-escape-report",
+    "threat.silent-id-removal"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-009",
+      "summary": "Requirement 'SR-009' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-010",
+      "summary": "Requirement 'SR-010' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 10,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 10
+    },
+    "threats_by_severity": {
+      "low": 1,
+      "medium": 3,
+      "high": 6
+    },
+    "mitigations": 10,
+    "requirements": 10,
+    "requirements_with_tasks": 10,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 6,
+      "medium": 4
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

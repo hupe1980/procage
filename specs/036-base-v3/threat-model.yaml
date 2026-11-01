@@ -1,0 +1,458 @@
+otmVersion: 0.2.0
+project:
+  id: 036-base-v3
+  name: Base V3 and quiet records
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that fits policies
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits reporting, lowering or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: no-threat-detected
+    reason: 'checked flow.log: the helper reads the local unified log over a pipe from /usr/bin/log; forged lines
+      are threat.forged-attribution'
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'evaluated: the record holds paths the caged code tried, which the harness already passed or the code
+      chose; no secret content is read'
+    technique: credential-theft
+  - disposition: no-threat-detected
+    reason: 'evaluated: the only profile change is messages on deny rules; a changed allow/deny is threat.profile-drift'
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T17:26:14Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 4d4b70682f5656106760fabc1d884f524dbbc805c82c0f14cf658f49821005f6
+  - path: spec.md
+    sha256: 3cc9f2c6dc916177162e4943412a28dce8cc3e08da9f54900c2d2880f5848639
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that builds cages
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel and the unified log (logd, /usr/bin/log)
+  risk:
+    trustRating: 95
+assets:
+- id: asset.harness
+  name: 'The harness process: memory, threads, the time wait and violations() take'
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 50
+  attributes:
+    type: capability
+    source: spec.md#FR-005
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.record
+  name: The violation record the harness shows its user and may act on (e.g. ask for a grant)
+  risk:
+    availability: 30
+    confidentiality: 30
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#US1
+    classification: internal
+components:
+- id: component.base
+  name: 'Base V3: V2 plus no-report denies of benign probes (policy crate)'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+- id: component.docs
+  name: Docs on what V3 silences
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-005
+- id: component.presets
+  name: Presets v3 and the frozen fixtures
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.record
+  name: Record merging with repeat counts (both backends)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+dataflows:
+- id: flow.confine
+  name: The V3 profile confines the child
+  source: component.base
+  destination: tz.cage
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.record
+  name: The merged record reaches the harness
+  source: component.record
+  destination: tz.harness
+  assets:
+  - asset.record
+  attributes:
+    crosses: []
+threats:
+- id: threat.merge-misreports
+  name: Merging collapses violations that differ (another target, process or rule), or a count overflows, so the
+    record misstates what was denied
+  categories:
+  - Repudiation
+  risk:
+    impact: 50
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.record
+    - flow.record
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.quiet-hides-attack
+  name: A quiet probe covers a security-relevant target (a hard-deny service, secrets, persistence), so attempts
+    on it go unreported
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    likelihood: 25
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.record
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.base
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+- id: threat.quiet-overrides-allow
+  name: A quiet deny placed after the allows refuses access the policy grants (Tty::Inherit /dev/tty, a layer allow)
+  categories:
+  - Denial of Service
+  risk:
+    impact: 40
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.base
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.v3-loosens
+  name: V3 allows something V2 denies (a quiet rule written as allow, a changed V2 rule), or V1/V2/presets change
+    silently
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 15
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.base
+    - component.presets
+    - flow.confine
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.exact-key
+  name: Merge key is (pid, process, operation, target, denied_by) exactly; repeats saturate
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.merge-misreports
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage/src/violation.rs
+- id: mitigation.first
+  name: Quiet denies directly after (deny default); caged test that Tty::Inherit keeps /dev/tty
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.quiet-overrides-allow
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage/tests/spawn_macos.rs
+- id: mitigation.quiet-list
+  name: A fixed list of five probes; a test proves none is the target of a hard-deny rule or a data class
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.quiet-hides-attack
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/base.rs
+    - crates/procage-policy/tests/base.rs
+- id: mitigation.strip-equals-v2
+  name: Stripping the no-report rules from every V3 profile gives the V2 profile; V1/V2 and presets v1/v2 fixtures
+    unchanged; presets v3 fixtures; escape suite with presets v3
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.v3-loosens
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/base.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/tests/presets.rs
+requirements:
+- id: SR-001
+  statement: Every V3 profile with its no-report rules removed MUST equal the V2 profile of the same policy, and
+    V1, V2 and presets v1/v2 MUST stay byte-identical; the escape suite MUST pass with presets v3.
+  priority: P1
+  mitigations:
+  - mitigation.strip-equals-v2
+  acceptance:
+  - given: every reference policy on V3
+    then: removing the no-report lines gives its V2 profile
+    when: its profile is rendered
+  - given: the frozen fixtures
+    then: V1, V2 and presets v1/v2 match unchanged
+    when: the tests run
+  tasks: []
+- id: SR-002
+  statement: The quiet probes MUST be a fixed list, none of which is a target of a hard-deny rule or a data class.
+  priority: P2
+  mitigations:
+  - mitigation.quiet-list
+  acceptance:
+  - given: the quiet list
+    then: no target is shared
+    when: compared with every hard-deny and data-class rule
+  tasks: []
+- id: SR-003
+  statement: Quiet denies MUST come before every allow, so access a policy grants is never refused by them.
+  priority: P2
+  mitigations:
+  - mitigation.first
+  acceptance:
+  - given: base V3 with Tty::Inherit
+    then: it succeeds
+    when: the child opens /dev/tty
+  tasks: []
+- id: SR-004
+  statement: Violations MUST merge only when pid, process, operation, target and rule are all equal; the repeat
+    count MUST saturate.
+  priority: P2
+  mitigations:
+  - mitigation.exact-key
+  acceptance:
+  - given: violations differing in any one field
+    then: they stay separate
+    when: pushed
+  - given: the same violation pushed repeatedly
+    then: one entry with that count
+    when: read
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: test
+  evidence: crates/procage-policy/tests/base.rs::v3_is_v2_plus_quiet_denies; crates/procage-policy/tests/presets.rs::every_v3_preset_is_pinned;
+    crates/procage/tests/escape_macos.rs (PROCAGE_ESCAPE_BASE=v3)
+  result: pass
+  verdict: verified
+  justification: For every reference policy, the V3 profile minus its three no-report lines equals the V2 profile;
+    V1/V2 and presets v1/v2 fixtures pass unchanged; presets v3 are pinned and equal v2 apart from the base; the
+    macOS escape suite passes 23/23 on base V3 with reporting.
+  verified_at: '2026-11-01T07:09:33Z'
+  commit: 2e3e490
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-policy/tests/base.rs::quiet_targets_are_not_hard_deny_targets
+  result: pass
+  verdict: verified
+  justification: No quiet service name or path appears in any hard-deny or data-class rule of the full hard-deny
+    policy, and V3 adds exactly three quiet lines from the fixed list (base::MACOS_V3_QUIET_SERVICES, dtracehelper,
+    /dev/tty).
+  verified_at: '2026-11-01T07:09:33Z'
+  commit: 2e3e490
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::v3_keeps_a_granted_terminal; crates/procage-policy/tests/precedence.rs::blocks_are_in_fixed_order_and_the_tier_is_last
+  result: pass
+  verdict: verified
+  justification: Every quiet deny precedes every allow in every reference profile; with Tty::Inherit the caged open
+    of /dev/tty is not refused by the sandbox (ENXIO from the kernel, no EPERM). KF-M30 pins that a later allow
+    overrides a no-report deny.
+  verified_at: '2026-11-01T07:09:33Z'
+  commit: 2e3e490
+- id: verification.sr-004.2026-11-01
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/src/violation.rs::only_equal_denials_merge; crates/procage/src/violation.rs::the_record_keeps_the_cap_and_counts_the_rest
+  result: pass
+  verdict: verified
+  justification: Violations differing in pid, process, operation, target or kind stay separate; equal ones merge
+    and the count saturates at u32::MAX; past the cap a kept entry keeps counting and a new key is dropped. Caged
+    tests show a repeated read as one entry (macOS) and a 20,000-call flood as one entry with 20,000 repeats (Linux
+    T1/T2).
+  verified_at: '2026-11-01T07:09:33Z'
+  commit: 2e3e490
+decisions: []

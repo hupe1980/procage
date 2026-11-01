@@ -1,0 +1,819 @@
+otmVersion: 0.2.0
+project:
+  id: 024-lifetime
+  name: Lifetime - nothing a run starts outlives it
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child and its descendants (adaptive, same uid as the caller)
+    trust: untrusted
+  - id: actor.caller
+    name: Program that embeds procage and owns the child's handle
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the lowering, the backends, the catalog or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: 'no network-boundary surface: the marker and the kill happen inside one host between the caller and
+      its own children'
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface; runs of one caller are separated by threat.cross-run-kill
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.marker: the marker is a mach-lookup name of no existing service and grants no file,
+      so it exposes no credential; R-24 (environment) is unchanged'
+    technique: credential-theft
+  - disposition: no-threat-detected
+    reason: 'checked component.reaper: the scan reads only sandbox verdicts and process status of same-user processes
+      from the caller, outside the cage; nothing is returned to the child'
+    technique: sensitive-data-exposure
+  - disposition: not-applicable
+    reason: no stored data is introduced; the marker lives only in the compiled profile in memory
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.marker: the marker is built from a process-random number and a slot index (hex digits
+      and dots), never from caller or child input'
+    technique: injection
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Lifetime setting
+    reason: represented as asset.lifetime-policy
+  - entity: Run marker
+    reason: represented as component.marker
+  - entity: Survivor report
+    reason: output of component.reaper, covered by threat.kill-false-success
+  extends: null
+  generated: '2026-11-01T17:26:10Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 4d8822fec53639502b8c2363ff8b1661b821d773a74548eee7d4426ef301b9ff
+  - path: spec.md
+    sha256: 4452253c14a73a4064da598a28d7b69f28111a59a1df18e1b7bb6f84ec677659
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and every process it starts
+  risk:
+    trustRating: 5
+- id: tz.caller
+  name: The calling process and its handles
+  risk:
+    trustRating: 90
+- id: tz.host
+  name: Other processes of the user, launchd/init, and the host after the run
+  risk:
+    trustRating: 80
+- id: tz.repo
+  name: procage repository (code, catalog, docs)
+  risk:
+    trustRating: 70
+assets:
+- id: asset.catalog-truth
+  name: R-23's catalog status, its evidence and the published claims about lifetime
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-010
+    classification: public
+- id: asset.lifetime-policy
+  name: The lifetime setting, its default in policies and frozen presets, and the ledger entry that reports it
+  risk:
+    availability: 30
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-001
+    classification: public
+- id: asset.other-processes
+  name: The caller's other runs and the user's unrelated processes
+  risk:
+    availability: 90
+    confidentiality: 20
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#US2
+    classification: internal
+- id: asset.run-boundary
+  name: The promise that no process of a run lives after its handle is dropped or kill_all returns
+  risk:
+    availability: 60
+    confidentiality: 30
+    integrity: 100
+  attributes:
+    type: capability
+    source: spec.md#Context
+    classification: confidential
+components:
+- id: component.lowering
+  name: procage-policy lowering of the lifetime setting (Linux seccomp lock, ledger on both systems)
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-009
+- id: component.marker
+  name: macOS run marker in the compiled profile and its slot pool
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-004
+- id: component.reaper
+  name: The handle's kill path (group kill, macOS marker scan, rounds, survivor report)
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-006
+- id: component.suite
+  name: Escape-suite canaries and the catalog gate
+  type: test-suite
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-010
+dataflows:
+- id: flow.claim
+  name: Canary results become R-23's catalog status and the published docs
+  source: actor.contributor
+  destination: component.suite
+  assets:
+  - asset.catalog-truth
+  attributes:
+    crosses:
+    - tz.repo
+- id: flow.escape
+  name: Caged code starts a session and its parent exits, reparenting it to launchd/init
+  source: actor.caged-code
+  destination: tz.host
+  assets:
+  - asset.run-boundary
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.host
+- id: flow.lower
+  name: The policy's lifetime setting becomes seccomp rules and a profile marker
+  source: component.lowering
+  destination: component.marker
+  assets:
+  - asset.lifetime-policy
+  attributes:
+    crosses:
+    - tz.caller
+- id: flow.reap
+  name: The caller's handle searches for and kills the run's processes
+  source: component.reaper
+  destination: tz.cage
+  assets:
+  - asset.run-boundary
+  - asset.other-processes
+  attributes:
+    crosses:
+    - tz.caller
+    - tz.cage
+    - tz.host
+threats:
+- id: threat.cross-run-kill
+  name: Ending one run kills another run's processes or unrelated processes (a marker shared by two live runs, reused
+    while its processes live, matched by another sandbox, or a reused pid)
+  categories:
+  - Denial of Service
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.other-processes
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.marker
+    - flow.reap
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+- id: threat.daemon-outlives-run
+  name: Caged code double-forks a descendant into its own session, the intermediate exits, and the descendant keeps
+    running after the handle is dropped
+  categories:
+  - Elevation of Privilege
+  risk:
+    comment: a one-line nohup/setsid or any daemon does it today on both systems
+    impact: 80
+    likelihood: 80
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.run-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.escape
+    - component.reaper
+    - component.lowering
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.kill-false-success
+  name: kill_all reports success although a process of the run survived (forking faster than the kill, another uid,
+    a scan that stopped early)
+  categories:
+  - Repudiation
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.run-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.reaper
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.marker-evasion
+  name: Caged code drops, changes or hides its run marker (an extension release, a forged lookup, a profile change),
+    or the marker grants it access to something that exists
+  categories:
+  - Elevation of Privilege
+  risk:
+    comment: an extension-based marker could be released from inside; a profile literal cannot
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.run-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.marker
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.orphan-after-exit
+  name: The child exits and is reaped before the run ends, so its descendants (in or out of its group) are no longer
+    found from it and survive
+  categories:
+  - Elevation of Privilege
+  risk:
+    comment: every run-to-completion consumer hits this (a consumer harness reported it)
+    impact: 70
+    likelihood: 80
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.run-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.reaper
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.overclaimed-lifetime
+  name: R-23 is marked mitigated, or the docs drop the open variant, without passing kernel canaries on every system
+    and tier
+  categories:
+  - Repudiation
+  risk:
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-010
+    assets:
+    - asset.catalog-truth
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.suite
+    - flow.claim
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.silent-lifetime-weakening
+  name: A policy, a frozen preset or a lowering path ends up with the tree setting or without the lock (a missing
+    tier, architecture or syscall) without the ledger, the docs or a test saying so
+  categories:
+  - Tampering
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-009
+    assets:
+    - asset.lifetime-policy
+    status: mitigated
+    actor: actor.contributor
+    elements:
+    - component.lowering
+    - flow.lower
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.bounded-rounds
+  name: kill_all repeats search and kill until none is found or a round limit is hit, skips zombies, and returns
+    an error naming survivors
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.kill-false-success
+    status: verified
+    kind: detective
+    requirements:
+    - SR-006
+    touchpoints:
+    - src/macos/lifetime.rs
+    - src/macos/child.rs
+- id: mitigation.canary-evidence
+  name: R-23 becomes mitigated only with the double-fork and exited-child canaries passing on macOS and Linux T1/T2,
+    named as evidence and enforced by the catalog gate
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.overclaimed-lifetime
+    - threat.daemon-outlives-run
+    status: verified
+    kind: detective
+    requirements:
+    - SR-008
+    touchpoints:
+    - tests/escape_macos.rs
+    - tests/escape_linux.rs
+    - tests/threat_model.rs
+    - THREAT_MODEL.md
+- id: mitigation.immutable-marker
+  name: The marker is a literal in the compiled profile (no extension filter), a deny-prefix plus allow-literal
+    pair on a mach-lookup name that no service registers; a probe name the run denies separates it from allow-all
+    sandboxes
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.marker-evasion
+    - threat.cross-run-kill
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - src/macos/lifetime.rs
+- id: mitigation.ledger-and-pins
+  name: The lifetime setting is reported in the ledger on both systems, pinned in the lowering table and seccomp
+    tests per architecture, and presets keep the default under a test
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.silent-lifetime-weakening
+    status: verified
+    kind: detective
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage-policy/src/lower/mod.rs
+    - crates/procage-policy/src/lowering.md
+    - src/linux/seccomp.rs
+    - crates/procage-policy/src/presets.rs
+- id: mitigation.linux-group-lock
+  name: Under the default lifetime the Linux seccomp program denies setsid and setpgid with EPERM on both tiers,
+    installed after procage's own setsid; the handle kills the group
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.daemon-outlives-run
+    - threat.orphan-after-exit
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/lower/linux.rs
+    - src/linux/seccomp.rs
+    - src/linux/child.rs
+- id: mitigation.macos-marker-scan
+  name: Every forking macOS spawn carries a per-run marker in its compiled profile; ending the run scans all processes
+    and kills those whose sandbox carries the marker
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.daemon-outlives-run
+    - threat.orphan-after-exit
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - src/macos/lifetime.rs
+    - src/macos/child.rs
+    - src/macos/sys.rs
+- id: mitigation.slot-discipline
+  name: Markers come from a process-random prefix and a slot pool; a slot is freed only after a kill that found
+    no survivor; detach and a failed kill retire it
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.cross-run-kill
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - src/macos/lifetime.rs
+    - src/macos/mod.rs
+    - src/macos/child.rs
+requirements:
+- id: SR-001
+  statement: Under the default lifetime on Linux, setsid and setpgid MUST fail with EPERM in every caged process
+    on tiers T1 and T2, and dropping the handle MUST kill a double-forked descendant.
+  priority: P1
+  mitigations:
+  - mitigation.linux-group-lock
+  acceptance:
+  - given: the default lifetime on T1 and on T2
+    then: both fail with EPERM
+    when: a caged process calls setsid and setpgid
+  - given: a double-forked descendant on T1 and on T2
+    then: the descendant is dead within two seconds
+    when: the handle is dropped
+  tasks: []
+- id: SR-002
+  statement: On macOS, ending a forking run MUST kill every process whose sandbox carries the run's marker, including
+    a double-forked descendant in its own session reparented to launchd.
+  priority: P1
+  mitigations:
+  - mitigation.macos-marker-scan
+  acceptance:
+  - given: a double-forked descendant in its own session on macOS
+    then: the descendant is dead within two seconds
+    when: the handle is dropped
+  tasks: []
+- id: SR-003
+  statement: Descendants of a child that exited and was reaped before the run ended MUST be killed when the handle
+    is dropped, on macOS and on Linux T1 and T2.
+  priority: P1
+  mitigations:
+  - mitigation.linux-group-lock
+  - mitigation.macos-marker-scan
+  acceptance:
+  - given: a child that started a background descendant and exited
+    then: the descendant is dead within two seconds
+    when: the caller waits for it and drops the handle
+  tasks: []
+- id: SR-004
+  statement: The macOS marker MUST be part of the compiled profile, MUST grant no access to an existing resource,
+    and MUST NOT match the caller, unsandboxed processes, or a sandbox that allows all lookups.
+  priority: P1
+  mitigations:
+  - mitigation.immutable-marker
+  acceptance:
+  - given: a running cage and an allow-all sandbox and the caller
+    then: only the cage's processes match
+    when: each is checked for the run's marker
+  - given: the lowered profile
+    then: they use a literal name and no extension filter
+    when: its marker rules are inspected
+  tasks: []
+- id: SR-005
+  statement: Two live runs of one caller MUST NOT share a marker; dropping one run's handle MUST leave the other
+    run's processes alive; a marker MUST be reused only after a kill that found no survivor, and never after detach.
+  priority: P1
+  mitigations:
+  - mitigation.slot-discipline
+  acceptance:
+  - given: two concurrent runs from the same cage with descendants in their own sessions
+    then: the other run's descendants are still alive
+    when: one handle is dropped
+  - given: a detached child
+    then: it gets a different marker
+    when: another child is spawned
+  tasks: []
+- id: SR-006
+  statement: kill_all MUST NOT return Ok while a process of the run is known to live; after the round limit it MUST
+    return an error naming the survivors.
+  priority: P2
+  mitigations:
+  - mitigation.bounded-rounds
+  acceptance:
+  - given: a search that keeps finding a live process of the run
+    then: kill_all returns an error with its pid
+    when: the round limit is reached
+  tasks: []
+- id: SR-007
+  statement: The lifetime setting MUST appear in the lowering ledger on both systems and in the lowering table;
+    the Linux lock MUST be pinned per architecture; the frozen presets MUST carry the default lifetime.
+  priority: P2
+  mitigations:
+  - mitigation.ledger-and-pins
+  acceptance:
+  - given: a policy with each lifetime value
+    then: the ledger reports the setting and the Linux seccomp rules contain the lock only for the default
+    when: it is lowered for Linux and macOS
+  - given: every frozen preset
+    then: its lifetime is the default
+    when: it is built
+  tasks: []
+- id: SR-008
+  statement: R-23 MUST be marked mitigated only with the double-fork and exited-child canaries as evidence, passing
+    on macOS and Linux T1 and T2, and the catalog gate MUST pass.
+  priority: P1
+  mitigations:
+  - mitigation.canary-evidence
+  acceptance:
+  - given: the catalog
+    then: R-23 is mitigated with existing canary tests as evidence
+    when: the gate runs
+  - given: the escape suite on macOS, T1 and T2
+    then: the R-23 canaries pass and none is ignored
+    when: it runs
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-31
+  requirement: SR-001
+  method: test
+  evidence: tests/escape_linux.rs::r23_sessions_are_locked, tests/escape_linux.rs::r23_a_double_forked_descendant_dies_with_the_run
+  result: pass
+  verdict: verified
+  justification: Run in Docker T2 (default seccomp) and T1 (unconfined, T1 and T2 cages); the sessions canary asserts
+    setsid and setpgid return EPERM (1 1) in a non-leader caged process, and the double-fork canary asserts the
+    descendant is dead within two seconds after drop.
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-001.2026-10-31-2
+  requirement: SR-001
+  method: test
+  evidence: tests/escape_linux.rs::r23_sessions_are_locked, tests/escape_linux.rs::r23_a_double_forked_descendant_dies_with_the_run
+  result: pass
+  verdict: verified
+  justification: Run in Docker T2 (default seccomp) and T1 (unconfined, T1 and T2 cages); the sessions canary asserts
+    setsid and setpgid return EPERM (1 1) in a non-leader caged process, and the double-fork canary asserts the
+    descendant is dead within two seconds after drop.
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+- id: verification.sr-002.2026-10-31
+  requirement: SR-002
+  method: test
+  evidence: tests/escape_macos.rs::r23_a_double_forked_descendant_dies_with_the_run
+  result: pass
+  verdict: verified
+  justification: The descendant double-forks, starts its own session and is reparented to launchd; the canary asserts
+    it is alive before drop and dead within two seconds after. With the marker kill disabled the canary fails (negative
+    control recorded in quickstart.md).
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-002.2026-10-31-2
+  requirement: SR-002
+  method: test
+  evidence: tests/escape_macos.rs::r23_a_double_forked_descendant_dies_with_the_run
+  result: pass
+  verdict: verified
+  justification: The descendant double-forks, starts its own session and is reparented to launchd; the canary asserts
+    it is alive before drop and dead within two seconds after. With the marker kill disabled the canary fails (negative
+    control recorded in quickstart.md).
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+- id: verification.sr-003.2026-10-31
+  requirement: SR-003
+  method: test
+  evidence: tests/escape_macos.rs::r23_descendants_of_an_exited_child_die_with_the_run, tests/escape_linux.rs::r23_descendants_of_an_exited_child_die_with_the_run
+  result: pass
+  verdict: verified
+  justification: The child starts a descendant (in its own session on macOS, in the group on Linux), exits and is
+    waited for; the canary asserts the descendant outlived the child and dies after drop, on macOS and on Linux
+    T1 and T2.
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-003.2026-10-31-2
+  requirement: SR-003
+  method: test
+  evidence: tests/escape_macos.rs::r23_descendants_of_an_exited_child_die_with_the_run, tests/escape_linux.rs::r23_descendants_of_an_exited_child_die_with_the_run
+  result: pass
+  verdict: verified
+  justification: The child starts a descendant (in its own session on macOS, in the group on Linux), exits and is
+    waited for; the canary asserts the descendant outlived the child and dies after drop, on macOS and on Linux
+    T1 and T2.
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+- id: verification.sr-004.2026-10-31
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_macos.rs::the_run_marker_matches_only_its_run, crates/procage-policy/tests/precedence.rs::a_forking_policy_ends_with_the_run_marker
+  result: pass
+  verdict: verified
+  justification: The spawn test asserts the marker search finds exactly the run's child and not a second run, the
+    caller or an (allow default) sandbox-exec process; the lowering test asserts the marker block is last, uses
+    only the two bound params and no extension filter, and is absent without fork.
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-004.2026-10-31-2
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_macos.rs::the_run_marker_matches_only_its_run, crates/procage-policy/tests/precedence.rs::a_forking_policy_ends_with_the_run_marker
+  result: pass
+  verdict: verified
+  justification: The spawn test asserts the marker search finds exactly the run's child and not a second run, the
+    caller or an (allow default) sandbox-exec process; the lowering test asserts the marker block is last, uses
+    only the two bound params and no extension filter, and is absent without fork.
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+- id: verification.sr-005.2026-10-31
+  requirement: SR-005
+  method: test
+  evidence: tests/escape_macos.rs::r23_concurrent_runs_are_separate, tests/escape_macos.rs::r23_a_detached_run_keeps_its_marker,
+    src/macos/lifetime.rs::tests::slots_are_reused_only_when_freed
+  result: pass
+  verdict: verified
+  justification: Two runs of one cage get different slots and dropping one leaves the other's escaped descendant
+    alive; after detach a later run gets another slot and ending it leaves the detached run's descendant alive;
+    the unit test asserts freed slots are reused and dropped (retired) ones are not.
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-005.2026-10-31-2
+  requirement: SR-005
+  method: test
+  evidence: tests/escape_macos.rs::r23_concurrent_runs_are_separate, tests/escape_macos.rs::r23_a_detached_run_keeps_its_marker,
+    src/macos/lifetime.rs::tests::slots_are_reused_only_when_freed
+  result: pass
+  verdict: verified
+  justification: Two runs of one cage get different slots and dropping one leaves the other's escaped descendant
+    alive; after detach a later run gets another slot and ending it leaves the detached run's descendant alive;
+    the unit test asserts freed slots are reused and dropped (retired) ones are not.
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+- id: verification.sr-006.2026-10-31
+  requirement: SR-006
+  method: test
+  evidence: src/macos/lifetime.rs::tests::a_run_that_keeps_living_is_reported, src/macos/child.rs:93
+  result: pass
+  verdict: verified
+  justification: The unit test drives reap with a search that always finds pid 4242 and asserts an error naming
+    it after the round limit; kill_all calls lifetime::end (reap over the marker search) and returns its error before
+    freeing the slot (reviewed at the cited line). A search failure is an error, never an empty result.
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-006.2026-10-31-2
+  requirement: SR-006
+  method: test
+  evidence: src/macos/lifetime.rs::tests::a_run_that_keeps_living_is_reported, src/macos/child.rs:83
+  result: pass
+  verdict: verified
+  justification: The unit test drives reap with a search that always finds pid 4242 and asserts an error naming
+    it after the round limit; kill_all calls lifetime::end (reap over the marker search) and returns its error before
+    freeing the slot (reviewed at the cited line). A search failure is an error, never an empty result.
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+- id: verification.sr-007.2026-10-31
+  requirement: SR-007
+  method: test
+  evidence: crates/procage-policy/tests/gaps.rs::the_linux_lifetime_lock_follows_the_setting, crates/procage-policy/tests/lowering_table.rs,
+    crates/procage-policy/tests/presets.rs::presets_keep_descendants_in_the_run
+  result: pass
+  verdict: verified
+  justification: The lock appears only for fork plus Lifetime::Run and not for Tree or without fork; the lowering
+    table test lowers lifetime-run and lifetime-tree on every target and checks the documented outcomes; every preset
+    carries Lifetime::Run. Syscall numbers are checked natively (aarch64 here; x86_64 in CI after a push).
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-007.2026-10-31-2
+  requirement: SR-007
+  method: test
+  evidence: crates/procage-policy/tests/gaps.rs::the_linux_lifetime_lock_follows_the_setting, crates/procage-policy/tests/lowering_table.rs,
+    crates/procage-policy/tests/presets.rs::presets_keep_descendants_in_the_run
+  result: pass
+  verdict: verified
+  justification: The lock appears only for fork plus Lifetime::Run and not for Tree or without fork; the lowering
+    table test lowers lifetime-run and lifetime-tree on every target and checks the documented outcomes; every preset
+    carries Lifetime::Run. Syscall numbers are checked natively (aarch64 here; x86_64 in CI after a push).
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+- id: verification.sr-008.2026-10-31
+  requirement: SR-008
+  method: test
+  evidence: tests/threat_model.rs::statuses_are_parsed
+  result: pass
+  verdict: verified
+  justification: The catalog gate passes with R-23 mitigated; every evidence test it names exists; no R-23 canary
+    is ignored, and the R-23 canaries passed on macOS, T1 and T2.
+  verified_at: '2026-10-31T18:10:28Z'
+  commit: 99c653d
+- id: verification.sr-008.2026-10-31-2
+  requirement: SR-008
+  method: test
+  evidence: tests/threat_model.rs::statuses_are_parsed
+  result: pass
+  verdict: verified
+  justification: The catalog gate passes with R-23 mitigated; every evidence test it names exists; no R-23 canary
+    is ignored, and the R-23 canaries passed on macOS, T1 and T2.
+  verified_at: '2026-10-31T18:10:34Z'
+  commit: 99c653d
+decisions: []

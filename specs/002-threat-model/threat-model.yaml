@@ -1,0 +1,1001 @@
+otmVersion: 0.2.0
+project:
+  id: 002-threat-model
+  name: Published threat model and escape-class contract
+threatspec:
+  actors:
+  - id: actor.adopter
+    name: Adopter or reviewer who reads the threat model to decide whether to rely on procage
+    trust: semi-trusted
+  - id: actor.attacker
+    name: Attacker who reads the published catalog or watches public issues
+    trust: untrusted
+  - id: actor.contributor
+    name: Contributor or later feature that changes the catalog through a pull request
+    trust: semi-trusted
+  - id: actor.maintainer
+    name: Maintainer who edits and publishes the threat model
+    trust: trusted
+  - id: actor.reporter
+    name: Person who found an escape and wants to report it
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: 'no authentication surface: the feature publishes documents and a test gate; no principal is authenticated'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: 'no authentication surface: no component accepts identities'
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: 'no shared-tenant surface: one public repository and crate, no tenant data'
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: 'no authorization surface: the feature enforces no permissions; repository write access is the platform''s'
+    technique: broken-access-control
+  - disposition: no-threat-detected
+    reason: 'checked flow.package-to-readers and flow.repo-to-readers: crates.io, docs.rs and GitHub serve over
+      TLS and crates.io packages are checksummed; the feature adds no transport of its own'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked flow.catalog-to-gate and flow.kernel-facts-to-gate: the gate reads repository files as text
+      and compares strings; no shell, template or path sink is fed by catalog content'
+    technique: injection
+  - disposition: no-threat-detected
+    reason: 'checked asset.escape-catalog and asset.published-id-baseline: every change is a reviewed commit in
+      version control, so status changes are attributable'
+    technique: missing-audit-trail
+  - disposition: no-threat-detected
+    reason: 'checked component.catalog-gate: it parses a few repository files of bounded size inside the existing
+      test run'
+    technique: resource-exhaustion
+  - disposition: no-threat-detected
+    reason: 'checked component.crate-package: the package adds a document only; no configuration or secret is written
+      or read'
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: the feature calls no language model (the threat model only describes LLM-driven
+      adversaries)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: 'no user-facing-generation surface: documents are written and reviewed by people; overclaiming is modelled
+      under STRIDE as threat.overclaimed-enforcement'
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: no agent code-execution surface; the gate runs no catalog content
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Escape class
+    reason: folded into asset.escape-catalog; a class is a row of the catalog, not a separate store
+  extends: null
+  generated: '2026-11-01T17:26:06Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 12e8a19a19296d8d8ceaa11e30a28f1de3029acc41c41c9a5f80227087f7dbfb
+  - path: spec.md
+    sha256: 3de88fd9d03dfba0cefe20abba1e94952b35595743983c37501f96eb482deb50
+  surfaces:
+  - external-input
+  - network-boundary
+  - persistent-store
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.ci
+  name: CI runner executing the quality gates
+  risk:
+    trustRating: 60
+- id: tz.internet
+  name: Public readers (crates.io, docs.rs, GitHub)
+  risk:
+    trustRating: 1
+- id: tz.local
+  name: Local planning notes (gitignored
+  risk:
+    trustRating: 90
+  never published): null
+- id: tz.repo
+  name: Published repository tree and crate package
+  risk:
+    trustRating: 70
+assets:
+- id: asset.escape-catalog
+  name: Escape-class catalog (rows with id, disposition, status, evidence)
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: business-data
+    source: spec.md#FR-005
+    classification: public
+- id: asset.evidence-reference
+  name: Evidence reference
+  risk:
+    availability: 30
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: business-data
+    source: spec.md#FR-007
+    classification: public
+- id: asset.kernel-observation
+  name: Kernel observation
+  risk:
+    availability: 30
+    confidentiality: 0
+    integrity: 85
+  attributes:
+    type: business-data
+    source: spec.md#FR-008
+    classification: public
+- id: asset.planning-notes
+  name: Local planning notes (internal decisions, open user actions)
+  risk:
+    availability: 20
+    confidentiality: 70
+    integrity: 50
+  attributes:
+    type: business-data
+    source: spec.md#FR-014
+    classification: internal
+- id: asset.published-id-baseline
+  name: Published-id baseline
+  risk:
+    availability: 40
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: business-data
+    source: spec.md#FR-006
+    classification: public
+- id: asset.security-policy
+  name: Security policy
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 80
+  attributes:
+    type: business-data
+    source: spec.md#FR-013
+    classification: public
+- id: asset.threat-model-doc
+  name: Threat model document
+  risk:
+    availability: 50
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: business-data
+    source: spec.md#Key-Entities
+    classification: public
+- id: asset.vulnerability-report
+  name: Undisclosed vulnerability report
+  risk:
+    availability: 30
+    confidentiality: 95
+    integrity: 60
+  attributes:
+    type: business-data
+    source: spec.md#User-Story-4
+    classification: confidential
+components:
+- id: component.catalog-gate
+  name: Catalog gate tests/threat_model.rs
+  type: process
+  parent:
+    trustZone: tz.ci
+  attributes:
+    source: spec.md#FR-010
+- id: component.crate-docs
+  name: Crate docs src/lib.rs and module procage::threat_model (src/threat_model.rs)
+  type: document
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-001
+- id: component.crate-package
+  name: Published crate package (immutable once on crates.io)
+  type: datastore
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-001
+- id: component.escape-suite
+  name: Escape suite (later feature; consumes the catalog)
+  type: process
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-015
+- id: component.kernel-facts-suite
+  name: Existing kernel-facts suite (source of observations)
+  type: process
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-008
+- id: component.planning-notes
+  name: Local planning notes
+  type: datastore
+  parent:
+    trustZone: tz.local
+  attributes:
+    source: spec.md#FR-014
+- id: component.readme
+  name: README with threat-model summary
+  type: document
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-011
+- id: component.security-policy
+  name: SECURITY.md
+  type: document
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-013
+- id: component.threat-model-doc
+  name: THREAT_MODEL.md (single source)
+  type: document
+  parent:
+    trustZone: tz.repo
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.catalog-to-escape-suite
+  name: The escape suite reads the catalog to require one canary per class
+  source: component.threat-model-doc
+  destination: component.escape-suite
+  assets:
+  - asset.escape-catalog
+  attributes:
+    crosses: []
+- id: flow.catalog-to-gate
+  name: The gate reads the catalog
+  source: component.threat-model-doc
+  destination: component.catalog-gate
+  assets:
+  - asset.escape-catalog
+  - asset.published-id-baseline
+  - asset.evidence-reference
+  attributes:
+    crosses:
+    - tz.ci
+  README and crate docs: null
+- id: flow.contributor-to-catalog
+  name: A pull request changes catalog rows or statuses
+  source: actor.contributor
+  destination: component.threat-model-doc
+  assets:
+  - asset.escape-catalog
+  - asset.evidence-reference
+  attributes:
+    crosses:
+    - tz.repo
+- id: flow.doc-to-package
+  name: The document is embedded in the crate package and docs
+  source: component.threat-model-doc
+  destination: component.crate-package
+  assets:
+  - asset.threat-model-doc
+  attributes:
+    crosses: []
+- id: flow.kernel-facts-to-gate
+  name: The gate reads the kernel-fact ids
+  source: component.kernel-facts-suite
+  destination: component.catalog-gate
+  assets:
+  - asset.kernel-observation
+  attributes:
+    crosses:
+    - tz.ci
+- id: flow.package-to-readers
+  name: crates.io and docs.rs serve the package and docs
+  source: component.crate-package
+  destination: actor.adopter
+  assets:
+  - asset.threat-model-doc
+  - asset.escape-catalog
+  attributes:
+    crosses:
+    - tz.internet
+- id: flow.planning-to-doc
+  name: Maintainer writes the published document from the local planning notes
+  source: component.planning-notes
+  destination: component.threat-model-doc
+  assets:
+  - asset.planning-notes
+  - asset.escape-catalog
+  attributes:
+    crosses:
+    - tz.local
+    - tz.repo
+- id: flow.repo-to-readers
+  name: GitHub serves the README
+  source: component.readme
+  destination: actor.adopter
+  assets:
+  - asset.threat-model-doc
+  - asset.security-policy
+  attributes:
+    crosses:
+    - tz.internet
+  document and security policy: null
+- id: flow.reporter-to-maintainer
+  name: A reporter discloses an escape
+  source: actor.reporter
+  destination: component.security-policy
+  assets:
+  - asset.vulnerability-report
+  attributes:
+    crosses:
+    - tz.internet
+threats:
+- id: threat.catalog-as-exploit-guide
+  name: An attacker uses the published catalog, with its planned statuses, as a recipe of working escapes against
+    early adopters
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 40
+    likelihood: 20
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.escape-catalog
+    status: mitigated
+    actor: actor.attacker
+    disposition: threat
+    elements:
+    - flow.package-to-readers
+    - flow.repo-to-readers
+    profile: stride
+    severity: low
+    technique: sensitive-data-exposure
+- id: threat.dangling-kernel-observation
+  name: A cited kernel fact is renamed or removed from the kernel-facts suite, so the catalog cites evidence that
+    no longer runs
+  categories:
+  - Tampering
+  - Repudiation
+  risk:
+    impact: 50
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-008
+    assets:
+    - asset.kernel-observation
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - flow.kernel-facts-to-gate
+    - component.kernel-facts-suite
+    profile: stride
+    severity: medium
+    technique: data-tampering-at-rest
+- id: threat.divergent-or-missing-published-copy
+  name: The crate package or docs page ships without the threat model, or with a copy that differs from the repository,
+    so crates.io readers see no boundary or a stale one that cannot be corrected once published
+  categories:
+  - Tampering
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.threat-model-doc
+    status: mitigated
+    actor: actor.maintainer
+    disposition: threat
+    elements:
+    - component.crate-package
+    - flow.doc-to-package
+    - component.crate-docs
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.evidence-not-a-caged-test
+  name: A mitigated row names evidence that exists but does not cage a child (a unit test, a constant assertion,
+    an SBPL string comparison), so the evidence rule is met in form only
+  categories:
+  - Spoofing
+  risk:
+    impact: 85
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.evidence-reference
+    status: mitigated
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle (comparing emitted SBPL or BPF is not evidence)
+    disposition: threat
+    elements:
+    - flow.contributor-to-catalog
+    - component.catalog-gate
+    profile: stride
+    severity: high
+    technique: false-evidence
+- id: threat.malformed-row-skipped
+  name: A malformed or reformatted catalog row is silently skipped by the gate, so a class vanishes from checking
+    while still appearing to be listed
+  categories:
+  - Tampering
+  cwes:
+  - CWE-1286
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-010
+    assets:
+    - asset.escape-catalog
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.catalog-gate
+    - flow.catalog-to-gate
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.missing-scope-section
+  name: A required threat-model section (out of scope, strength versus microVMs, private-interface dependency, release
+    status) is dropped in an edit, so adopters over-trust the cage against kernel bugs or think the release enforces
+  categories:
+  - Spoofing
+  risk:
+    impact: 80
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.threat-model-doc
+    status: mitigated
+    actor: actor.contributor
+    constitution: VI. Private interfaces, honestly (public docs state dependencies, threat model and non-goals)
+    disposition: threat
+    elements:
+    - component.threat-model-doc
+    profile: stride
+    severity: high
+    technique: false-evidence
+- id: threat.overclaimed-enforcement
+  name: A contributor or later feature marks an escape class mitigated or detected, or the README states enforcement,
+    without a caged-child test, so adopters trust protection that does not exist
+  categories:
+  - Spoofing
+  - Repudiation
+  cwes:
+  - CWE-1059
+  risk:
+    impact: 90
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.escape-catalog
+    - asset.evidence-reference
+    - asset.threat-model-doc
+    status: mitigated
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle (no enforcement claim without a caged-child test)
+    disposition: threat
+    elements:
+    - flow.contributor-to-catalog
+    - component.readme
+    - component.crate-docs
+    profile: stride
+    severity: high
+    technique: false-evidence
+- id: threat.planning-content-leak
+  name: Writing the published document from the local planning notes copies planning paths or internal content (open
+    user actions, unpublished decisions) into the public tree
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    impact: 50
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-014
+    assets:
+    - asset.planning-notes
+    status: mitigated
+    actor: actor.maintainer
+    disposition: threat
+    elements:
+    - flow.planning-to-doc
+    - component.threat-model-doc
+    - component.security-policy
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.public-escape-report
+  name: Without a private reporting route, a reporter files an escape as a public issue, disclosing it to attackers
+    before a fix
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-013
+    assets:
+    - asset.vulnerability-report
+    status: mitigated
+    actor: actor.attacker
+    disposition: threat
+    elements:
+    - flow.reporter-to-maintainer
+    - component.security-policy
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.silent-id-removal
+  name: A change removes, renumbers or reuses a published escape-class id, so audits and the escape suite citing
+    that id silently lose their meaning
+  categories:
+  - Tampering
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.escape-catalog
+    - asset.published-id-baseline
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - flow.contributor-to-catalog
+    - component.threat-model-doc
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+mitigations:
+- id: mitigation.class-level-descriptions
+  name: Catalog rows describe the class and cite only publicly known sources; no step-by-step exploit, payload or
+    proof of concept is published
+  riskReduction: 50
+  attributes:
+    threats:
+    - threat.catalog-as-exploit-guide
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - THREAT_MODEL.md
+- id: mitigation.evidence-gate
+  name: The gate fails any row with status mitigated or detected whose evidence does not resolve to an existing
+    test, and fails present-tense enforcement wording in README and crate docs per review checklist
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.overclaimed-enforcement
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - tests/threat_model.rs
+    - README.md
+    - src/lib.rs
+- id: mitigation.evidence-location-rule
+  name: Evidence may only point at tests in the integration-test locations that run caged children (escape suite
+    canaries, kernel-level spawn tests), never at unit tests in the library source
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.evidence-not-a-caged-test
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - tests/threat_model.rs
+- id: mitigation.kernel-fact-resolution
+  name: The gate resolves every observed-on id against the kernel-facts catalog
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.dangling-kernel-observation
+    status: verified
+    kind: detective
+    requirements:
+    - SR-005
+    touchpoints:
+    - tests/threat_model.rs
+    - tests/kernel_facts/tests/kernel_facts.rs
+- id: mitigation.planning-gate-coverage
+  name: The planning-path gate scans the new published files, and the document is reviewed so that no internal planning
+    content is copied
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.planning-content-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - justfile
+    - THREAT_MODEL.md
+    - SECURITY.md
+- id: mitigation.private-reporting-policy
+  name: A security policy names a private reporting route and asks reporters not to open public issues for escapes
+  riskReduction: 60
+  attributes:
+    threats:
+    - threat.public-escape-report
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - SECURITY.md
+- id: mitigation.published-id-baseline
+  name: The gate holds the append-only list of published ids and fails when any is absent or duplicated
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.silent-id-removal
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - tests/threat_model.rs
+- id: mitigation.required-sections-check
+  name: The gate checks that each required heading of the threat model is present and that the release-status section
+    names the current crate version
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.missing-scope-section
+    status: verified
+    kind: detective
+    requirements:
+    - SR-007
+    touchpoints:
+    - tests/threat_model.rs
+    - THREAT_MODEL.md
+- id: mitigation.single-source-embedding
+  name: The crate docs embed the document from one file that the package includes; a check builds the docs from
+    the packaged crate
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.divergent-or-missing-published-copy
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - Cargo.toml
+    - src/threat_model.rs
+    - justfile
+- id: mitigation.strict-row-parser
+  name: Every table row in the catalog section must parse into all fields with allowed values; an unparsable row
+    fails the gate instead of being skipped, and the parsed count must equal the baseline count
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.malformed-row-skipped
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - tests/threat_model.rs
+requirements:
+- id: SR-001
+  statement: The catalog gate MUST fail when a row has status mitigated or detected and its evidence is empty or
+    names a test that does not exist in the repository, and the README and crate docs MUST NOT state enforcement
+    in the present tense while no sandboxing API ships.
+  priority: P1
+  mitigations:
+  - mitigation.evidence-gate
+  acceptance:
+  - given: a row marked mitigated with empty evidence
+    then: it fails naming the id and the evidence rule
+    when: the gate runs
+  - given: a row marked detected whose evidence names a non-existent test
+    then: it fails naming the id and the unresolved reference
+    when: the gate runs
+  - given: the README and crate docs of a release with no sandboxing API
+    then: no sentence describes enforcement in the present tense
+    when: they are reviewed
+  tasks: []
+- id: SR-002
+  statement: Evidence for mitigated or detected MUST resolve to a test function in an integration-test location
+    that runs a caged child; references into library source or unit tests MUST fail the gate.
+  priority: P1
+  mitigations:
+  - mitigation.evidence-location-rule
+  acceptance:
+  - given: evidence pointing at a unit test inside the library source
+    then: it fails naming the id and the location rule
+    when: the gate runs
+  tasks: []
+- id: SR-003
+  statement: The gate MUST fail when any id in the published-id baseline is absent from the catalog or an id appears
+    twice.
+  priority: P1
+  mitigations:
+  - mitigation.published-id-baseline
+  acceptance:
+  - given: the R-22 row deleted
+    then: it fails naming R-22 as missing
+    when: the gate runs
+  - given: a second row with id R-10
+    then: it fails naming R-10 as duplicated
+    when: the gate runs
+  tasks: []
+- id: SR-004
+  statement: The gate MUST reject, not skip, any row in the catalog section that does not parse into every field
+    with an allowed value, and MUST fail when the parsed row count differs from the baseline count.
+  priority: P1
+  mitigations:
+  - mitigation.strict-row-parser
+  acceptance:
+  - given: a row with status "done"
+    then: it fails naming the id, the field and the allowed values
+    when: the gate runs
+  - given: a row with a missing column
+    then: it fails naming the line instead of ignoring the row
+    when: the gate runs
+  tasks: []
+- id: SR-005
+  statement: The gate MUST fail when an observed-on entry names a kernel fact absent from the kernel-facts catalog.
+  priority: P2
+  mitigations:
+  - mitigation.kernel-fact-resolution
+  acceptance:
+  - given: a row citing KF-M99
+    then: it fails naming the id and KF-M99
+    when: the gate runs
+  tasks: []
+- id: SR-006
+  statement: The threat model MUST come from one source file that the crate package includes, and the crate documentation
+    MUST build from the packaged crate alone with warnings as errors.
+  priority: P1
+  mitigations:
+  - mitigation.single-source-embedding
+  acceptance:
+  - given: the packaged crate
+    then: it contains the threat-model file
+    when: its file list is inspected
+  - given: the unpacked package
+    then: the build succeeds and the threat-model page is present
+    when: its docs are built with warnings denied
+  tasks: []
+- id: SR-007
+  statement: The gate MUST fail when a required threat-model heading (adversary, assets, trusted, in scope, out
+    of scope, strength, dependencies, non-goals, release status, escape classes) is missing or the release-status
+    section does not name the crate's current version.
+  priority: P1
+  mitigations:
+  - mitigation.required-sections-check
+  acceptance:
+  - given: the out-of-scope heading removed
+    then: it fails naming the missing heading
+    when: the gate runs
+  - given: a release-status section naming 0.0.0 while the crate is 0.0.1
+    then: it fails naming both versions
+    when: the gate runs
+  tasks: []
+- id: SR-008
+  statement: The planning-path gate MUST scan the threat-model document and the security policy, and the published
+    files MUST NOT contain internal planning content (open user actions, unpublished decisions).
+  priority: P2
+  mitigations:
+  - mitigation.planning-gate-coverage
+  acceptance:
+  - given: a planning path injected into the threat-model document
+    then: it fails naming the file
+    when: the planning-path gate runs
+  - given: the finished document
+    then: it contains no open user action or unpublished decision from the planning notes
+    when: it is reviewed
+  tasks: []
+- id: SR-009
+  statement: The repository MUST contain a security policy that names a private reporting route, asks reporters
+    not to file escapes as public issues, and refers to the threat model for scope.
+  priority: P2
+  mitigations:
+  - mitigation.private-reporting-policy
+  acceptance:
+  - given: the repository root
+    then: it names a private route, asks for no public issue and links the threat model
+    when: a reporter opens the security policy
+  tasks: []
+- id: SR-010
+  statement: Catalog rows MUST describe classes at the level of a one-line description with public sources and MUST
+    NOT include exploit steps, payloads or proofs of concept.
+  priority: P3
+  mitigations:
+  - mitigation.class-level-descriptions
+  acceptance:
+  - given: the published catalog
+    then: no row contains commands, payloads or exploit steps
+    when: it is reviewed
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-29
+  requirement: SR-001
+  method: test
+  evidence: tests/threat_model.rs::mitigated_without_evidence_is_caught; tests/threat_model.rs::nonexistent_evidence_is_caught;
+    tests/threat_model.rs::valid_evidence_is_accepted; review of README.md and src/lib.rs recorded in quickstart.md
+    scenario 8
+  result: pass
+  verdict: verified
+  justification: Mutating R-10 to mitigated with an empty or unresolvable evidence field fails with exactly evidence-required
+    or evidence-missing naming R-10, and a real test reference is accepted; the README and crate docs state that
+    0.0.1 enforces nothing and describe behaviour as designed or meant.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-002.2026-10-29
+  requirement: SR-002
+  method: test
+  evidence: tests/threat_model.rs::evidence_in_library_source_is_caught; tests/threat_model.rs::kernel_fact_as_evidence_is_caught
+  result: pass
+  verdict: verified
+  justification: Evidence under src/ and under tests/kernel_facts/ each fail with evidence-location naming the id
+    and the reference. Whether a test in tests/ truly cages a child remains a review item, as recorded in research
+    R4.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-003.2026-10-29
+  requirement: SR-003
+  method: test
+  evidence: tests/threat_model.rs::removed_id_is_caught; tests/threat_model.rs::duplicate_id_is_caught; tests/threat_model.rs::unknown_id_is_caught
+  result: pass
+  verdict: verified
+  justification: Deleting R-22 yields baseline-missing R-22, a second R-10 row yields duplicate-id R-10, and an
+    R-99 row yields baseline-unknown; each test asserts no other rule fires.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-004.2026-10-29
+  requirement: SR-004
+  method: test
+  evidence: tests/threat_model.rs::unknown_status_is_caught; tests/threat_model.rs::missing_cell_is_caught; quickstart.md
+    scenario 3 (blank line inside the table reported as row-format, not skipped)
+  result: pass
+  verdict: verified
+  justification: Status "done" fails as value naming the id and field with the allowed values; a 7-cell row fails
+    as row-format naming the line; rows stranded after a blank line are reported, not ignored.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-005.2026-10-29
+  requirement: SR-005
+  method: test
+  evidence: tests/threat_model.rs::unknown_kernel_fact_is_caught; tests/threat_model.rs::gate (asserts at least
+    40 kernel-fact ids were read)
+  result: pass
+  verdict: verified
+  justification: Citing KF-M99 fails with kernel-fact naming R-21 and KF-M99; the clean catalog's KF-M07/M08/M12/M19/M21/M26/L09/L10
+    resolve against the kernel-facts catalog.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-006.2026-10-29
+  requirement: SR-006
+  method: test
+  evidence: justfile package-docs recipe (part of just ci); quickstart.md scenario 4 (include entry removed → fails)
+  result: pass
+  verdict: verified
+  justification: src/threat_model.rs embeds THREAT_MODEL.md via include_str; the recipe checks the package list,
+    builds docs from the unpacked package outside the workspace with -D warnings and asserts the threat_model page;
+    removing the include entry failed the recipe.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-007.2026-10-29
+  requirement: SR-007
+  method: test
+  evidence: tests/threat_model.rs::missing_heading_is_caught; tests/threat_model.rs::wrong_release_is_caught
+  result: pass
+  verdict: verified
+  justification: Removing the Out of scope heading fails as heading, and naming procage 0.0.0 fails as release-status
+    with the current version; the clean document has all ten headings in order.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-008.2026-10-29
+  requirement: SR-008
+  method: test
+  evidence: justfile planning-paths (paths include THREAT_MODEL.md and SECURITY.md); quickstart.md scenarios 6 and
+    8
+  result: pass
+  verdict: verified
+  justification: An injected specs/ reference in SECURITY.md failed the recipe; review and a grep for internal names,
+    tokens and user actions found none in the published files.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-009.2026-10-29
+  requirement: SR-009
+  method: review
+  evidence: SECURITY.md (Reporting a vulnerability, Scope, Supported versions)
+  result: pass
+  verdict: verified
+  justification: The policy names GitHub private vulnerability reporting with its URL, asks for no public issue,
+    pull request or discussion, and links THREAT_MODEL.md for scope. Enabling the feature in repository settings
+    is a maintainer action outside the code.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+- id: verification.sr-010.2026-10-29
+  requirement: SR-010
+  method: review
+  evidence: THREAT_MODEL.md Escape classes table, reviewed in quickstart.md scenario 8
+  result: pass
+  verdict: verified
+  justification: Every row is a one-line class description; R-11 and R-22 name the class without profile syntax,
+    ioctl names or commands, and no row contains payloads or steps.
+  verified_at: '2026-10-29T23:32:09Z'
+  commit: 24f3263
+decisions: []

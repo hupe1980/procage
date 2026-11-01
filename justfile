@@ -109,12 +109,24 @@ planning-paths:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> gate: planning-paths"
-    paths=(crates site README.md SECURITY.md Cargo.toml justfile deny.toml)
-    [[ -d .github ]] && paths+=(.github)
-    if grep -rnE '(concepts|specs|\.specify)/' "${paths[@]}"; then
-        echo "planning paths found in the published tree" >&2
-        exit 1
+    status=0
+    # The crates never cite planning files.
+    if grep -rnE '(concepts|specs|\.specify)/' crates Cargo.toml deny.toml; then
+        echo "planning paths in the crates" >&2; status=1
     fi
+    # README, SECURITY, the site and CI may link the design records, never private notes.
+    others=(README.md SECURITY.md site justfile)
+    [[ -d .github ]] && others+=(.github)
+    if grep -rnE 'concepts[/]' "${others[@]}"; then
+        echo "private notes cited in the published tree" >&2; status=1
+    fi
+    # The design records stand alone: no private note, consumer, local path or e-mail.
+    records=(specs .specify/memory)
+    pattern='concepts|D-[0-9]{3}|Q-[0-9]{2}\b|F-[0-9]{2}\b|research/0|[Rr]oadmap|speccoder|ordex|\bbilling\b|\bsepa\b|/Users/|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}'
+    if [[ -d specs ]] && grep -rnE --exclude='incoming-*' "$pattern" "${records[@]}"; then
+        echo "private references in the design records" >&2; status=1
+    fi
+    exit $status
 
 # The landing page and documentation (Zola): link check and build.
 site:

@@ -1,0 +1,78 @@
+//! Research harness for base V2: runs developer tools under a base profile
+//! and reports exit codes, timing and stderr; denials come from the log.
+use procage::macos::{Cage, CageOptions, Grants};
+use procage::policy::*;
+use std::process::{Command, Stdio};
+use std::time::Instant;
+
+fn main() {
+    let base = match std::env::args().nth(1).as_deref() {
+        Some("none") => None,
+        Some("v2") => Some(Base::V2),
+        _ => Some(Base::V1),
+    };
+    let ws = std::fs::canonicalize(std::env::temp_dir()).unwrap().join(format!("pc-base-{}", std::process::id()));
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(ws.join("hello.c"), "#include <stdio.h>\nint main(){puts(\"hi\");}\n").unwrap();
+    std::fs::write(ws.join("hello.py"), "import json, ssl, sqlite3\nprint('hi')\n").unwrap();
+    let mut p = Policy::default();
+    p.base = base.unwrap_or(Base::V1);
+    p.process.fork = true;
+    p.process.exec = Exec::Any;
+    p.process.signals = Signals::SelfAndChildren;
+    p.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(AbsPath::new(ws.as_os_str().as_encoded_bytes()).unwrap())));
+    p.grants.push(Grant { name: GrantName::new("tmpdir").unwrap(), access: Access::Write });
+    p.env = EnvPolicy::Allowlist(["PATH", "HOME", "LANG", "USER", "TERM"].map(String::from).to_vec());
+    let opts = CageOptions::default().with_lower(LowerOptions::default().with_tag(Tag::new("procage-research").unwrap()));
+    let cage = Cage::with_options(&p, &opts).unwrap();
+    let path = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+    let tools: &[(&str, &str)] = &[
+        ("git-version", "git --version"),
+        ("git-init", "git init -q r && cd r && git -c user.name=a -c user.email=a@b commit -q --allow-empty -m x && git log --oneline | wc -l"),
+        ("python3", "python3 -c 'import json, ssl, sqlite3, hashlib; print(1)'"),
+        ("python3-file", "python3 hello.py"),
+        ("clang-version", "clang --version | head -1"),
+        ("clang-build", "clang -o hello hello.c && ./hello"),
+        ("make", "make --version | head -1"),
+        ("xcrun", "xcrun --show-sdk-path"),
+        ("swift", "swift --version 2>&1 | head -1"),
+        ("perl", "perl -MJSON::PP -e 'print 1'"),
+        ("ruby", "ruby -e 'puts 1'"),
+        ("curl", "curl --version | head -1"),
+        ("openssl", "openssl version"),
+        ("ssh", "ssh -V"),
+        ("find", "find . -maxdepth 1 | wc -l"),
+        ("grep", "echo a | grep a"),
+        ("tar", "tar -czf x.tgz hello.c && tar -tzf x.tgz"),
+        ("zip", "zip -q x.zip hello.c && unzip -l x.zip | tail -1"),
+        ("mktemp", "mktemp && mktemp -d"),
+        ("warm", r#"mkdir -p t; export TMPDIR=$PWD/t GIT_CONFIG_GLOBAL=/dev/null; for i in 1 2 3; do /usr/bin/time -p git --version 2>&1 | grep real; done | tr "\n" " ""#),
+        ("zenv", r#"printf "T=%s|C=%s" "${TMPDIR##*/}" "$(getconf DARWIN_USER_TEMP_DIR 2>&1)""#),
+        ("sw_vers", "sw_vers -productVersion"),
+        ("locale", "locale | head -1"),
+        ("node", "node -e 'console.log(1)'"),
+        ("npm", "npm --version"),
+        ("rg", "rg --version | head -1"),
+        ("jq", "echo '{}' | jq ."),
+        ("brew-python", "/opt/homebrew/bin/python3 -c 'print(1)'"),
+        ("cargo", "cargo --version"),
+    ];
+    let only = std::env::args().nth(2);
+    for (name, script) in tools {
+        if only.as_deref().is_some_and(|o| !name.starts_with(o)) { continue; }
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", script]).current_dir(&ws).env("PATH", path).env("HOME", std::env::var("HOME").unwrap())
+            .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let t = Instant::now();
+        let out = if base.is_some() {
+            cage.spawn(&mut c, &Grants::new()).unwrap().detach().wait_with_output().unwrap()
+        } else {
+            c.output().unwrap()
+        };
+        let ms = t.elapsed().as_millis();
+        let err = String::from_utf8_lossy(&out.stderr).lines().filter(|l| !l.contains("DVTFilePathFSEvents") && !l.contains("xcodebuild[")).collect::<Vec<_>>().join(" / ").chars().take(400).collect::<String>();
+        let o = String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or("").chars().take(90).collect::<String>();
+        println!("{name:14} exit={:<4} {ms:>6}ms out={o:40} err={err}", out.status.code().map_or("sig".into(), |c| c.to_string()));
+    }
+    let _ = std::fs::remove_dir_all(&ws);
+}

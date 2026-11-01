@@ -1,0 +1,684 @@
+otmVersion: 0.2.0
+project:
+  id: 005-hygiene
+  name: Process hygiene for caged children
+threatspec:
+  actors:
+  - id: actor.child-code
+    name: Adaptive code running as the user inside the caged child
+    trust: untrusted
+  - id: actor.harness-author
+    name: Harness author who spawns caged children and holds descriptors, environment and temp files
+    trust: semi-trusted
+  - id: actor.other-run
+    name: Another caged run of the same user on the same machine
+    trust: untrusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface; environment secrets are modelled as threat.env-secret-passthrough
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: no-threat-detected
+    reason: 'checked asset.tmp-files: runs of one user share TMPDIR; modelled as threat.shared-tmpdir'
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked flow.fds-to-child and flow.env-to-child: they cross from parent to child by fork and exec inside
+      one kernel; nothing travels over a network, and what the child receives is modelled as threat.inherited-fd
+      and threat.env-secret-passthrough'
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked component.child-handle: dropped environment names are reported on the handle; receipts are
+      feature 011'
+    technique: missing-audit-trail
+  - disposition: not-applicable
+    reason: 'no llm-inference surface: procage calls no language model (LLM-driven code is the adversary inside
+      the child)'
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: no untrusted-content-to-model surface
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: no llm-inference surface
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: 'no model-supply-chain surface: no models, adapters or datasets'
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no persistent-model-input surface
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no cost-bearing-inference surface
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no user-facing-generation surface; overclaiming in docs is modelled under STRIDE as threat.overclaimed-enforcement
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no system-prompt surface
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval-path surface
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: no model-output surface
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no inference-endpoint surface
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: no agent surface in this feature
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: no agent tool surface
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: no agent identity surface
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: no agent plugin or MCP surface
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage executes only the program its caller names; the adversary inside the child is modelled under
+      STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory surface
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no multi-agent surface
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no agent pipeline surface
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: no agent-to-human surface
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: no agent surface
+    technique: rogue-agent
+  exclusions:
+  - entity: Descriptor list
+    reason: folded into asset.parent-fds (the descriptors handed over)
+  - entity: Environment decision
+    reason: folded into asset.parent-env
+  extends: null
+  generated: '2026-11-01T17:26:07Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 290daaf5aa5ade1f8e257c9ba6f149cb0fe2b302a5bf9426652d531c4e27345f
+  - path: spec.md
+    sha256: a703a1cc73263bc5a771a6d68ba094eed90a35f6e1e90afc0773c834859d2e33
+  surfaces:
+  - external-input
+  - network-boundary
+  - persistent-store
+  version: '0.1'
+trustZones:
+- id: tz.child
+  name: Caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.os
+  name: macOS kernel
+  risk:
+    trustRating: 90
+- id: tz.parent
+  name: Caller process (harness)
+  risk:
+    trustRating: 70
+assets:
+- id: asset.parent-env
+  name: The caller's environment (tokens, agent sockets, injection variables)
+  risk:
+    availability: 10
+    confidentiality: 90
+    integrity: 60
+  attributes:
+    type: credential
+    source: spec.md#FR-007
+    classification: confidential
+- id: asset.parent-fds
+  name: The caller's open descriptors (files, sockets, pipes)
+  risk:
+    availability: 30
+    confidentiality: 90
+    integrity: 80
+  attributes:
+    type: credential
+    source: spec.md#User-Story-1
+    classification: confidential
+- id: asset.run-lifetime
+  name: The guarantee that no process of a run outlives it
+  risk:
+    availability: 40
+    confidentiality: 40
+    integrity: 80
+  attributes:
+    type: configuration
+    source: spec.md#User-Story-2
+    classification: internal
+- id: asset.tmp-files
+  name: Temporary files of this and other runs
+  risk:
+    availability: 20
+    confidentiality: 70
+    integrity: 70
+  attributes:
+    type: business-data
+    source: spec.md#FR-009
+    classification: internal
+components:
+- id: component.child-handle
+  name: Child handle (process group
+  type: library
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-005
+  descendant kill: null
+  temp dir cleanup): null
+- id: component.docs
+  name: Crate docs and threat-model release status
+  type: document
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-011
+- id: component.env-filter
+  name: Environment filter (pure function)
+  type: library
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-008
+- id: component.fd-sweep
+  name: In-child descriptor sweep (list via proc_info
+  type: process
+  parent:
+    trustZone: tz.child
+  attributes:
+    source: spec.md#FR-001
+  mark close-on-exec): null
+- id: component.tmpdir
+  name: Per-spawn private temp directory
+  type: datastore
+  parent:
+    trustZone: tz.parent
+  attributes:
+    source: spec.md#FR-009
+dataflows:
+- id: flow.child-to-tmp
+  name: The child writes temporary files
+  source: actor.child-code
+  destination: component.tmpdir
+  assets:
+  - asset.tmp-files
+  attributes:
+    crosses:
+    - tz.child
+    - tz.parent
+- id: flow.env-to-child
+  name: The filtered environment reaches the child
+  source: component.env-filter
+  destination: actor.child-code
+  assets:
+  - asset.parent-env
+  attributes:
+    crosses:
+    - tz.parent
+    - tz.child
+- id: flow.fds-to-child
+  name: Fork copies the caller's descriptors into the child
+  source: component.fd-sweep
+  destination: actor.child-code
+  assets:
+  - asset.parent-fds
+  attributes:
+    crosses:
+    - tz.parent
+    - tz.child
+- id: flow.handle-to-kernel
+  name: The handle kills the group and descendants
+  source: component.child-handle
+  destination: actor.child-code
+  assets:
+  - asset.run-lifetime
+  attributes:
+    crosses:
+    - tz.parent
+    - tz.child
+- id: flow.other-run-to-tmp
+  name: Another run reads the shared temp directory
+  source: actor.other-run
+  destination: component.tmpdir
+  assets:
+  - asset.tmp-files
+  attributes:
+    crosses:
+    - tz.child
+threats:
+- id: threat.env-secret-passthrough
+  name: Passthrough hands the child tokens, the SSH agent socket or dyld injection variables from the caller's environment
+    (escape class R-24)
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-526
+  risk:
+    impact: 80
+    likelihood: 70
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.parent-env
+    status: mitigated
+    actor: actor.child-code
+    disposition: threat
+    elements:
+    - component.env-filter
+    - flow.env-to-child
+    profile: stride
+    severity: critical
+    technique: sensitive-data-exposure
+- id: threat.inherited-fd
+  name: The child uses a descriptor the caller opened before the spawn (without close-on-exec) to read or write
+    a file the profile denies (escape class R-21, observed by KF-M19)
+  categories:
+  - Information Disclosure
+  - Elevation of Privilege
+  cwes:
+  - CWE-403
+  risk:
+    impact: 90
+    likelihood: 70
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.parent-fds
+    status: mitigated
+    actor: actor.child-code
+    constitution: V. Hygiene by default (only stdio and declared fds)
+    disposition: threat
+    elements:
+    - flow.fds-to-child
+    - component.fd-sweep
+    profile: stride
+    severity: critical
+    technique: sensitive-data-exposure
+- id: threat.outliving-descendants
+  name: A descendant of the child keeps running after the caller dropped the handle, acting outside the run's intended
+    lifetime (escape class R-23)
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-404
+  risk:
+    impact: 75
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.run-lifetime
+    status: mitigated
+    actor: actor.child-code
+    constitution: V. Hygiene by default (child and descendants do not outlive the run)
+    disposition: threat
+    elements:
+    - component.child-handle
+    - flow.handle-to-kernel
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.overclaimed-hygiene
+  name: Docs or the threat model claim lifetime control on macOS without stating the double-fork escape, or flip
+    escape-class statuses without escape-suite canaries
+  categories:
+  - Spoofing
+  cwes:
+  - CWE-1059
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-011
+    assets:
+    - asset.run-lifetime
+    status: mitigated
+    actor: actor.harness-author
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.docs
+    profile: stride
+    severity: medium
+    technique: false-evidence
+- id: threat.shared-tmpdir
+  name: Runs share the user's TMPDIR, so one caged run reads or plants files of another (escape class R-10)
+  categories:
+  - Information Disclosure
+  - Tampering
+  cwes:
+  - CWE-377
+  risk:
+    impact: 70
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-009
+    assets:
+    - asset.tmp-files
+    status: mitigated
+    actor: actor.other-run
+    disposition: threat
+    elements:
+    - component.tmpdir
+    - flow.other-run-to-tmp
+    profile: stride
+    severity: high
+    technique: data-tampering-at-rest
+- id: threat.sweep-breaks-reporting
+  name: The descriptor sweep closes std's error pipe, so a failed in-child step looks like a successful spawn and
+    the caller misreads the outcome
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-755
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.run-lifetime
+    status: mitigated
+    actor: actor.harness-author
+    disposition: threat
+    elements:
+    - component.fd-sweep
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.sweep-unbounded
+  name: With a huge descriptor limit the sweep takes seconds per spawn, or skips descriptors above a guessed bound
+  categories:
+  - Denial of Service
+  - Information Disclosure
+  cwes:
+  - CWE-400
+  risk:
+    impact: 70
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.parent-fds
+    status: mitigated
+    actor: actor.harness-author
+    disposition: threat
+    elements:
+    - component.fd-sweep
+    profile: stride
+    severity: high
+    technique: resource-exhaustion
+mitigations:
+- id: mitigation.cloexec-sweep
+  name: The child lists its descriptors with proc_pidinfo into a parent-allocated buffer (fcntl sweep fallback)
+    and marks every fd >= 3 not named close-on-exec; named fds have close-on-exec cleared
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.inherited-fd
+    - threat.sweep-unbounded
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    - SR-002
+    touchpoints:
+    - src/macos/sys.rs
+    - src/macos/mod.rs
+    - tests/spawn_macos.rs
+- id: mitigation.env-denylist
+  name: Passthrough drops DYLD_*, LD_PRELOAD, LD_LIBRARY_PATH, SSH_AUTH_SOCK, *_TOKEN, *_SECRET, *_PASSWORD, *_API_KEY
+    and AWS_* unless set explicitly; the handle lists them
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.env-secret-passthrough
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - src/hygiene.rs
+    - src/macos/spawn.rs
+    - tests/spawn_macos.rs
+- id: mitigation.group-and-tree-kill
+  name: The child gets its own process group; the handle kills the group and every descendant found by walking child
+    PIDs, then reaps; detach opts out; the double-fork gap is documented
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.outliving-descendants
+    - threat.overclaimed-hygiene
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    - SR-007
+    touchpoints:
+    - src/macos/child.rs
+    - src/macos/sys.rs
+    - src/macos/mod.rs
+    - tests/spawn_macos.rs
+- id: mitigation.mark-not-close
+  name: Descriptors are marked close-on-exec rather than closed
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.sweep-breaks-reporting
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - src/macos/sys.rs
+    - tests/spawn_macos.rs
+  so std's own error pipe keeps reporting failed steps: null
+- id: mitigation.private-tmpdir
+  name: A policy grant named tmpdir is bound per spawn to a fresh 0700 directory, TMPDIR points to it, and the handle
+    removes it
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.shared-tmpdir
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - src/macos/child.rs
+    - src/macos/mod.rs
+    - tests/spawn_macos.rs
+requirements:
+- id: SR-001
+  statement: Every descriptor >= 3 not named for the spawn MUST be unusable in the child after exec, including descriptors
+    the caller left without close-on-exec, using only system calls on parent-prepared data.
+  priority: P1
+  mitigations:
+  - mitigation.cloexec-sweep
+  acceptance:
+  - given: the caller holds a descriptor to a denied file without close-on-exec
+    then: it does not exist (EBADF)
+    when: the caged child checks that descriptor number
+  - given: the caller holds 1,000 extra descriptors
+    then: none remain
+    when: the child counts its descriptors >= 3
+  tasks: []
+- id: SR-002
+  statement: A descriptor named for a spawn MUST be usable in the child; a named descriptor that is not open MUST
+    fail the spawn with a typed error; the sweep MUST stay fast under a very large descriptor limit.
+  priority: P2
+  mitigations:
+  - mitigation.cloexec-sweep
+  acceptance:
+  - given: a named descriptor
+    then: it succeeds
+    when: the child reads it
+  - given: a named descriptor number that is not open
+    then: it fails with a typed error and no child runs
+    when: spawn runs
+  tasks: []
+- id: SR-003
+  statement: A failed in-child step MUST still reach the parent as a typed error after the descriptor sweep.
+  priority: P1
+  mitigations:
+  - mitigation.mark-not-close
+  acceptance:
+  - given: a child whose rlimit step fails after the sweep ran
+    then: it is Apply with step Rlimit, not success
+    when: spawn returns
+  tasks: []
+- id: SR-004
+  statement: Dropping or killing the handle MUST kill the child's process group and every descendant reachable from
+    the child, including descendants in a new session, and reap the child; a detached handle MUST NOT kill.
+  priority: P1
+  mitigations:
+  - mitigation.group-and-tree-kill
+  acceptance:
+  - given: a caged child with a grandchild in its group and one that called setsid
+    then: both are gone within 1 s
+    when: the handle is dropped
+  - given: a detached handle
+    then: the child keeps running
+    when: it is dropped
+  tasks: []
+- id: SR-005
+  statement: Under passthrough the child MUST NOT receive DYLD_*, LD_PRELOAD, LD_LIBRARY_PATH, SSH_AUTH_SOCK, *_TOKEN,
+    *_SECRET, *_PASSWORD, *_API_KEY or AWS_* variables unless set explicitly on the command, and the handle MUST
+    list each dropped name.
+  priority: P1
+  mitigations:
+  - mitigation.env-denylist
+  acceptance:
+  - given: a caller with GITHUB_TOKEN, SSH_AUTH_SOCK and DYLD_INSERT_LIBRARIES set
+    then: none is present and all three are reported dropped
+    when: a passthrough child prints its environment
+  - given: GITHUB_TOKEN set explicitly on the command
+    then: it is present
+    when: the child prints its environment
+  tasks: []
+- id: SR-006
+  statement: A policy grant named tmpdir MUST be bound per spawn to a fresh directory accessible only to the user,
+    TMPDIR MUST point to it, and dropping the handle MUST remove it.
+  priority: P2
+  mitigations:
+  - mitigation.private-tmpdir
+  acceptance:
+  - given: a policy with a tmpdir grant
+    then: their TMPDIRs differ, each child writes its own, and each directory is gone after its handle is dropped
+    when: two children run
+  tasks: []
+- id: SR-007
+  statement: Docs and the threat-model release status MUST state the macOS double-fork escape from lifetime control,
+    keep pseudo-terminals and Linux as open gaps, and leave escape-class statuses unchanged.
+  priority: P2
+  mitigations:
+  - mitigation.group-and-tree-kill
+  acceptance:
+  - given: the macos module docs, README and threat model
+    then: the double-fork gap is stated and no closed gap is still listed as open
+    when: they are reviewed
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-30
+  requirement: SR-001
+  method: test
+  evidence: tests/spawn_macos.rs::an_inherited_descriptor_does_not_reach_the_child; tests/spawn_macos.rs::a_thousand_open_descriptors_are_all_closed
+  result: pass
+  verdict: verified
+  justification: A descriptor to a file, left inheritable by clearing close-on-exec, does not exist in the caged
+    child (fd_is_open false). With 1,000 inheritable descriptors open, the child counts 0 fds of 3 or more. The
+    sweep in sys.rs (mark_fds) uses only proc_info via proc_pidinfo, fcntl and getdtablesize on a parent-allocated
+    buffer. Skipping the sweep fails both tests.
+  verified_at: '2026-10-30T07:54:32Z'
+  commit: 1fd636f
+- id: verification.sr-002.2026-10-30
+  requirement: SR-002
+  method: test
+  evidence: tests/spawn_macos.rs::an_inherited_descriptor_does_not_reach_the_child; src/macos/mod.rs::tests::a_descriptor_that_is_not_open_is_refused;
+    specs/005-hygiene/quickstart.md#Recorded-outcomes
+  result: pass
+  verdict: verified
+  justification: A descriptor handed over with spawn_with_fds is open in the child, and naming stdout is a no-op.
+    A closed descriptor number gives SpawnError::Fd from kept_fds; safe code cannot build a BorrowedFd for a closed
+    fd, so the check is unit-tested. Recorded latency with 1,000 extra fds and a 1,048,576 soft limit is 0.63 ms
+    overhead.
+  verified_at: '2026-10-30T07:54:32Z'
+  commit: 1fd636f
+- id: verification.sr-003.2026-10-30
+  requirement: SR-003
+  method: test
+  evidence: tests/spawn_macos.rs::a_failed_step_after_the_sweep_is_still_reported
+  result: pass
+  verdict: verified
+  justification: With the sweep in place, a failing rlimit step (NOFILE u64::MAX) still returns SpawnError::Apply{step
+    Rlimit}. The sweep marks close-on-exec rather than closing, so std's error pipe keeps working.
+  verified_at: '2026-10-30T07:54:32Z'
+  commit: 1fd636f
+- id: verification.sr-004.2026-10-30
+  requirement: SR-004
+  method: test
+  evidence: tests/spawn_macos.rs::dropping_the_handle_kills_every_descendant; tests/spawn_macos.rs::a_reaped_leader_still_takes_its_group_down;
+    tests/spawn_macos.rs::a_detached_child_keeps_running
+  result: pass
+  verdict: verified
+  justification: A caged child starts a same-group sleeper and a setsid sleeper; dropping the handle kills the child
+    and both sleepers within 1 s. After the caller reaps the leader, dropping still kills the remaining group member.
+    A detached child keeps running. Skipping the descendant walk fails the first test, because the setsid sleeper
+    survives.
+  verified_at: '2026-10-30T07:54:32Z'
+  commit: 1fd636f
+- id: verification.sr-005.2026-10-30
+  requirement: SR-005
+  method: test
+  evidence: tests/spawn_macos.rs::passthrough_drops_secrets_unless_set_explicitly; src/hygiene.rs::tests::passthrough_drops_the_default_denylist_and_reports_it
+  result: pass
+  verdict: verified
+  justification: An uncaged intermediary with GITHUB_TOKEN, SSH_AUTH_SOCK and a DYLD_ variable spawns a passthrough
+    caged child. The child sees none of them, all three are listed in dropped_env, and an explicit GITHUB_TOKEN
+    is visible. Unit tests cover every pattern (DYLD_, AWS_, LD_*, SSH_AUTH_SOCK, the _TOKEN, _SECRET, _PASSWORD
+    and _API_KEY suffixes). An empty denylist fails the caged test.
+  verified_at: '2026-10-30T07:54:32Z'
+  commit: 1fd636f
+- id: verification.sr-006.2026-10-30
+  requirement: SR-006
+  method: test
+  evidence: tests/spawn_macos.rs::each_run_gets_its_own_private_tmpdir
+  result: pass
+  verdict: verified
+  justification: Two spawns with a tmpdir grant get different TMPDIRs, each child writes its own, both directories
+    are gone after the handles drop, and binding tmpdir explicitly is GrantError::Reserved. The directory is created
+    with mode 0700 (DirBuilder). Not removing it on drop fails the test.
+  verified_at: '2026-10-30T07:54:32Z'
+  commit: 1fd636f
+- id: verification.sr-007.2026-10-30
+  requirement: SR-007
+  method: review
+  evidence: src/macos/mod.rs:21; src/lib.rs:8; THREAT_MODEL.md#Release-status; README.md:8; tests/threat_model.rs::gate
+  result: pass
+  verdict: verified
+  justification: I reviewed the docs. The macos module docs list each observed hygiene behaviour, backed by named
+    tests, and keep the double-fork escape, pseudo-terminals, the base profile and /dev/null as not done. The crate
+    docs, README and threat-model release status say the same. Escape-class statuses are unchanged and the catalog
+    gate passes.
+  verified_at: '2026-10-30T07:54:32Z'
+  commit: 1fd636f
+decisions: []

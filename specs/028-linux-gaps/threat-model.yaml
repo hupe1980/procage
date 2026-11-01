@@ -1,0 +1,459 @@
+otmVersion: 0.2.0
+project:
+  id: 028-linux-gaps
+  name: Unix sockets under trees and hiding on Linux T2
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child (adaptive, same uid as the caller)
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer who writes a policy with Unix sockets or hidden paths
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the lowering, the spawn snapshot or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network-boundary surface; the environment is handed from the caller to its own child
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no multi-tenant surface
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.snapshot: credential exposure through a hidden path is threat.sibling-leak; the socket
+      list holds paths only'
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no stored data
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.snapshot: the sibling walk is bounded by the walk limit and the socket list by the
+      kernel listing'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Unix-socket paths
+    reason: part of asset.policy-intent
+  - entity: Spawn snapshot
+    reason: represented as component.snapshot
+  extends: null
+  generated: '2026-11-01T17:28:35Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 234a1009a0b1ef3f8292350ae331c79c779c4d1311fbd0fa2b7d3783724f637e
+  - path: spec.md
+    sha256: e9758948d55866206d0f947a2d8496da917c9f49a1d7fd349e2be161a7d2de9e
+  surfaces:
+  - external-input
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.caller
+  name: The calling process, its policy and the spawn snapshot
+  risk:
+    trustRating: 90
+- id: tz.host
+  name: Host daemons, their sockets, and the user's files outside the policy
+  risk:
+    trustRating: 80
+assets:
+- id: asset.daemons
+  name: Local daemons reachable over Unix sockets (container engine, agents, databases)
+  risk:
+    availability: 60
+    confidentiality: 80
+    integrity: 100
+  attributes:
+    type: capability
+    source: spec.md#US1
+    classification: confidential
+- id: asset.hidden
+  name: Hidden paths and credentials inside readable trees
+  risk:
+    availability: 20
+    confidentiality: 100
+    integrity: 60
+  attributes:
+    type: credential
+    source: spec.md#US2
+    classification: secret
+- id: asset.policy-intent
+  name: What the policy says, as enforced on each tier and reported in the ledger
+  risk:
+    availability: 30
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    type: configuration
+    source: spec.md#FR-007
+    classification: public
+components:
+- id: component.lowering
+  name: Linux and macOS lowering of ipc.unix_sockets, fs-hide on T2 and the secrets class on T2
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-003
+- id: component.snapshot
+  name: Linux backend spawn snapshot (listening-socket masks, piecewise grants)
+  type: library
+  parent:
+    trustZone: tz.caller
+  attributes:
+    source: spec.md#FR-004
+dataflows:
+- id: flow.connect
+  name: Caged code connects to a Unix socket
+  source: tz.cage
+  destination: tz.host
+  assets:
+  - asset.daemons
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.host
+- id: flow.read
+  name: Caged code reads around a hidden path
+  source: tz.cage
+  destination: tz.host
+  assets:
+  - asset.hidden
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.host
+threats:
+- id: threat.abstract-socket-reached
+  name: Caged code connects to a host abstract socket (D-Bus, X11) once AF_UNIX is allowed
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.daemons
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.connect
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.daemon-socket-reached
+  name: Allowing AF_UNIX for workspace sockets lets caged code connect to a daemon socket outside the paths (container
+    engine, ssh-agent), on Linux where nothing filters pathname connects below ABI 9
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    likelihood: 70
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.daemons
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.connect
+    - component.snapshot
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.sibling-leak
+  name: Piecewise grants on T2 reach the hidden path (a symbolic link sibling, a write grant around it, a rule under
+    it, a grant bound into it)
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 90
+    likelihood: 50
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.hidden
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.read
+    - component.snapshot
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.silent-approximation
+  name: An approximation (socket masks, piecewise grants) is applied without the caller accepting it, or the option
+    accepts more than it says
+  categories:
+  - Tampering
+  risk:
+    impact: 70
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.policy-intent
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.lowering
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+mitigations:
+- id: mitigation.macos-path-filters
+  name: macOS allows the network operations only with subpath filters on the socket paths, and denies them under
+    hidden paths
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.daemon-socket-reached
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+- id: mitigation.named-acceptance
+  name: Every snapshot approximation needs accept_spawn_snapshot (pinned set), errors name the construct and the
+    option, degradations list them
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.silent-approximation
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage-policy/src/lower/mod.rs
+- id: mitigation.safe-siblings
+  name: Piecewise grants skip symbolic links and everything under a hidden path; a write rule around a hidden path
+    is refused at lowering, a write grant around one at spawn
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.sibling-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - src/linux/spawn.rs
+    - crates/procage-policy/src/lower/linux.rs
+- id: mitigation.socket-masks
+  name: T1 allows only AF_UNIX, keeps abstract sockets in the cage's network namespace (plus the Landlock abstract
+    scope where available), and masks every listening socket outside the paths at spawn; T2 refuses
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.daemon-socket-reached
+    - threat.abstract-socket-reached
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/lower/linux.rs
+    - src/linux/spawn.rs
+    - src/linux/mod.rs
+requirements:
+- id: SR-001
+  statement: With ipc.unix_sockets covering the workspace and no network, a caged child MUST bind and connect to
+    a socket in the workspace and MUST NOT connect to a listening socket outside it, nor open a TCP connection,
+    on macOS and Linux T1.
+  priority: P1
+  mitigations:
+  - mitigation.socket-masks
+  - mitigation.macos-path-filters
+  acceptance:
+  - given: a daemon socket outside and ipc.unix_sockets on the workspace
+    then: inside works, the daemon and TCP fail
+    when: the child binds and connects inside, connects to the daemon and opens TCP
+  tasks: []
+- id: SR-002
+  statement: On Linux the child MUST NOT reach a host abstract socket under ipc.unix_sockets, and T2 below ABI 9
+    MUST refuse the setting.
+  priority: P1
+  mitigations:
+  - mitigation.socket-masks
+  acceptance:
+  - given: a host abstract socket and T1 with ipc.unix_sockets
+    then: it fails
+    when: the child connects to it
+  - given: T2
+    then: it is refused naming ipc-unix-sockets
+    when: the policy is prepared
+  tasks: []
+- id: SR-003
+  statement: On T2 a hidden path's contents MUST stay unreadable with piecewise grants - also through a symbolic
+    link sibling - and a write rule or write grant around a hidden path MUST be refused.
+  priority: P1
+  mitigations:
+  - mitigation.safe-siblings
+  acceptance:
+  - given: T2, read on a tree, hide on a subdirectory and a symlink sibling pointing into it
+    then: both fail and a sibling file reads
+    when: the child reads the hidden file directly and through the link
+  - given: a write rule on the tree, or a write grant bound around the hidden path
+    then: it is refused naming the construct or the grant and the hidden path
+    when: preparing or spawning
+  tasks: []
+- id: SR-004
+  statement: accept_spawn_snapshot MUST accept exactly the data-driven classes, fs-hide and ipc-unix-sockets; without
+    it these approximations MUST be refused with an error naming the construct and the option.
+  priority: P2
+  mitigations:
+  - mitigation.named-acceptance
+  acceptance:
+  - given: each snapshot approximation
+    then: refused naming the option, then accepted and listed in degradations
+    when: lowered without and with the option
+  tasks: []
+verification:
+- id: verification.sr-001.2026-10-31
+  requirement: SR-001
+  method: test
+  evidence: tests/escape_macos.rs::r09_unix_sockets_reach_only_their_paths, tests/escape_linux.rs::r09_unix_sockets_reach_only_their_paths
+  result: pass
+  verdict: verified
+  justification: With ipc.unix_sockets on the workspace and no network, the caged child binds, listens and connects
+    in the workspace, while connecting to a daemon socket outside and opening TCP fail, on macOS (EPERM) and Linux
+    T1 (masked daemon ECONNREFUSED, TCP EPERM).
+  verified_at: '2026-10-31T19:33:45Z'
+  commit: 95a407d
+- id: verification.sr-002.2026-10-31
+  requirement: SR-002
+  method: test
+  evidence: tests/escape_linux.rs::r09_unix_sockets_reach_only_their_paths, crates/procage-policy/tests/gaps.rs::unix_sockets_by_tier_and_abi
+  result: pass
+  verdict: verified
+  justification: On T1 the host abstract socket gives ECONNREFUSED (separate network namespace); on T2 below ABI
+    9 the setting is refused naming ipc-unix-sockets, in the canary and in the lowering test.
+  verified_at: '2026-10-31T19:33:45Z'
+  commit: 95a407d
+- id: verification.sr-003.2026-10-31
+  requirement: SR-003
+  method: test
+  evidence: tests/spawn_linux.rs::t2_hide_is_piecewise, tests/spawn_linux.rs::t2_hide_inside_a_writable_tree_is_refused,
+    tests/spawn_linux.rs::t2_a_write_grant_around_a_hidden_path_fails_the_spawn, tests/spawn_linux.rs::t2_reading_everything_except_secrets
+  result: pass
+  verdict: verified
+  justification: On T2 the hidden file is unreadable directly and through a symbolic-link sibling and a listing
+    is denied while a sibling reads; an entry created after the spawn is denied; a write rule around is refused
+    at preparation and a write grant around fails the spawn naming both; the secrets class keeps a home's .ssh unreadable
+    while reading /. The negative control shows the test fails without the expansion.
+  verified_at: '2026-10-31T19:33:45Z'
+  commit: 95a407d
+- id: verification.sr-004.2026-10-31
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-policy/tests/gaps.rs::reading_everything_needs_exactly_the_spawn_snapshot, tests/spawn_linux.rs::t2_hide_is_piecewise
+  result: pass
+  verdict: verified
+  justification: accept_spawn_snapshot holds exactly the five SPAWN_SNAPSHOT constructs; without it the secrets
+    and fs-hide approximations are refused with a message naming the option; with it they lower and appear in the
+    degradations; a glob rule stays refused.
+  verified_at: '2026-10-31T19:33:45Z'
+  commit: 95a407d
+decisions: []

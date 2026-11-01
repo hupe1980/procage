@@ -1,0 +1,286 @@
+otmVersion: 0.2.0
+project:
+  id: 037-public-design-records
+  name: Public design records
+threatspec:
+  actors:
+  - id: actor.maintainer
+    name: A maintainer who writes or rewrites records
+    trust: trusted
+  - id: actor.reader
+    name: A public reader (reviewer, adopter, attacker)
+    trust: untrusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: files in a git repository; integrity is git's
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: records change only through commits on main, reviewed like code
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: no input is interpreted
+    technique: injection
+  - disposition: no-threat-detected
+    reason: git history keeps every change to the records
+    technique: missing-audit-trail
+  - disposition: not-applicable
+    reason: one project
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: public by intent
+    technique: broken-access-control
+  - disposition: no-threat-detected
+    reason: 'checked the published .specify configuration: it configures planning tools only and grants nothing
+      to procage or its users'
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: static files
+    technique: resource-exhaustion
+  exclusions: []
+  extends: null
+  generated: '2026-11-01T17:29:58Z'
+  profiles:
+  - stride
+  sources:
+  - path: plan.md
+    sha256: 70c6e9b0dcf9de9e82c5f9f39dc39e436b473fd13f1028f730ea10be114d0131
+  - path: spec.md
+    sha256: c504d32d1b27782ff5f3bbffef6e39f0f531f6358e8647c911cee6aeb440e616
+  surfaces:
+  - persistent-store
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.private
+  name: Private notes and other projects
+  risk:
+    trustRating: 100
+- id: tz.public
+  name: The public repository
+  risk:
+    trustRating: 0
+assets:
+- id: asset.private-notes
+  name: Private notes, other projects, the maintainer's machine
+  risk:
+    availability: 10
+    confidentiality: 80
+    integrity: 30
+  attributes:
+    source: spec.md#Context
+    classification: confidential
+- id: asset.trust
+  name: What readers conclude about procage from the records
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 80
+  attributes:
+    source: spec.md#User-Story-1
+    classification: public
+components:
+- id: component.gate
+  name: The planning-paths gate
+  type: process
+  parent:
+    trustZone: tz.public
+  attributes:
+    source: spec.md#FR-006
+- id: component.records
+  name: specs/ and .specify/
+  type: datastore
+  parent:
+    trustZone: tz.public
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.publish
+  name: Records are pushed to the public repository
+  source: actor.maintainer
+  destination: component.records
+  assets:
+  - asset.private-notes
+  attributes:
+    crosses:
+    - tz.private
+    - tz.public
+- id: flow.read
+  name: Readers read the records
+  source: component.records
+  destination: actor.reader
+  assets:
+  - asset.trust
+  attributes:
+    crosses: []
+threats:
+- id: threat.gate-drift
+  name: The gate misses a reference form (a new id scheme, a path outside the checked set), so private references
+    return unnoticed
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 50
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-006
+    assets:
+    - asset.private-notes
+    status: mitigated
+    actor: actor.maintainer
+    elements:
+    - component.gate
+    profile: stride
+    severity: low
+    technique: sensitive-data-exposure
+- id: threat.private-leak
+  name: 'A record carries private details to the public: a reference to private notes, a consumer project''s name,
+    a local path or user name, another project, a secret'
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 50
+    likelihood: 60
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.private-notes
+    status: mitigated
+    actor: actor.maintainer
+    elements:
+    - component.records
+    - flow.publish
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.stale-claims
+  name: A reader takes a historical record (an old state, a draft row, a superseded number) as procage's current
+    claim
+  categories:
+  - Repudiation
+  risk:
+    impact: 40
+    likelihood: 40
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.trust
+    status: mitigated
+    actor: actor.reader
+    elements:
+    - flow.read
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.gate
+  name: The gate checks specs/ and .specify/ for the forbidden patterns, and a planted reference fails it
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.gate-drift
+    status: verified
+    kind: detective
+    requirements:
+    - SR-003
+    touchpoints:
+    - justfile (planning-paths)
+- id: mitigation.history-readme
+  name: specs/README.md says records are history and names the authoritative documents
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.stale-claims
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - specs/README.md
+- id: mitigation.rewrite-and-scan
+  name: Every record rewritten to stand alone; a scan for private references, consumer names, local paths, e-mail
+    addresses and token patterns before publishing
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.private-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - specs/
+    - .specify/
+requirements:
+- id: SR-001
+  statement: No public record MUST contain a reference to private notes, a consumer project's name, a local path,
+    an e-mail address or a secret.
+  priority: P1
+  mitigations:
+  - mitigation.rewrite-and-scan
+  acceptance:
+  - given: specs/ and .specify/
+    then: nothing is found
+    when: scanned for private-note directories and ids, research notes, planning references, consumer names, home-directory
+      paths, e-mail and token patterns
+  tasks: []
+- id: SR-002
+  statement: specs/README.md MUST state that records describe each change as made and name the authoritative documents.
+  priority: P2
+  mitigations:
+  - mitigation.history-readme
+  acceptance:
+  - given: specs/README.md
+    then: it says records are history and links the README, the threat model and the site
+    when: read
+  tasks: []
+- id: SR-003
+  statement: just ci MUST fail when a public record contains a forbidden pattern.
+  priority: P1
+  mitigations:
+  - mitigation.gate
+  acceptance:
+  - given: a planted decision id in a record
+    then: it fails and names the file
+    when: just planning-paths runs
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: scan
+  evidence: just planning-paths (specs/ and .specify/memory/); a scan of specs/ and .specify/ for token patterns,
+    e-mail addresses and home-directory paths
+  result: pass
+  verdict: verified
+  justification: All 20 public rows were rewritten by one rulebook; the gate's pattern (private-note directory and
+    ids, research-note paths, planning references, consumer and other private project names, home-directory paths,
+    e-mail addresses) finds nothing, and the token scan finds nothing. The five consumer rows moved to the consumer's
+    own repository.
+  verified_at: '2026-11-01T17:29:58Z'
+  commit: 2a17f99
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: review
+  evidence: specs/README.md
+  result: pass
+  verdict: verified
+  justification: The README says records describe each change as made, that the README, the threat model and the
+    documentation are authoritative and win where they differ, and explains what each file of a record holds.
+  verified_at: '2026-11-01T17:29:58Z'
+  commit: 2a17f99
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: test
+  evidence: just planning-paths with a planted decision id in specs/README.md
+  result: pass
+  verdict: verified
+  justification: The gate exits 1 with the planted line and 0 after it is removed; it also caught its own pattern
+    text in the justfile during development (fixed with a bracket expression).
+  verified_at: '2026-11-01T17:29:58Z'
+  commit: 2a17f99
+decisions: []

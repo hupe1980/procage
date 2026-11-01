@@ -1,0 +1,405 @@
+{
+  "feature": "007-hard-deny-and-presets",
+  "commit": "eb66876",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "With a read grant on the home directory, the listed secret paths MUST stay unreadable to the child unless the secrets class is waived by name.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "read access to HOME",
+          "then": "each is refused and listing HOME succeeds",
+          "when": "the child lists ~/.ssh, ~/.aws and ~/.gnupg"
+        },
+        {
+          "given": "secrets waived",
+          "then": "it succeeds and the plan lists the waiver",
+          "when": "the child lists ~/.ssh"
+        }
+      ],
+      "mitigations": [
+        "mitigation.secrets-class"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] Create `crates/procage-policy/src/presets.rs`: the frozen pattern lists of FR-002 to FR-004 and `patterns(class)`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-003] [SR-006] Emit the three classes in `lower/macos.rs` (secrets: read and write deny; handoff: write deny plus `.git` unlink deny; persistence: write deny) in the hard-deny block, as `n/a` on Linux. Add the three rows to `lowering.md` with the \"pending on Linux (008)\" note."
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] Add caged tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "With write access to a workspace, the child MUST NOT create or modify git hooks, git config, .gitmodules, shell rc files, editor or agent config directories or tool config files, while git objects, refs and the index stay writable; waiving trust-handoff by name allows them.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "write access to a workspace with .git",
+          "then": "each is refused and .git/objects/x succeeds",
+          "when": "the child creates .git/hooks/pre-commit, .zshrc, .envrc and .vscode/settings.json"
+        },
+        {
+          "given": "trust-handoff waived",
+          "then": "it succeeds",
+          "when": "the child creates .git/hooks/pre-commit"
+        }
+      ],
+      "mitigations": [
+        "mitigation.handoff-and-persistence-classes"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] Create `crates/procage-policy/src/presets.rs`: the frozen pattern lists of FR-002 to FR-004 and `patterns(class)`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-003] [SR-006] Emit the three classes in `lower/macos.rs` (secrets: read and write deny; handoff: write deny plus `.git` unlink deny; persistence: write deny) in the hard-deny block, as `n/a` on Linux. Add the three rows to `lowering.md` with the \"pending on Linux (008)\" note."
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-003] [SR-004] Add caged tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The child MUST NOT create files in launch-agent or login-item locations, even when the policy grants write access there.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "write access to ~/Library/LaunchAgents",
+          "then": "it is refused and nothing is created",
+          "when": "the child creates a file there"
+        }
+      ],
+      "mitigations": [
+        "mitigation.handoff-and-persistence-classes"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] Create `crates/procage-policy/src/presets.rs`: the frozen pattern lists of FR-002 to FR-004 and `patterns(class)`."
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-003] [SR-006] Emit the three classes in `lower/macos.rs` (secrets: read and write deny; handoff: write deny plus `.git` unlink deny; persistence: write deny) in the hard-deny block, as `n/a` on Linux. Add the three rows to `lowering.md` with the \"pending on Linux (008)\" note."
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-003] [SR-004] Add caged tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Data-class patterns MUST deny case variants of the listed names.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "read access to HOME",
+          "then": "it is refused",
+          "when": "the child lists ~/.SSH"
+        },
+        {
+          "given": "a writable workspace with .git",
+          "then": "each is refused",
+          "when": "the child creates .GIT/HOOKS/x or .ZSHRC"
+        }
+      ],
+      "mitigations": [
+        "mitigation.case-folded-patterns"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-004] Add `Glob::to_sbpl_regex_folded()` in `crates/procage-policy/src/glob.rs` (ASCII letters become `[xX]`, everything else as in `to_sbpl_regex`), with unit tests."
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-004] Add caged tests:"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-002] [SR-003] [SR-004] Add caged tests:"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/glob.rs",
+            "exists": true
+          },
+          {
+            "path": "tests/spawn_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "The class lists and every preset V1 MUST be pinned by tests.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "each preset and class",
+          "then": "it equals the pinned content",
+          "when": "it is lowered or serialised"
+        }
+      ],
+      "mitigations": [
+        "mitigation.pinned-lists-and-presets"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-005] Add `HardDenyClass::{Secrets, TrustHandoff, Persistence}` (appended to `ALL`, kebab names) and `PresetTag` with `Policy.preset` in `policy.rs`/`format.rs`, and `Construct::{HdSecrets, HdTrustHandoff, HdPersistence}`."
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US3] [SR-005] Add the presets `minimal`, `agent_readonly`, `agent_workspace` and `build` (v1) in `presets.rs`, per FR-007, tagged."
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US3] [SR-005] Write `crates/procage-policy/tests/presets.rs`: the lowered macOS profile of each preset (workspace `/work`) equals `tests/fixtures/presets/<name>-v1.sb`; the class lines are pinned; the tags are correct; the data form round-trips. Add the four presets to `reference_policies()` in `tests/common/mod.rs`, so the libsandbox compile check covers them (FR-009)."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [
+          "tests/kernel_facts/src/lib.rs"
+        ],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/tests/presets.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "The lowering table and docs MUST state that Linux enforcement of the data classes is pending, and the Linux spawn spec (008) MUST carry it.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the lowering table and the 008 spec",
+          "then": "the Linux cells say pending and 008 lists the requirement",
+          "when": "reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.linux-pending-explicit"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-002] [SR-003] [SR-006] Emit the three classes in `lower/macos.rs` (secrets: read and write deny; handoff: write deny plus `.git` unlink deny; persistence: write deny) in the hard-deny block, as `n/a` on Linux. Add the three rows to `lowering.md` with the \"pending on Linux (008)\" note."
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[SR-006] Docs: the `presets` module (lists, presets, the Linux pending note, the git init/clone waiver note); the macos module docs; the README; the THREAT_MODEL release status; the 008 spec carries the Linux requirement."
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lowering.md",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.case-variant-bypass",
+    "threat.git-broken",
+    "threat.linux-silently-weaker",
+    "threat.list-or-preset-drift",
+    "threat.persistence-plant",
+    "threat.secret-read-in-granted-tree",
+    "threat.trust-handoff-write"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 7,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 7
+    },
+    "threats_by_severity": {
+      "high": 4,
+      "medium": 1,
+      "critical": 2
+    },
+    "mitigations": 5,
+    "requirements": 6,
+    "requirements_with_tasks": 6,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 6
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

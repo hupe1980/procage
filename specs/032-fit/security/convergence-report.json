@@ -1,0 +1,52 @@
+{
+  "feature": "032-fit",
+  "commit": "313b15d",
+  "timestamp": "2026-11-01T00:38:03Z",
+  "status": "CONVERGED",
+  "threats": {
+    "total": 4,
+    "open_blocking": []
+  },
+  "requirements": {
+    "total": 4,
+    "verified": [
+      "SR-001",
+      "SR-002",
+      "SR-003",
+      "SR-004"
+    ],
+    "implemented_unverified": [],
+    "partial": [],
+    "missing": []
+  },
+  "expired_decisions": [],
+  "drift": [],
+  "appended_tasks": [],
+  "already_open_tasks_for": [],
+  "verdicts": {
+    "SR-001": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage-policy/tests/fit.rs::a_gap_without_a_named_relaxation_changes_nothing",
+      "justification": "Unnamed gaps are returned and the policy is unchanged; approximations_are_never_relaxed and only_the_rule_the_gap_names_is_left_out cover the other two scenarios (a stray subject relaxes nothing); tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named shows Cage::fit failing with exactly the signal gap when its relaxation is missing."
+    },
+    "SR-002": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named",
+      "justification": "On T2 the list holds exactly the four relaxations applied (five below ABI 6), and Cage::fit builds the list from every applied relaxation (src/linux/mod.rs, src/macos/mod.rs)."
+    },
+    "SR-003": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "crates/procage-policy/tests/fit.rs::lifts_come_from_lowering",
+      "justification": "Signals at ABI 5 lift at ABI 6 without T1; protect lifts with T1; sockets lift with T1 only at maximum 8 and at ABI 9 with maximum 12; macOS and unreported gaps are unknown; the Linux caged test asserts the same lifts through Cage::fit."
+    },
+    "SR-004": {
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "tests/spawn_linux.rs::a_fitted_cage_gives_up_only_what_was_named",
+      "justification": "The fitted T2 cage refuses an outside write (EACCES) and any socket (EPERM) while the relaxed .git is writable and .env readable."
+    }
+  }
+}
