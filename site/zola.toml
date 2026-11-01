@@ -1,0 +1,44 @@
+# procage: landing page and documentation, built with Zola (0.23.6).
+base_url = "https://hupe1980.github.io/procage"
+title = "procage: process sandboxing for Rust on macOS and Linux"
+description = "procage cages child processes that run untrusted, adaptive code (LLM agents, build scripts) on macOS (Seatbelt, without sandbox-exec) and Linux (Landlock, seccomp, namespaces). One typed policy, lowered per OS, never silently weaker."
+default_language = "en"
+compile_sass = false
+minify_html = true
+build_search_index = true
+generate_sitemap = true
+generate_robots_txt = true
+generate_feeds = false
+
+[markdown]
+smart_punctuation = true
+github_alerts = true
+insert_anchor_links = "right"
+external_links_target_blank = false
+external_links_no_referrer = true
+
+[markdown.highlighting]
+error_on_missing_language = true
+style = "inline"
+light_theme = "github-light"
+dark_theme = "github-dark"
+
+[search]
+include_title = true
+include_description = true
+include_content = true
+truncate_content_length = 2000
+index_format = "elasticlunr_javascript"
+
+[link_checker]
+internal_level = "error"
+external_level = "warn"
+
+[extra]
+repo = "https://github.com/hupe1980/procage"
+crate = "https://crates.io/crates/procage"
+docs_rs = "https://docs.rs/procage"
+threat_model = "https://github.com/hupe1980/procage/blob/main/crates/procage/THREAT_MODEL.md"
+security = "https://github.com/hupe1980/procage/blob/main/SECURITY.md"
+author = "hupe1980"
+og_image = "og.png"

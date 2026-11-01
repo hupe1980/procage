@@ -1,0 +1,25 @@
++++
+title = "FAQ"
+description = "Common questions about procage: production readiness, sandbox-exec, Docker and microVMs, Linux tiers, running inside an AI agent, Windows, and how to report an escape."
+weight = 120
+template = "faq.html"
+
+[extra]
+group = "Help"
+faq = [
+  { id = "ready", q = "Can I use procage in production?", a = "Not as your only containment yet. procage is pre-1.0: the published 0.0.1 only reserves the name, and the development version on `main` is still changing. The project's own rule is: do not rely on any release before 0.1.0 to contain a process." },
+  { id = "who", q = "Who is it for?", a = "Rust programs that run commands on someone else's behalf: coding agents and their tool calls, MCP servers, build orchestrators, CI-like runners. The adversary is code inside the child running with your user id, such as a model following injected instructions or a malicious build script." },
+  { id = "sandbox-exec", q = "Why not just call sandbox-exec on macOS?", a = "`/usr/bin/sandbox-exec` is deprecated and offers no lifetime control, descriptor hygiene or typed policy. procage applies Seatbelt directly through libsandbox in the forked child, with system calls only, and reports a missing interface as an error instead of running uncaged." },
+  { id = "private", q = "Is depending on a private libsandbox interface safe?", a = "It is a stated risk. Apple does not document or support those functions and may change them. procage resolves them at run time and probes the apply method before the first spawn; anything missing or different is an `Unsupported` error naming the macOS build, never a fallback to no sandbox." },
+  { id = "docker", q = "How does it compare with Docker or a microVM?", a = "Containers and microVMs isolate a whole environment; procage confines one command on the host, with your tools and files as they are, and adds far less start-up latency. A microVM gives a hypervisor boundary that an OS sandbox cannot: when a kernel escape is unacceptable, use one, optionally with procage inside it for finer-grained policy." },
+  { id = "tiers", q = "Which Linux tier will I get?", a = "The strongest the host allows. Tier T1 (namespaces, mounts, Landlock, seccomp) needs unprivileged user namespaces; tier T2 (Landlock and seccomp) is what a Docker container with default settings or a host restricting user namespaces gets. Both need Landlock ABI 1 (Linux 5.13) or later. `procage::linux::probe()` tells you." },
+  { id = "gap", q = "Why does my policy fail with capability gaps on Linux?", a = "Some constructs cannot be enforced on every tier or kernel: protecting a path inside a writable tree on T2, loopback networking, signal scoping below Landlock ABI 6. procage refuses rather than run a weaker sandbox. Use `Cage::fit` to accept named relaxations, or `LowerOptions::accept_spawn_snapshot()` for approximations taken at spawn." },
+  { id = "eperm", q = "My command failed with \"Operation not permitted\". What did the sandbox deny?", a = "Build the cage with `CageOptions::with_violations()` and read `Child::violations()` after the child exits: on macOS it lists each denied operation with the process, the target and the kind of rule behind it (not granted, hidden, protected, a hard-deny class). See [Violations](@/docs/violations.md). Linux does not report denials yet." },
+  { id = "agent", q = "Why does it fail inside my AI agent's terminal?", a = "Many agent harnesses run their shell inside a Seatbelt sandbox. A second profile fails or is ignored by the kernel, so procage refuses with `AlreadySandboxed`. Run the program, and the kernel facts, from a plain terminal." },
+  { id = "secrets", q = "Can a caged child read my SSH keys?", a = "Not through the file system in the cases the tests cover: the `secrets` hard-deny class denies `~/.ssh`, `~/.aws`, `~/.gnupg` and other credential paths in every policy, even one that reads your whole home. On Linux tier T1 this relies on masks taken at spawn where a rule reaches those paths. Note the open variants: a pre-existing hard link to a secret is not detected, and on macOS a caged child can read your other processes' arguments and environment." },
+  { id = "windows", q = "Does it support Windows?", a = "No. Windows is a non-goal, as are App Sandbox, entitlements, Endpoint Security and eBPF security modules, which need code signing, Apple approval or root." },
+  { id = "report", q = "How do I report a sandbox escape?", a = "Privately, through GitHub's [private vulnerability reporting](https://github.com/hupe1980/procage/security/advisories/new). Include the OS and version, the procage version, and the smallest policy and program that show the problem." },
+]
++++
+
+Short answers; each links into the rest of the documentation where there is more to say. For anything security-relevant, the [threat model](@/docs/threat-model.md) is the reference.

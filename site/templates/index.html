@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block body_class %}home{% endblock %}
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "WebSite", "name": "procage", "url": {{ get_url(path="/") | json_encode() | safe }}, "inLanguage": "en" },
+    { "@type": "SoftwareSourceCode",
+      "name": "procage",
+      "description": {{ config.description | json_encode() | safe }},
+      "url": {{ get_url(path="/") | json_encode() | safe }},
+      "codeRepository": {{ config.extra.repo | json_encode() | safe }},
+      "programmingLanguage": { "@type": "ComputerLanguage", "name": "Rust" },
+      "runtimePlatform": ["macOS", "Linux"],
+      "license": ["https://spdx.org/licenses/MIT.html", "https://spdx.org/licenses/Apache-2.0.html"],
+      "author": { "@type": "Person", "name": {{ config.extra.author | json_encode() | safe }}, "url": "https://github.com/hupe1980" },
+      "keywords": "sandbox, process sandboxing, Seatbelt, Landlock, seccomp, Linux namespaces, Rust, LLM agents, security",
+      "sameAs": [{{ config.extra.crate | json_encode() | safe }}, {{ config.extra.docs_rs | json_encode() | safe }}] }
+  ]
+}
+</script>
+{% endblock %}
+{% block content %}
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Rust crate · macOS and Linux · pre-1.0</p>
+      <h1 id="hero-title">Cage the commands your program runs on someone else’s behalf.</h1>
+      <p class="lead">procage runs a child process under an OS sandbox: Seatbelt on macOS, without <code>sandbox-exec</code>, and Landlock, seccomp and namespaces on Linux. It is built for commands that run untrusted, adaptive code as your user, such as an LLM agent’s tool calls or a project’s build scripts.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="{{ get_url(path='@/docs/getting-started.md') }}">Get started</a>
+        <a class="btn btn-ghost" href="{{ get_url(path='@/docs/threat-model.md') }}">Read the threat model</a>
+        <a class="btn btn-ghost" href="{{ config.extra.repo }}" rel="noopener">GitHub</a>
+      </div>
+      <p class="status-note"><strong>Status:</strong> under development. The published 0.0.1 only reserves the name; the development version on <code>main</code> cages children on both systems. Do not rely on any release before 0.1.0 to contain a process.</p>
+    </div>
+    <div class="hero-code" aria-label="Example">
+      {{ section.content | safe }}
+    </div>
+  </div>
+</section>
+
+<section class="band" aria-labelledby="why-title">
+  <div class="wrap">
+    <h2 id="why-title" class="section-title">Why procage</h2>
+    <p class="section-lead">An agent that follows injected instructions, or a malicious build script, runs with your user id. It can read <code>~/.ssh</code>, plant a git hook your shell later runs, register a launch agent, or keep a daemon alive after you thought it ended. procage is meant to keep that code away from your secrets, from files outside the paths you grant, from your terminal and session, and from persistence locations.</p>
+    <div class="cards">
+      <article class="card">
+        <h3>One policy, lowered per OS</h3>
+        <p>You write a typed, deny-by-default policy once. procage lowers it to a Seatbelt profile or a Linux plan, and every construct is exact, an approximation you accept by name, or a typed capability gap.</p>
+        <a href="{{ get_url(path='@/docs/policies.md') }}">Policies</a>
+      </article>
+      <article class="card">
+        <h3>Never silently weaker</h3>
+        <p>A host that cannot enforce part of a policy refuses the cage and lists every gap. <code>Cage::fit</code> relaxes only what you name and tells you what would lift each relaxation.</p>
+        <a href="{{ get_url(path='@/docs/fitting.md') }}">Fitting a policy</a>
+      </article>
+      <article class="card">
+        <h3>Know what was denied, and why</h3>
+        <p>Instead of a bare “Operation not permitted”, a reporting cage lists each denied operation with the process, the path and the rule behind it (not granted, hidden, protected, a hard-deny class), live or after the exit. macOS today.</p>
+        <a href="{{ get_url(path='@/docs/violations.md') }}">Violations</a>
+      </article>
+      <article class="card">
+        <h3>A hard-deny tier in every policy</h3>
+        <p>Secrets, trust-handoff files such as git hooks and shell startup files, persistence locations, privilege changes and more are denied last, in every policy, and waivable only by class name.</p>
+        <a href="{{ get_url(path='@/docs/hard-deny.md') }}">Hard-deny classes</a>
+      </article>
+      <article class="card">
+        <h3>Lifetime and hygiene</h3>
+        <p>Inherited descriptors are closed, secret-looking variables dropped, the terminal kept out of reach, and every process the run started is killed when the run ends, double-forked daemons included.</p>
+        <a href="{{ get_url(path='@/docs/lifetime-and-hygiene.md') }}">Lifetime and hygiene</a>
+      </article>
+      <article class="card">
+        <h3>Escape classes with canaries</h3>
+        <p>Every known escape class has a stable id and a status in the threat model. A class is marked handled only when caged canaries on a real kernel show the refusal.</p>
+        <a href="{{ get_url(path='@/docs/threat-model.md') }}">Threat model</a>
+      </article>
+      <article class="card">
+        <h3>No helper binaries</h3>
+        <p>The library applies the sandbox in the forked child with system calls only. Or a small helper becomes the caged command with <code>Cage::exec</code>, for code that starts and kills processes itself.</p>
+        <a href="{{ get_url(path='@/docs/exec.md') }}">Running helpers</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="matrix-title">
+  <div class="wrap">
+    <h2 id="matrix-title" class="section-title">Platforms</h2>
+    <p class="section-lead">procage measures what the host offers and never falls back to running unsandboxed. What a Linux host gets depends on its tier and Landlock ABI.</p>
+    <div class="table-wrap">
+      <table class="matrix">
+        <caption class="visually-hidden">What procage uses on each platform</caption>
+        <thead><tr><th scope="col">Platform</th><th scope="col">Mechanism</th><th scope="col">Needs</th><th scope="col">Notable limits today</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">macOS</th><td>Seatbelt profile compiled and applied through libsandbox’s private interface, resolved at run time</td><td>A process that is not itself sandboxed</td><td>Caged children can read other same-user processes’ arguments and environment; no pseudo-terminals; base profiles curated on macOS 26.6.2</td></tr>
+          <tr><th scope="row">Linux tier T1</th><td>User, mount, IPC, UTS and network namespaces, mounts, Landlock, seccomp</td><td>Unprivileged user namespaces, Landlock ABI 1 (Linux 5.13) or later</td><td>No PID namespace; no loopback or proxy networking; glob rules are gaps</td></tr>
+          <tr><th scope="row">Linux tier T2</th><td>Landlock and seccomp only</td><td>Landlock ABI 1 or later (for example Docker’s default settings)</td><td>As T1, and cannot protect or hide a path inside a writable tree</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small">Linux tests have run on one kernel (7.0, aarch64, in Docker), older Landlock ABIs through a cap. Details: <a href="{{ get_url(path='@/docs/macos.md') }}">macOS backend</a>, <a href="{{ get_url(path='@/docs/linux.md') }}">Linux backend and tiers</a>.</p>
+  </div>
+</section>
+
+<section class="band" aria-labelledby="honest-title">
+  <div class="wrap two-col">
+    <div>
+      <h2 id="honest-title" class="section-title">What it is not</h2>
+      <p>An OS sandbox <em>reduces</em> the risk from adaptive same-user code; it does not remove it. The kernel and OS services stay reachable, and a bug in them is an escape. When that is unacceptable, use a microVM, or a microVM with procage inside it for finer-grained policy.</p>
+      <p>Open today: a hard link made before the run is not reported (R-08), and on macOS a caged child can read your other processes’ arguments and environment (R-25). The <a href="{{ config.extra.threat_model }}" rel="noopener">threat model</a> lists every class and its status.</p>
+    </div>
+    <div>
+      <h2 class="section-title">Links</h2>
+      <ul class="link-list">
+        <li><a href="{{ get_url(path='@/docs/_index.md') }}">Documentation</a><span>Concepts, backends, guides</span></li>
+        <li><a href="{{ config.extra.repo }}" rel="noopener">GitHub</a><span>Source, issues, the threat model</span></li>
+        <li><a href="{{ config.extra.crate }}" rel="noopener">crates.io</a><span>The published name (0.0.1 reserves it)</span></li>
+        <li><a href="{{ config.extra.docs_rs }}" rel="noopener">docs.rs</a><span>API reference of published releases</span></li>
+        <li><a href="{{ config.extra.security }}" rel="noopener">Security policy</a><span>Report a suspected escape privately</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% endblock %}
