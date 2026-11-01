@@ -5,6 +5,8 @@ use std::io;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
+use crate::violation::{Coverage, Violation, Violations};
+
 use super::sys;
 
 /// A running caged child.
@@ -26,6 +28,7 @@ pub struct Child {
     inner: Option<std::process::Child>,
     dropped_env: Vec<String>,
     tmpdir: Option<PathBuf>,
+    coverage: Coverage,
 }
 
 impl Child {
@@ -33,11 +36,13 @@ impl Child {
         inner: std::process::Child,
         dropped_env: Vec<String>,
         tmpdir: Option<PathBuf>,
+        coverage: Coverage,
     ) -> Self {
         Self {
             inner: Some(inner),
             dropped_env,
             tmpdir,
+            coverage,
         }
     }
 
@@ -88,6 +93,20 @@ impl Child {
     /// declares the `tmpdir` grant.
     pub fn tmpdir(&self) -> Option<&Path> {
         self.tmpdir.as_deref()
+    }
+
+    /// The operations the sandbox denied this run. Linux does not report
+    /// denials yet, so the record is empty and its coverage says so:
+    /// [`Coverage::NotObserved`] with
+    /// [`CageOptions::with_violations`](super::CageOptions::with_violations),
+    /// [`Coverage::Off`] without.
+    pub fn violations(&mut self) -> Violations {
+        Violations::empty(self.coverage.clone())
+    }
+
+    /// Live violations; always `None` on Linux, which reports none yet.
+    pub fn violation_receiver(&mut self) -> Option<std::sync::mpsc::Receiver<Violation>> {
+        None
     }
 }
 

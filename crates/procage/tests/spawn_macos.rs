@@ -1578,3 +1578,409 @@ fn fitting_on_macos_relaxes_nothing_it_can_enforce() {
     assert_eq!(cage.plan(), Cage::new(&p).unwrap().plan());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---- Violations: what the sandbox denied, and why ----
+
+/// The monitor is per process and one test stops it, so the violation tests
+/// run one at a time.
+static VIOLATIONS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn violation_lock() -> std::sync::MutexGuard<'static, ()> {
+    VIOLATIONS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn reporting(policy: &Policy) -> Cage {
+    Cage::with_options(policy, &CageOptions::default().with_violations())
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Spawns `script` under `/bin/sh` in `work`, waits for it, and returns the
+/// record read right after the exit.
+fn violations_of(cage: &Cage, work: &Path, script: &str) -> procage::Violations {
+    let mut cmd = Command::new("/bin/sh");
+    cmd.args(["-c", script])
+        .current_dir(work)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    child.wait().unwrap();
+    let start = Instant::now();
+    let record = child.violations();
+    assert!(
+        start.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        start.elapsed()
+    );
+    record
+}
+
+fn find<'a>(
+    record: &'a procage::Violations,
+    operation: &str,
+    target: &Path,
+) -> Option<&'a procage::Violation> {
+    let target = target.to_str().unwrap();
+    record
+        .iter()
+        .find(|v| v.operation.starts_with(operation) && v.target.as_deref() == Some(target))
+}
+
+/// A workspace with a hidden `.env`, a protected `.git` (with `hooks`, a
+/// trust-handoff path) and a sibling directory outside the policy.
+fn violation_workspace(tag: &str) -> (PathBuf, PathBuf) {
+    let root = std::fs::canonicalize(scratch(tag)).unwrap();
+    let work = root.join("work");
+    std::fs::create_dir_all(work.join(".git/hooks")).unwrap();
+    std::fs::create_dir_all(root.join("outside")).unwrap();
+    std::fs::write(work.join(".env"), "SECRET=1").unwrap();
+    (root, work)
+}
+
+/// US1/US2: every denial is listed with its kind, and the record is
+/// complete within a second of the exit.
+#[test]
+fn violations_name_what_was_denied_and_why() {
+    use procage::DeniedBy;
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-kinds");
+    let mut policy = developer_policy(Base::V2, &work);
+    policy.fs.push(rule(Access::Protect, work.join(".git")));
+    policy.fs.push(rule(Access::Hide, work.join(".env")));
+    let cage = reporting(&policy);
+    assert!(cage.plan().profile.contains("with message"));
+    let record = violations_of(
+        &cage,
+        &work,
+        "cat .env; echo x > ../outside/f; echo x > .git/f; echo x > .git/hooks/pre-commit; /usr/bin/sudo -n -V",
+    );
+    assert_eq!(record.coverage(), &procage::Coverage::Observed);
+    assert!(record.complete(), "{record:?}");
+    let kind = |op: &str, path: PathBuf| {
+        find(&record, op, &path)
+            .unwrap_or_else(|| panic!("no {op} {}: {record:#?}", path.display()))
+            .denied_by
+            .clone()
+    };
+    assert_eq!(kind("file-read", work.join(".env")), DeniedBy::Hide);
+    assert_eq!(
+        kind("file-write", root.join("outside/f")),
+        DeniedBy::NotGranted
+    );
+    assert_eq!(kind("file-write", work.join(".git/f")), DeniedBy::Protect);
+    assert_eq!(
+        kind("file-write", work.join(".git/hooks/pre-commit")),
+        DeniedBy::HardDeny(HardDenyClass::TrustHandoff)
+    );
+    assert_eq!(
+        kind("process-exec", PathBuf::from("/usr/bin/sudo")),
+        DeniedBy::HardDeny(HardDenyClass::Privilege)
+    );
+    // The run-marker probe of a forking policy reports nothing.
+    assert!(
+        record.iter().all(|v| !v
+            .target
+            .as_deref()
+            .unwrap_or("")
+            .contains("org.procage.run.")),
+        "{record:#?}"
+    );
+    let line = find(&record, "file-read", &work.join(".env"))
+        .unwrap()
+        .to_string();
+    assert!(
+        line.contains("was denied file-read") && line.ends_with("the path is hidden"),
+        "{line}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A policy without forking reports too (a run slot per spawn).
+#[test]
+fn a_single_process_run_reports_its_denials() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-single");
+    let mut policy = base();
+    policy.fs.push(rule(Access::Write, &work));
+    let cage = reporting(&policy);
+    let mut cmd = command("/bin/cat", &[&root.join("outside")]);
+    let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    child.wait().unwrap();
+    let record = child.violations();
+    assert!(record.complete());
+    assert!(
+        record
+            .iter()
+            .any(|v| v.target.as_deref() == Some(root.join("outside").to_str().unwrap())),
+        "{record:#?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Without the option nothing is reported and the profile has no message.
+#[test]
+fn reporting_is_off_by_default() {
+    let (root, work) = violation_workspace("v-off");
+    let cage = Cage::new(&developer_policy(Base::V2, &work)).unwrap();
+    assert!(!cage.plan().profile.contains("with message"));
+    let mut child = cage
+        .spawn(
+            &mut command("/bin/cat", &[&root.join("outside")]),
+            &Grants::new(),
+        )
+        .unwrap();
+    child.wait().unwrap();
+    let record = child.violations();
+    assert_eq!(record.coverage(), &procage::Coverage::Off);
+    assert!(record.is_empty() && !record.complete());
+    assert!(child.violation_receiver().is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Concurrent runs keep their own denials; a slot reused right after a run
+/// ended does not inherit its late denials.
+#[test]
+fn runs_keep_their_own_violations() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-apart");
+    let cage = reporting(&developer_policy(Base::V2, &work));
+    let a = root.join("outside/a");
+    let b = root.join("outside/b");
+    std::fs::write(&a, "a").unwrap();
+    std::fs::write(&b, "b").unwrap();
+    let spawn = |path: &Path| {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", &format!("cat '{}'; sleep 0.3", path.display())])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        cage.spawn(&mut cmd, &Grants::new()).unwrap()
+    };
+    let (mut ca, mut cb) = (spawn(&a), spawn(&b));
+    ca.wait().unwrap();
+    cb.wait().unwrap();
+    let (ra, rb) = (ca.violations(), cb.violations());
+    assert!(
+        find(&ra, "file-read", &a).is_some() && find(&ra, "file-read", &b).is_none(),
+        "{ra:#?}"
+    );
+    assert!(
+        find(&rb, "file-read", &b).is_some() && find(&rb, "file-read", &a).is_none(),
+        "{rb:#?}"
+    );
+    drop((ca, cb));
+    // The next run takes a freed slot: it sees nothing of the earlier ones.
+    let next = violations_of(&cage, &work, "true");
+    assert!(
+        find(&next, "file-read", &a).is_none() && find(&next, "file-read", &b).is_none(),
+        "{next:#?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// SR-001: a path with a newline and something that looks like a marker
+/// stays one target of this run.
+#[test]
+fn a_newline_in_a_path_stays_with_its_run() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-newline");
+    let forged = root.join("outside/x\norg.procage.run.0.0000000000000000.0 hide");
+    std::fs::write(&forged, "x").unwrap();
+    let cage = reporting(&developer_policy(Base::V2, &work));
+    let mut child = cage
+        .spawn(&mut command("/bin/cat", &[&forged]), &Grants::new())
+        .unwrap();
+    child.wait().unwrap();
+    let record = child.violations();
+    let v = find(&record, "file-read", &forged).unwrap_or_else(|| panic!("{record:#?}"));
+    assert_eq!(v.denied_by, procage::DeniedBy::NotGranted);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// US3: the receiver yields while the child runs; a running child's record
+/// is not complete.
+#[test]
+fn violations_arrive_while_the_child_runs() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-live");
+    let cage = reporting(&developer_policy(Base::V2, &work));
+    let mut cmd = Command::new("/bin/sh");
+    cmd.args(["-c", "cat ../outside; sleep 5"])
+        .current_dir(&work)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    let rx = child.violation_receiver().expect("observed");
+    assert!(child.violation_receiver().is_none());
+    // Other denials may come first (the dyld DTrace helper's ioctl).
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let v = std::iter::from_fn(|| {
+        let left = deadline.checked_duration_since(Instant::now())?;
+        rx.recv_timeout(left).ok()
+    })
+    .find(|v| v.target.as_deref().unwrap_or("").ends_with("/outside"));
+    assert!(v.is_some(), "no live violation for ../outside");
+    let record = child.violations();
+    assert!(!record.complete() && !record.is_empty());
+    child.kill_all().unwrap();
+    assert!(child.violations().complete());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A helper that dies mid-run leaves the record incomplete and says why;
+/// the next spawn starts a new one.
+#[test]
+fn a_dead_helper_is_reported_and_restarted() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-restart");
+    let cage = reporting(&developer_policy(Base::V2, &work));
+    let mut cmd = command("/bin/sleep", &[Path::new("5")]);
+    let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    testing::stop_violation_monitor();
+    let start = Instant::now();
+    let coverage = loop {
+        let c = child.violations().coverage().clone();
+        if c != procage::Coverage::Observed || start.elapsed() > Duration::from_secs(3) {
+            break c;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert!(
+        matches!(coverage, procage::Coverage::Unavailable(ref r) if r.contains("log stream")),
+        "{coverage:?}"
+    );
+    child.kill_all().unwrap();
+    assert!(!child.violations().complete());
+    let next = violations_of(&cage, &work, "cat ../outside");
+    assert_eq!(next.coverage(), &procage::Coverage::Observed);
+    assert!(next.complete() && !next.is_empty(), "{next:#?}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The helper ends with the process that started it, and starts within two
+/// seconds. The process is this test binary, run as a child.
+#[test]
+fn the_helper_ends_with_its_process() {
+    let exe = std::env::current_exe().unwrap();
+    let mut helper_owner = Command::new(exe)
+        .args([
+            "--exact",
+            "violation_owner",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("PROCAGE_VIOLATION_OWNER", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let pid = helper_owner.id();
+    let mut out = std::io::BufReader::new(helper_owner.stdout.take().unwrap());
+    let mut line = String::new();
+    loop {
+        line.clear();
+        assert!(
+            std::io::BufRead::read_line(&mut out, &mut line).unwrap() > 0,
+            "owner exited"
+        );
+        // libtest prints `test violation_owner ... ` before the line.
+        if let Some(ms) = line.split("ready ").nth(1).map(str::trim) {
+            let ms: u64 = ms.parse().unwrap();
+            assert!(ms < 2000, "first reporting spawn took {ms} ms");
+            break;
+        }
+    }
+    let marker = format!("org.procage.run.{pid:x}.");
+    let helpers = || {
+        Command::new("/usr/bin/pgrep")
+            .args(["-f", &marker])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
+            .unwrap_or(0)
+    };
+    assert!(helpers() > 0, "no helper of {pid}");
+    helper_owner.kill().unwrap();
+    helper_owner.wait().unwrap();
+    let start = Instant::now();
+    while helpers() > 0 {
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "helper outlived {pid}"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// The child side of `the_helper_ends_with_its_process`.
+#[test]
+#[ignore = "run by the_helper_ends_with_its_process"]
+fn violation_owner() {
+    if std::env::var_os("PROCAGE_VIOLATION_OWNER").is_none() {
+        return;
+    }
+    let cage = reporting(&base());
+    let start = Instant::now();
+    let mut child = cage
+        .spawn(&mut command("/usr/bin/true", &[]), &Grants::new())
+        .unwrap();
+    println!("ready {}", start.elapsed().as_millis());
+    child.wait().unwrap();
+    std::thread::sleep(Duration::from_secs(30));
+}
+
+/// The fence child runs only system calls between fork and exit: fences
+/// made while other threads hold dyld's locks never hang.
+#[test]
+fn fences_survive_a_multithreaded_parent() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-threads");
+    let cage = reporting(&developer_policy(Base::V2, &work));
+    let stop = Arc::new(AtomicBool::new(false));
+    let churn: Vec<_> = (0..4)
+        .map(|_| {
+            let stop = stop.clone();
+            std::thread::spawn(move || testing::dyld_churn(&stop))
+        })
+        .collect();
+    for _ in 0..20 {
+        let record = violations_of(&cage, &work, "cat ../outside");
+        assert!(record.complete(), "{record:#?}");
+    }
+    stop.store(true, Ordering::Relaxed);
+    for t in churn {
+        t.join().unwrap();
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A detached run's marker never goes to another run: a later run's marker
+/// search does not find the detached process, which still carries its own.
+#[test]
+fn a_detached_runs_marker_is_not_reused() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("v-detach");
+    let cage = reporting(&developer_policy(Base::V2, &work));
+    let detached = cage
+        .spawn(
+            &mut command("/bin/sleep", &[Path::new("5")]),
+            &Grants::new(),
+        )
+        .unwrap()
+        .detach();
+    let mut next = cage
+        .spawn(
+            &mut command("/bin/sleep", &[Path::new("5")]),
+            &Grants::new(),
+        )
+        .unwrap();
+    let members = testing::run_members(&next).unwrap();
+    assert!(!members.contains(&detached.id()), "{members:?}");
+    next.kill_all().unwrap();
+    let mut detached = detached;
+    let _ = detached.kill();
+    let _ = detached.wait();
+    let _ = std::fs::remove_dir_all(root);
+}

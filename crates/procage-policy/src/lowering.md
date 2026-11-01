@@ -78,7 +78,7 @@ changes the profile.
 | `hd-service-handoff` | exact | n/a | n/a | Launch Services, Apple events, pasteboard and XPC service lookups, `lsopen`, `appleevent-send`; compiles. |
 | `hd-process-access` | exact | exact | exact | macOS: task ports, `process-info*` outside the sandbox, signals to others; compiles. Linux: `ptrace`, `process_vm_*`, `pidfd_getfd`, `kcmp`. |
 | `hd-rename-anchors` | exact | exact | exact | macOS: unlink denied on writable roots and on ancestors of protected or hidden paths; compiles. Linux: REFER is never granted, and T1 protect or hide targets are mountpoints. |
-| `hd-terminal-injection` | exact | exact | exact | macOS: the TIOCSTI ioctl is denied; this compiles, but whether it holds is not yet established. Linux: `ioctl` with TIOCSTI or TIOCLINUX. |
+| `hd-terminal-injection` | exact | exact | exact | macOS: the TIOCSTI ioctl is denied, and it holds (R-22, `escape_macos.rs::r22_terminal_input_injection_is_refused`). Linux: `ioctl` with TIOCSTI or TIOCLINUX. |
 | `hd-kernel-surface` | n/a | exact | exact | io_uring, `bpf`, `perf_event_open`, `userfaultfd`, keyrings. |
 | `hd-namespaces` | n/a | exact | exact | `unshare`, `setns`, namespace-creating `clone`, `clone3`, mount syscalls. |
 | `hd-socket-families` | n/a | exact | exact | `socket` with AF_VSOCK or AF_NETLINK. |

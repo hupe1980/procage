@@ -13,8 +13,8 @@ mod common;
 use procage_kernel_facts::sys::macos::Sandbox;
 use procage_policy::seatbelt::Operation;
 use procage_policy::{
-    Access, LowerOptions, Plan, Policy, RUN_MARKER_PARAM, RUN_PREFIX_PARAM, SeatbeltPlan, Tag,
-    Target, lower,
+    Access, LowerOptions, Plan, Policy, RUN_MARKER_PARAM, RUN_PREFIX_PARAM, SeatbeltPlan, Target,
+    lower,
 };
 
 fn compile(sandbox: &Sandbox, profile: &str, params: &[(String, String)]) -> Result<usize, String> {
@@ -29,10 +29,10 @@ fn compile(sandbox: &Sandbox, profile: &str, params: &[(String, String)]) -> Res
 }
 
 /// The plan's parameters, plus run-marker values like the ones the spawn
-/// backend binds.
-fn bound(plan: &SeatbeltPlan) -> Vec<(String, String)> {
+/// backend binds (for a forking policy, or one that reports violations).
+fn bound(plan: &SeatbeltPlan, reporting: bool) -> Vec<(String, String)> {
     let mut params = plan.params.clone();
-    if plan.run_marker {
+    if plan.run_marker || reporting {
         params.push((RUN_PREFIX_PARAM.into(), "org.procage.run.check.".into()));
         params.push((RUN_MARKER_PARAM.into(), "org.procage.run.check.0".into()));
     }
@@ -42,20 +42,28 @@ fn bound(plan: &SeatbeltPlan) -> Vec<(String, String)> {
 #[test]
 fn every_reference_profile_compiles() {
     let sandbox = Sandbox::load().expect("libsandbox symbols");
-    let options = common::allow_all().with_tag(Tag::new("procage-policy-check").unwrap());
     let mut failures = Vec::new();
     let mut count = 0;
-    for (name, policy) in common::reference_policies() {
-        let Ok(Plan::Seatbelt(plan)) = lower(&policy, Target::MacOs, &options) else {
-            panic!("{name}: no Seatbelt plan");
-        };
-        count += 1;
-        if let Err(e) = compile(&sandbox, &plan.profile, &bound(&plan)) {
-            failures.push(format!("{name}: {e}\n{}", plan.profile));
+    for reporting in [false, true] {
+        let mut options = common::allow_all();
+        if reporting {
+            options = options.with_violations();
+        }
+        for (name, policy) in common::reference_policies() {
+            let Ok(Plan::Seatbelt(plan)) = lower(&policy, Target::MacOs, &options) else {
+                panic!("{name}: no Seatbelt plan");
+            };
+            count += 1;
+            if let Err(e) = compile(&sandbox, &plan.profile, &bound(&plan, reporting)) {
+                failures.push(format!(
+                    "{name} (reporting: {reporting}): {e}\n{}",
+                    plan.profile
+                ));
+            }
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
-    assert!(count >= 35, "{count} profiles");
+    assert!(count >= 70, "{count} profiles");
 }
 
 #[test]

@@ -109,17 +109,24 @@ planning-paths:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> gate: planning-paths"
-    paths=(crates README.md SECURITY.md Cargo.toml justfile deny.toml)
+    paths=(crates site README.md SECURITY.md Cargo.toml justfile deny.toml)
     [[ -d .github ]] && paths+=(.github)
     if grep -rnE '(concepts|specs|\.specify)/' "${paths[@]}"; then
         echo "planning paths found in the published tree" >&2
         exit 1
     fi
 
-# The macOS escape suite: one or more canaries per escape class (run outside any other sandbox).
+# The landing page and documentation (Zola): link check and build.
+site:
+    @echo "==> gate: site"
+    cd site && zola check && zola build
+
+# The macOS escape suite: one or more canaries per escape class, without and
+# with violation reporting (run outside any other sandbox).
 escape:
     @echo "==> gate: escape (macOS)"
     cargo test --locked -p procage --test escape_macos
+    PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_macos
 
 # Linux facts in a container under Docker's default seccomp profile (tier T2).
 kf-linux tier="T2":

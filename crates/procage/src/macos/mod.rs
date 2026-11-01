@@ -67,7 +67,7 @@
 //!   [`Base::V1`](procage_policy::Base::V1) does not run Xcode's tool shims
 //!   (`/usr/bin/git`, `/usr/bin/python3`): use
 //!   [`Base::V2`](procage_policy::Base::V2), see `procage_policy::base`;
-//! - there is no helper process (path B);
+//! - procage installs no helper program of its own (R-26 does not apply yet);
 //! - the `KERN_PROCARGS2` query gives a caged child the arguments and
 //!   environment of any process of the same user: the sandbox does not
 //!   mediate it, even under `(deny sysctl-read)` (macOS 26.6.2).
@@ -81,6 +81,7 @@ mod lifetime;
 mod probe;
 mod spawn;
 mod sys;
+mod violations;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -96,6 +97,7 @@ use procage_policy::{
 };
 
 pub use crate::unix::TMPDIR_GRANT;
+pub use crate::violation::{Coverage, DeniedBy, Violation, Violations};
 pub use child::Child;
 pub use probe::{ApplyMethod, probe};
 
@@ -396,6 +398,9 @@ pub struct CageOptions {
     /// The most rules compiled in-process (default 2,000). libsandbox aborts
     /// its caller on very large profiles; larger ones are refused.
     pub compile_limit: usize,
+    /// Whether spawns report the operations the sandbox denies (see
+    /// [`CageOptions::with_violations`]).
+    pub violations: bool,
 }
 
 impl Default for CageOptions {
@@ -403,6 +408,7 @@ impl Default for CageOptions {
         Self {
             lower: LowerOptions::default(),
             compile_limit: 2000,
+            violations: false,
         }
     }
 }
@@ -417,6 +423,20 @@ impl CageOptions {
     /// These options with an in-process compile limit of `limit` rules.
     pub fn with_compile_limit(mut self, limit: usize) -> Self {
         self.compile_limit = limit;
+        self
+    }
+
+    /// These options with violation reporting: every spawn's
+    /// [`Child::violations`] lists the operations the sandbox denied it, with
+    /// the kind of rule that denied each (see [`crate::violation`]).
+    ///
+    /// The first such spawn in a process starts one helper, `/usr/bin/log
+    /// stream`, which ends with the process. Reporting needs an administrator
+    /// account; where it cannot start, spawning still works and the record
+    /// says why. Without this option nothing changes: no helper, and the
+    /// same profile.
+    pub fn with_violations(mut self) -> Self {
+        self.violations = true;
         self
     }
 }
@@ -501,6 +521,7 @@ pub struct Cage {
     bytecode: Arc<[u8]>,
     rewrites: Vec<PathRewrite>,
     compiled: bool,
+    violations: bool,
 }
 
 impl Cage {
@@ -555,7 +576,12 @@ impl Cage {
             return Err(SpawnError::AlreadySandboxed);
         }
         let (resolved, rewrites) = canon::resolve_policy(policy)?;
-        let Plan::Seatbelt(plan) = lower(&resolved, Target::MacOs, &options.lower)? else {
+        let violations = options.violations || options.lower.violations;
+        let mut lower_options = options.lower.clone();
+        if violations {
+            lower_options = lower_options.with_violations();
+        }
+        let Plan::Seatbelt(plan) = lower(&resolved, Target::MacOs, &lower_options)? else {
             unreachable!("lowering for macOS yields a Seatbelt plan");
         };
         if plan.rule_count > options.compile_limit {
@@ -564,9 +590,9 @@ impl Cage {
                 rules: plan.rule_count,
             });
         }
-        // A forking policy is compiled for the first run-marker slot, the one
-        // sequential runs use.
-        let marker = if plan.run_marker {
+        // A forking or reporting policy is compiled for the first run-marker
+        // slot, the one sequential runs use.
+        let marker = if plan.run_marker || violations {
             lifetime::first_params().to_vec()
         } else {
             Vec::new()
@@ -577,6 +603,7 @@ impl Cage {
             bytecode,
             rewrites,
             compiled,
+            violations,
         })
     }
 
@@ -634,14 +661,32 @@ impl Cage {
             sys::Session::New
         };
         let prepared = self.prepare(command, grants, fds, session)?;
+        // The record is registered before the fork, so no early denial is
+        // missed.
+        let report = match &prepared.run {
+            Some(run) if self.violations => Some(violations::register(run.marker())),
+            _ => None,
+        };
         // A failed spawn leaves no process behind, but the slot is retired
         // (dropped) rather than freed, to stay on the safe side.
-        let inner = command.spawn().map_err(spawn::decode)?;
+        let inner = match command.spawn() {
+            Ok(inner) => inner,
+            Err(e) => {
+                if let Some(run) = &prepared.run {
+                    violations::unregister(run.marker());
+                }
+                return Err(spawn::decode(e));
+            }
+        };
         Ok(Child::new(
             inner,
             prepared.dropped,
             prepared.tmpdir.disarm(),
             prepared.run,
+            child::Reporting {
+                forking: self.plan.run_marker,
+                record: report,
+            },
         ))
     }
 
@@ -773,10 +818,12 @@ impl Cage {
         &self,
         lib: &sys::Libsandbox,
     ) -> Result<(Option<lifetime::Run>, Arc<[u8]>), SpawnError> {
-        if !self.plan.run_marker {
+        if !self.plan.run_marker && !self.violations {
             return Ok((None, self.bytecode.clone()));
         }
-        lifetime::probe(lib)?;
+        if self.plan.run_marker {
+            lifetime::probe(lib)?;
+        }
         let run = lifetime::Run::take();
         if run.is_first() {
             return Ok((Some(run), self.bytecode.clone()));
@@ -840,6 +887,11 @@ pub mod testing {
                 os_build: sys::os_build(),
             }))
         }
+    }
+
+    /// Ends the violation monitor's helper, as if it had died.
+    pub fn stop_violation_monitor() {
+        super::violations::stop();
     }
 
     /// The processes `child`'s run marker finds now (none without a marker).

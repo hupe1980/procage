@@ -1,9 +1,11 @@
 //! # procage
 //!
-//! Process sandboxing for Rust, in development. procage is designed to run a
-//! child process in a cage on macOS (Seatbelt, applied through libsandbox
-//! rather than the deprecated `/usr/bin/sandbox-exec`) and on Linux (Landlock,
-//! seccomp and namespaces), without helper binaries.
+//! Process sandboxing for Rust, in development. procage runs a child process
+//! in a cage on macOS (Seatbelt, applied through libsandbox rather than the
+//! deprecated `/usr/bin/sandbox-exec`) and on Linux (Landlock, seccomp and
+//! namespaces), without helper binaries. It is meant for commands that run
+//! untrusted, adaptive code as your user: an LLM agent's tool calls, a
+//! project's build scripts.
 //!
 //! **Status.** The published 0.0.1 only reserves the name. This development
 //! version (0.0.2, unreleased) can spawn a caged child on macOS (module
@@ -13,8 +15,8 @@
 //!
 //! - on macOS a caged child can read other same-user processes' arguments
 //!   and environment (the sandbox does not mediate that query);
-//! - there are no pseudo-terminals, and the macOS base profile is curated
-//!   for macOS 26.6.2;
+//! - there are no pseudo-terminals, and the macOS base profiles were
+//!   measured on macOS 26.6.2;
 //! - on Linux there is no PID namespace yet, loopback and proxy networks
 //!   and glob rules are capability gaps, and the Linux tests have run on
 //!   one kernel (7.0, aarch64, in Docker).
@@ -41,6 +43,16 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # Lifetime and hygiene
+//!
+//! The run ends when the [`Child`](native::Child) handle is dropped or
+//! `kill_all` is called: every process the run started is killed,
+//! double-forked descendants included. The child receives only standard
+//! input, output and error (hand others over with `spawn_with_fds`); its
+//! environment follows the policy's [`EnvPolicy`](policy::EnvPolicy) (see
+//! [`hygiene`]); declaring the `tmpdir` grant gives each run a private
+//! `TMPDIR`.
 //!
 //! # Helpers: becoming the caged command
 //!
@@ -106,8 +118,11 @@
 //! ```no_run
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use procage::native::{Cage, CageOptions};
-//! use procage::policy::{HardDenyClass, Policy, Relax};
-//! # let policy = Policy::default();
+//! use procage::policy::{AbsPath, Access, FsRule, FsTarget, HardDenyClass, Policy, Relax};
+//!
+//! let mut policy = Policy::default();
+//! policy.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(AbsPath::new("/w")?)));
+//! policy.fs.push(FsRule::new(Access::Protect, FsTarget::Subpath(AbsPath::new("/w/.git")?)));
 //!
 //! let relax = Relax::new()
 //!     .leave_out_protect() // e.g. `.git` inside a writable workspace
@@ -130,6 +145,41 @@
 //! without an accepted relaxation still fails, with every remaining gap.
 //! Approximations are a different consent and stay in
 //! [`LowerOptions::allow_degrade`](policy::LowerOptions::allow_degrade).
+//!
+//! # Violations: what the sandbox denied, and why
+//!
+//! A denied operation reaches the caged program as `EPERM`, which it may
+//! print, swallow or misreport. A cage built with
+//! `CageOptions::with_violations` also tells the harness: after the child
+//! exits, `Child::violations` lists each denied operation with the process,
+//! the target and the kind of rule that denied it, so the harness can
+//! explain the failure or ask its user for a grant.
+//!
+//! ```no_run
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use std::process::Command;
+//! use procage::native::{Cage, CageOptions, Grants};
+//! # let policy = procage::policy::Policy::default();
+//!
+//! let cage = Cage::with_options(&policy, &CageOptions::default().with_violations())?;
+//! let mut child = cage.spawn(&mut Command::new("/usr/bin/make"), &Grants::new())?;
+//! child.wait()?;
+//! for v in &child.violations() {
+//!     eprintln!("sandbox: {v}");
+//!     // make (pid 812) was denied file-write-create /Users/a/out.o: not granted by the policy
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! On macOS the kernel logs every Seatbelt denial; the cage's profile tags
+//! each with the run and the rule kind, and one helper per process
+//! (`/usr/bin/log stream`, which needs an administrator account) collects
+//! them. A record says whether it is complete and what it can show
+//! ([`Coverage`]); identical denials by one process are reported once.
+//! Linux does not report denials yet: Landlock reports them only to the
+//! privileged audit subsystem. Reporting is diagnostic and best-effort.
+//! Enforcement never depends on it.
 //!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.
@@ -168,3 +218,7 @@ pub use macos as native;
 pub use linux as native;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub mod violation;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use violation::{Coverage, DeniedBy, Violation, Violations};

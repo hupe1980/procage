@@ -1,29 +1,54 @@
 # procage
 
-Process sandboxing for Rust, in development. procage is designed to run a
-child process in a cage on macOS (Seatbelt, applied through libsandbox rather
-than the deprecated `/usr/bin/sandbox-exec`) and on Linux (Landlock, seccomp
-and namespaces), without helper binaries.
+Process sandboxing for Rust. procage runs a child process in a cage on macOS
+(Seatbelt, applied through libsandbox rather than the deprecated
+`/usr/bin/sandbox-exec`) and on Linux (Landlock, seccomp and namespaces),
+without helper binaries.
 
-**Status:** the published 0.0.1 only reserves the name. The development
-version on `main` (0.0.2, unreleased) spawns caged children on macOS and on
-Linux (tiers T1 and T2, from Landlock ABI 1, Linux 5.13; a cage option tries
-a policy against an older kernel's Landlock), with inherited descriptors closed, every process a
-run started killed when the run ends (double-forked daemons included; on
-Linux, `setsid` and `setpgid` fail in the cage unless the policy opts out), an
-opt-in base profile that lets ordinary programs start (version 2 also runs
-developer tools: Xcode's shims, compilers, Homebrew), and an entry point for
-helper programs that become the caged command (`Cage::exec`). Every policy
-denies reading secrets and writing git hooks, shell startup files and launch
-agents; on Linux these hold exactly where no rule reaches them, by masks at
-spawn on tier T1, and otherwise are a capability gap. Four frozen presets
-cover common shapes. An escape suite runs a caged canary for every known
-escape class; the threat model shows which classes it proves handled and which
-variants are still open: a pre-existing hard link is not reported, and on
-macOS a caged child can read the arguments and environment of your other
-processes. It does not yet provide pseudo-terminals, a PID namespace, or
-loopback and proxy networks on Linux. Do not rely on any release before 0.1.0
-to contain a process.
+It is built for programs that run commands on someone else's behalf (coding
+agents, MCP servers, build orchestrators), where the code inside the child
+runs with your user id: an LLM following injected instructions, or a
+project's build script.
+
+```rust
+use procage::native::{Cage, Grants};
+use procage::policy::{AbsPath, presets};
+
+let workspace = AbsPath::new("/Users/me/project")?;
+let cage = Cage::new(&presets::agent_readonly::v2(&workspace))?;
+let status = cage
+    .spawn(&mut std::process::Command::new("make"), &Grants::new())?
+    .wait()?;
+```
+
+Documentation: <https://hupe1980.github.io/procage>
+
+**Status: under development.** The published 0.0.1 only reserves the name.
+The development version on `main` (0.0.2, unreleased) cages a child on macOS
+and on Linux (tier T1: namespaces, Landlock and seccomp; tier T2: Landlock and
+seccomp; Landlock ABI 1, Linux 5.13, or later). Do not rely on any release
+before 0.1.0 to contain a process.
+
+What it does today:
+
+- one typed policy, lowered per OS; anything a host cannot enforce is a named
+  capability gap, never a weaker rule (`Cage::fit` relaxes only what you
+  name, and says what would lift each relaxation);
+- every policy denies reading secrets and writing git hooks, shell startup
+  files and launch agents;
+- inherited descriptors are closed, secret-looking variables dropped, and
+  every process a run started is killed when the run ends, double-forked
+  daemons included;
+- on macOS, a cage can report what the sandbox denied and which kind of rule
+  denied it (`CageOptions::with_violations`);
+- four frozen presets, opt-in base profiles that let ordinary programs and
+  developer tools start, and `Cage::exec` for helper programs that become the
+  caged command.
+
+Not yet: pseudo-terminals, a Linux PID namespace, loopback and proxy
+networking on Linux, and violation reports on Linux. Open escape variants: a
+hard link made before the run (R-08), and on macOS the arguments and
+environment of your other processes, which a caged child can read (R-25).
 
 ## Threat model
 

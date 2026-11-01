@@ -35,6 +35,7 @@ version = "0.0.2"
 dependencies = [
  "libc",
  "procage-policy",
+ "serde_json",
 ]
 
 [[package]]
@@ -43,6 +44,7 @@ version = "0.0.0"
 dependencies = [
  "libc",
  "procage-policy",
+ "serde_json",
 ]
 
 [[package]]

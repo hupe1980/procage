@@ -29,7 +29,7 @@ use super::{SpawnError, Unsupported, sys};
 pub(crate) const ROUNDS: usize = 64;
 
 /// `org.procage.run.<pid>.<random>.`, once per process.
-fn prefix() -> &'static str {
+pub(crate) fn prefix() -> &'static str {
     static PREFIX: OnceLock<String> = OnceLock::new();
     PREFIX.get_or_init(|| {
         use std::hash::{BuildHasher, Hasher};
@@ -82,6 +82,13 @@ impl Run {
     /// The profile parameters for this run.
     pub(crate) fn params(&self) -> [(String, String); 2] {
         params(&self.marker)
+    }
+
+    /// The run's marker, which also tags its reported denials.
+    pub(crate) fn marker(&self) -> &str {
+        self.marker
+            .to_str()
+            .unwrap_or_else(|_| unreachable!("hex digits and dots only"))
     }
 
     /// The slot number.

@@ -27,7 +27,7 @@ use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use procage::macos::{Cage, Child, Grants, testing};
+use procage::macos::{Cage, CageOptions, Child, Grants, SpawnError, testing};
 use procage::policy::seatbelt::{self, Effect, Filter, Operation};
 use procage::policy::{
     AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Lifetime,
@@ -37,6 +37,16 @@ use procage::policy::{
 const EPERM: &str = "1";
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// A cage for `policy`; with `PROCAGE_ESCAPE_VIOLATIONS=1` it reports
+/// violations, so the suite shows that reporting weakens nothing.
+fn cage_for(policy: &Policy) -> Result<Cage, SpawnError> {
+    let mut options = CageOptions::default();
+    if std::env::var_os("PROCAGE_ESCAPE_VIOLATIONS").is_some_and(|v| v == "1") {
+        options = options.with_violations();
+    }
+    Cage::with_options(policy, &options)
+}
 
 /// A fresh directory under the system temp dir, spelled as the system gives
 /// it (`/var/folders/…`, through the `/var` symlink).
@@ -151,7 +161,7 @@ fn in_child_with(
     grants: &Grants,
     fds: &[std::os::fd::BorrowedFd<'_>],
 ) -> String {
-    let cage = Cage::new(policy).unwrap_or_else(|e| panic!("cage: {e}"));
+    let cage = cage_for(policy).unwrap_or_else(|e| panic!("cage: {e}"));
     let child = cage
         .spawn_with_fds(&mut child_command(action), grants, fds)
         .unwrap_or_else(|e| panic!("spawn: {e}"));
@@ -161,7 +171,7 @@ fn in_child_with(
 /// Spawns `action` and returns the handle and the first result line,
 /// without waiting for the child to exit.
 fn start(action: &str, policy: &Policy, grants: &Grants) -> (Child, String) {
-    start_in(&Cage::new(policy).unwrap(), action, grants)
+    start_in(&cage_for(policy).unwrap(), action, grants)
 }
 
 fn start_in(cage: &Cage, action: &str, grants: &Grants) -> (Child, String) {
@@ -328,7 +338,7 @@ fn child_entry() {
 /// passthrough, and whether an explicitly set variable does.
 fn outer_env() -> String {
     let names = |p: &Policy, explicit: bool| {
-        let cage = Cage::new(p).unwrap();
+        let cage = cage_for(p).unwrap();
         let mut cmd = child_command("env");
         if explicit {
             cmd.env("PROCAGE_EXPLICIT", "yes");
@@ -751,7 +761,7 @@ fn r23_descendants_of_an_exited_child_die_with_the_run() {
 /// leaves the other's escaped descendant alive.
 #[test]
 fn r23_concurrent_runs_are_separate() {
-    let cage = Cage::new(&forking()).unwrap();
+    let cage = cage_for(&forking()).unwrap();
     let (a, pa) = start_in(&cage, "double-fork", &Grants::new());
     let (b, pb) = start_in(&cage, "double-fork", &Grants::new());
     let (pa, pb): (u32, u32) = (pa.parse().unwrap(), pb.parse().unwrap());
@@ -768,7 +778,7 @@ fn r23_concurrent_runs_are_separate() {
 /// that run leaves the detached run's processes alone.
 #[test]
 fn r23_a_detached_run_keeps_its_marker() {
-    let cage = Cage::new(&forking()).unwrap();
+    let cage = cage_for(&forking()).unwrap();
     let (a, pa) = start_in(&cage, "double-fork", &Grants::new());
     let pa: u32 = pa.parse().unwrap();
     let slot = testing::run_slot(&a);

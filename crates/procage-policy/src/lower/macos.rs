@@ -12,7 +12,7 @@ use super::{
 use crate::policy::{
     Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Ports, Signals,
 };
-use crate::sbpl::{self, Filter, Rule};
+use crate::sbpl::{self, DenyReason, Filter, Rule};
 use crate::seatbelt::{self, Effect};
 
 /// Operations an access kind allows (or, for protect and hide, denies).
@@ -205,7 +205,12 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             Access::Protect | Access::Hide => Effect::Deny,
             _ => Effect::Allow,
         };
-        let r = Rule::new(effect, ops(rule.access), vec![path_filter(&rule.target)]);
+        let mut r = Rule::new(effect, ops(rule.access), vec![path_filter(&rule.target)]);
+        match rule.access {
+            Access::Protect => r = r.because(DenyReason::Protect),
+            Access::Hide => r = r.because(DenyReason::Hide),
+            _ => {}
+        }
         push(&mut ledger, block, construct, subject, r);
     }
 
@@ -355,7 +360,7 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                 FsTarget::Literal(p) => Filter::Literal(p.as_bytes().to_vec()),
                 FsTarget::Glob(_) => continue,
             };
-            within.push(Rule::new(Effect::Deny, &UNIX_OPS, vec![filter]));
+            within.push(Rule::new(Effect::Deny, &UNIX_OPS, vec![filter]).because(DenyReason::Hide));
         }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
@@ -389,13 +394,11 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                 Effect::Allow => (&mut allow, Effect::Allow),
                 Effect::Deny => (&mut within, Effect::Deny),
             };
-            push(
-                &mut ledger,
-                block,
-                Construct::SeatbeltLayer,
-                None,
-                Rule::new(effect, &ops, filters),
-            );
+            let mut r = Rule::new(effect, &ops, filters);
+            if effect == Effect::Deny {
+                r = r.because(DenyReason::Layer);
+            }
+            push(&mut ledger, block, Construct::SeatbeltLayer, None, r);
         }
     }
     if policy.linux.is_some() {
@@ -412,7 +415,11 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             continue;
         }
         if ledger.outcome(Construct::of_class(class), class_outcome(class), None, "") {
-            hard.extend(hard_deny(class, policy));
+            hard.extend(
+                hard_deny(class, policy)
+                    .into_iter()
+                    .map(|r| r.because(DenyReason::HardDeny(class))),
+            );
         }
     }
 
@@ -421,6 +428,13 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
     let run_marker = !marker.is_empty();
     let mut rules = Vec::with_capacity(allow.len() + within.len() + hard.len() + marker.len());
     for mut block in [allow, within, hard] {
+        if !options.violations {
+            // Without reporting, reasons must not keep apart rules that would
+            // otherwise be deduplicated or merged.
+            for rule in &mut block {
+                rule.reason = None;
+            }
+        }
         block.sort();
         block.dedup();
         rules.extend(block);
@@ -440,7 +454,8 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
 
     // Every value was checked by `push` or comes from a validated name, so
     // rendering cannot fail; a failure here is still reported, never ignored.
-    let rendered = sbpl::write_profile(options.tag.as_ref(), &rules).map_err(|e| {
+    let marker = options.violations.then_some(super::RUN_MARKER_PARAM);
+    let rendered = sbpl::write_profile(marker, &rules).map_err(|e| {
         LowerError::Gaps(vec![super::CapabilityGap {
             construct: Construct::Hygiene,
             target: Target::MacOs,

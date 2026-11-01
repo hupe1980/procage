@@ -120,3 +120,33 @@ fn fitting_has_the_same_shape() {
         .unwrap();
     assert!(c.wait().unwrap().success());
 }
+
+/// Violation reporting has the same shape: macOS observes denials, Linux
+/// says it does not yet, and neither leaves reporting silently off.
+#[test]
+fn violation_records_have_the_same_shape() {
+    use procage::Coverage;
+    let options = CageOptions::default()
+        .with_lower(LowerOptions::default().accept_spawn_snapshot())
+        .with_violations();
+    let cage = Cage::with_options(&policy(), &options).unwrap_or_else(|e| panic!("{e}"));
+    let mut child = cage
+        .spawn(
+            &mut quiet("/bin/echo", "ok"),
+            &Grants::new().bind("data", data_dir()),
+        )
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+    let record = child.violations();
+    assert!(
+        matches!(
+            record.coverage(),
+            Coverage::Observed | Coverage::NotObserved
+        ),
+        "{:?}",
+        record.coverage()
+    );
+    for v in &record {
+        assert!(!v.operation.is_empty());
+    }
+}

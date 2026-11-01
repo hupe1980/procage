@@ -334,6 +334,14 @@ mod macos {
             slow: false,
             run: m28,
         },
+        Fact {
+            id: "KF-M29",
+            statement: "denials are logged with the rule's parameter message on the last line, and in order across processes",
+            kind: Kind::Enforcement,
+            tiers: &[],
+            slow: false,
+            run: m29,
+        },
     ];
 
     fn m01(c: &Ctx) -> Check {
@@ -654,6 +662,122 @@ mod macos {
         let s = ran(c.heavy(&["compile-rules", "require-any", "10000"]))?;
         expect(&s, &[("ok", "0"), ("err_kind", "none")])?;
         Ok(s.summary())
+    }
+
+    /// The unified-log contract violation reporting relies on: a denial's
+    /// message ends with a newline and the denying rule's message, which may
+    /// be a parameter or a `string-append` of one; and a denial logged by a
+    /// later process (a fence) arrives after a run's earlier denials. A
+    /// `syslog` line was measured to overtake denials under load, so the
+    /// fence is a denial. 20 rounds.
+    fn m29(c: &Ctx) -> Check {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        use std::sync::mpsc;
+
+        let tag = format!("procage-kf-m29-{}", std::process::id());
+        let predicate = format!("sender == \"Sandbox\" AND eventMessage CONTAINS \"{tag}\"");
+        let mut stream = Command::new("/usr/bin/log")
+            .args(["stream", "--style", "ndjson", "--predicate", &predicate])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| Outcome::SetupFailed(format!("log stream: {e}")))?;
+        let stdout = stream.stdout.take().expect("piped");
+        let (tx, rx) = mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+                    continue;
+                };
+                if let Some(m) = value.get("eventMessage").and_then(|m| m.as_str())
+                    && tx.send(m.to_string()).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        let result = (|| {
+            let dir = scratch()?;
+            // Runs a denied process tagged `run` and collects messages until
+            // the one ending with `want` arrives; `None` on timeout.
+            let fence = |run: &str, timeout: Duration| -> Result<Option<Vec<String>>, Outcome> {
+                let s = ran(c.step(&["report-denial", run, dir.as_str()]))?;
+                expect(&s, &[("a_errno", "1"), ("b_errno", "1")])?;
+                let want = format!("/a\n{run}");
+                let deadline = Instant::now() + timeout;
+                let mut seen = Vec::new();
+                loop {
+                    let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+                        return Ok(None);
+                    };
+                    let Ok(m) = rx.recv_timeout(left) else {
+                        return Ok(None);
+                    };
+                    if m.ends_with(&want) {
+                        return Ok(Some(seen));
+                    }
+                    seen.push(m);
+                }
+            };
+            let mut ready = false;
+            for i in 0..20 {
+                if fence(&format!("{tag}.ready.{i}"), Duration::from_millis(250))?.is_some() {
+                    ready = true;
+                    break;
+                }
+            }
+            if !ready {
+                return Err(Outcome::SetupFailed(
+                    "log stream delivered nothing in 5 s".into(),
+                ));
+            }
+            let mut misses = Vec::new();
+            let mut stalls = 0;
+            for round in 0..20 {
+                // A stream that delivers nothing in time (a loaded host) is a
+                // stall, not a counterexample: the round is run again.
+                let mut attempt = 0;
+                loop {
+                    let run = format!("{tag}.{round}.{attempt}");
+                    let s = ran(c.step(&["report-denial", &run, dir.as_str()]))?;
+                    expect(&s, &[("a_errno", "1"), ("b_errno", "1")])?;
+                    let Some(seen) = fence(&format!("{run}.fence"), Duration::from_secs(5))? else {
+                        stalls += 1;
+                        attempt += 1;
+                        if attempt == 3 {
+                            return Err(Outcome::SetupFailed(format!(
+                                "round {round}: the log stream delivered nothing within 5 s, 3 times"
+                            )));
+                        }
+                        continue;
+                    };
+                    let default = seen.iter().any(|m| m.ends_with(&format!("/a\n{run}")));
+                    let explicit = seen
+                        .iter()
+                        .any(|m| m.ends_with(&format!("/b\n{run} hd:secrets")));
+                    if !(default && explicit) {
+                        misses.push(format!("round {round}: {seen:?}"));
+                    }
+                    break;
+                }
+            }
+            if misses.is_empty() {
+                Ok(format!(
+                    "20/20 rounds: both messages last, before the next process's denial ({stalls} stalled rounds rerun)"
+                ))
+            } else {
+                Err(Outcome::Fail {
+                    expected: "each round's two denials, tagged, before the fence process's denial"
+                        .into(),
+                    observed: misses.join("; "),
+                })
+            }
+        })();
+        let _ = stream.kill();
+        let _ = stream.wait();
+        result
     }
 }
 

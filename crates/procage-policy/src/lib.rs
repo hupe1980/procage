@@ -69,4 +69,4 @@ pub use policy::{
     Access, Base, EnvPolicy, Exec, FsRule, FsTarget, Grant, HardDenyClass, Ipc, Lifetime, Network,
     Policy, PolicyError, Ports, PresetTag, Process, Rlimits, Signals, Tty,
 };
-pub use sbpl::EscapeError;
+pub use sbpl::{DenyReason, EscapeError};

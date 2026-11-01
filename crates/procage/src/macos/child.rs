@@ -7,6 +7,16 @@ use std::path::{Path, PathBuf};
 
 use super::lifetime::{self, Run};
 use super::sys;
+use super::violations::{self, Sink};
+use crate::violation::{Coverage, Violation, Violations};
+
+/// What a spawn reports: whether the run's marker finds its processes
+/// (a forking policy), and the run's violation record, when reporting.
+#[derive(Debug)]
+pub(super) struct Reporting {
+    pub(super) forking: bool,
+    pub(super) record: Option<Sink>,
+}
 
 /// A running caged child.
 ///
@@ -27,6 +37,9 @@ pub struct Child {
     dropped_env: Vec<String>,
     tmpdir: Option<PathBuf>,
     run: Option<Run>,
+    reporting: Reporting,
+    /// The record as it was when the run ended.
+    ended: Option<Violations>,
 }
 
 impl Child {
@@ -35,12 +48,15 @@ impl Child {
         dropped_env: Vec<String>,
         tmpdir: Option<PathBuf>,
         run: Option<Run>,
+        reporting: Reporting,
     ) -> Self {
         Self {
             inner: Some(inner),
             dropped_env,
             tmpdir,
             run,
+            reporting,
+            ended: None,
         }
     }
 
@@ -79,13 +95,81 @@ impl Child {
         sys::killpg(pid);
         // Reaped first, the child no longer shows up in the marker search.
         let waited = self.inner_mut().wait().map(drop);
-        let ended = self.run.as_ref().map_or(Ok(()), lifetime::end);
+        let ended = match &self.run {
+            Some(run) if self.reporting.forking => lifetime::end(run),
+            _ => Ok(()),
+        };
+        // Every denial of the run must have arrived before its marker can tag
+        // another run's; without a fence the slot is retired instead.
+        let delivered = self.finish_record();
         ended?;
         // No process carries the marker any more: another run may have it.
-        if let Some(run) = self.run.take() {
+        if let Some(run) = self.run.take()
+            && delivered
+        {
             run.free();
         }
         waited
+    }
+
+    /// Fences the run's record, marks it complete and stops routing to it;
+    /// `true` without a record or when the fence passed.
+    fn finish_record(&mut self) -> bool {
+        let Some(record) = self.reporting.record.take() else {
+            return true;
+        };
+        let record = &record;
+        // Always a fresh fence: descendants killed just now may have been
+        // denied after an earlier one.
+        let delivered = violations::fence();
+        if delivered {
+            violations::lock(record).finish();
+        }
+        if let Some(run) = &self.run {
+            violations::unregister(run.marker());
+        }
+        // The handle keeps a copy for `violations` after the run ended.
+        self.ended = Some(violations::lock(record).snapshot());
+        delivered
+    }
+
+    /// The operations the sandbox denied this run so far, with the kind of
+    /// rule behind each (see [`crate::violation`]).
+    ///
+    /// Once the child has exited, this first waits (at most a second) until
+    /// every denial reported before that has arrived; the record then says
+    /// it is [`complete`](Violations::complete). A record that is not
+    /// complete after the child exited (a loaded host) can be read again.
+    /// Without [`CageOptions::with_violations`](super::CageOptions::with_violations)
+    /// the record's coverage is [`Coverage::Off`].
+    pub fn violations(&mut self) -> Violations {
+        let Some(record) = self.reporting.record.clone() else {
+            return self
+                .ended
+                .clone()
+                .unwrap_or_else(|| Violations::empty(Coverage::Off));
+        };
+        let exited = self
+            .inner
+            .as_mut()
+            .is_some_and(|c| matches!(c.try_wait(), Ok(Some(_))));
+        if exited && !violations::lock(&record).is_complete() && violations::fence() {
+            violations::lock(&record).finish();
+        }
+        violations::lock(&record).snapshot()
+    }
+
+    /// The run's violations as they arrive, once (later calls return
+    /// `None`); `None` as well when reporting is off or unavailable. The
+    /// receiver buffers 1,024 violations; when it lags, later ones are only
+    /// in [`Child::violations`].
+    pub fn violation_receiver(&mut self) -> Option<std::sync::mpsc::Receiver<Violation>> {
+        let record = self.reporting.record.as_ref()?;
+        let mut record = violations::lock(record);
+        if record.snapshot().coverage() != &Coverage::Observed {
+            return None;
+        }
+        record.take_receiver()
     }
 
     /// Gives up lifetime control: the child keeps running after this handle
@@ -93,6 +177,10 @@ impl Child {
     /// and the run's marker is never given to another run of this process.
     pub fn detach(mut self) -> std::process::Child {
         self.tmpdir = None;
+        if let (Some(_), Some(run)) = (&self.reporting.record, &self.run) {
+            violations::unregister(run.marker());
+        }
+        self.reporting.record = None;
         self.run = None;
         self.inner
             .take()

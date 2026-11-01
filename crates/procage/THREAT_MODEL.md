@@ -10,6 +10,12 @@ and in the crate documentation.
 This is procage 0.0.2, an unreleased development version. The published
 0.0.1 only reserves the crate name.
 
+Background: Seatbelt is the macOS kernel sandbox. Landlock is Linux's
+unprivileged access control for files and network ports; seccomp filters
+system calls. procage's Linux *tiers* are T1 (Landlock and seccomp plus user
+namespaces and mounts) and T2 (Landlock and seccomp only, where user
+namespaces are unavailable).
+
 On macOS this version spawns a caged child: it resolves policy paths to the
 spelling the kernel matches, compiles the policy once, and applies it in the
 child with system calls only. If any step fails, the target never runs. Its
@@ -50,10 +56,12 @@ It does **not** yet:
   arguments or environment;
 - report or refuse a hard link made before the run that gives a protected
   file a second name (R-08);
-- protect a helper program from replacement (R-26): this release runs no
-  helper, so the class does not apply yet;
-- provide pseudo-terminals (its macOS base profile, V1, is curated for
-  macOS 26.6.2 and grants nothing in the user's home);
+- protect a helper program procage itself installs from replacement (R-26):
+  this release installs none. A `Cage::exec` helper is the caller's own
+  binary; keep it outside every path the policy makes writable;
+- provide pseudo-terminals (`Tty::NewPty` is refused);
+- support macOS releases other than 26.6.2 with certainty: the base
+  profiles V1 and V2 were measured there;
 - deny secrets, trust-handoff files and persistence locations on Linux
   where a rule reaches them, except by approximations the caller must
   accept: on tier T1 the paths that exist at spawn are masked; on tier T2
@@ -72,9 +80,9 @@ It does **not** yet:
 
 Do not rely on any release before 0.1.0 to contain a process.
 
-Everything below describes the design that upcoming releases implement. The
-escape-class catalog shows, per class, whether this release has escape-suite
-tests that prove the class is handled, and which variants remain open.
+The sections below describe the design. The escape-class catalog states, per
+class, whether this release has escape-suite tests that prove the class is
+handled, and which variants remain open.
 
 ## Adversary
 
@@ -113,11 +121,12 @@ policy grants.
 
 - Bugs in the kernel, XPC services, TCC or Linux security modules.
 - Side channels.
-- Denial of service beyond the resource limits procage will set.
+- Denial of service beyond the resource limits a policy sets.
 - **Trust handoff beyond the shipped presets**: a program *outside* the
-  sandbox later runs or trusts something the sandbox wrote. procage will ship
-  write-deny presets for the known locations. Every other such location is
-  the responsibility of the calling harness (see R-07 below).
+  sandbox later runs or trusts something the sandbox wrote. Every policy
+  carries the `trust-handoff` hard-deny class for the known locations. Every
+  other such location is the responsibility of the calling harness (see R-07
+  below).
 
 ## Strength
 
@@ -134,18 +143,15 @@ procage inside it for finer-grained policy.
 
 ## Dependencies on undocumented interfaces
 
-These are design commitments for upcoming releases, not behaviour of this
-release.
-
-- **macOS.** procage will compile and apply Seatbelt profiles through
-  libsandbox functions that Apple does not document or support. It will
-  resolve them at run time, before starting a child. If they are missing or
-  behave differently, the result will be an "unsupported" error, never a
+- **macOS.** procage compiles and applies Seatbelt profiles through
+  libsandbox functions that Apple does not document or support. It
+  resolves them at run time, before starting a child. If they are missing or
+  behave differently, the result is an "unsupported" error, never a
   silent fallback to running without a sandbox. A future macOS release may remove them.
-- **Linux.** procage will measure what the running kernel offers (Landlock
-  ABI, seccomp, unprivileged user namespaces) and assign a tier. A policy the
-  tier cannot enforce will be an error that names the missing capability. It
-  will never be applied best-effort.
+- **Linux.** procage measures what the running kernel offers (Landlock
+  ABI, seccomp, unprivileged user namespaces) and assigns a tier. A policy the
+  tier cannot enforce is an error that names the missing capability. It
+  is never applied best-effort.
 - **Finding a run's processes (macOS).** A forking run's profile carries a
   marker, and procage asks libsandbox, for every process of the user,
   whether that process's sandbox allows it. This query form is undocumented;
@@ -157,10 +163,18 @@ release.
   `Lifetime::Tree`, in which case a descendant that double-forks into a
   session of its own outlives the run.
 - **Nesting.** Inside another Seatbelt sandbox (for example an AI agent's
-  own), applying a second profile fails or has no effect. procage will
-  report this as an error up front instead of running uncaged.
+  own), applying a second profile fails or has no effect. procage
+  reports this as an error up front instead of running uncaged.
 - **Profile size.** libsandbox rejects or aborts on very large profiles, so
-  procage will bound profile size and report a limit error.
+  procage bounds profile size and reports a limit error.
+- **Violation reports.** On macOS a cage can report the operations the
+  sandbox denied, read from the kernel's unified-log messages. The reports
+  are diagnostic: a missing report proves nothing (the log helper may be
+  unavailable, for example on an account without administrator rights, and
+  identical denials are reported once per process), and no decision of the
+  sandbox depends on them. Caged code chooses the paths it is denied, so a
+  report's target is untrusted text; it cannot change which run a report
+  belongs to. Linux does not report denials yet.
 
 ## Non-goals
 
@@ -250,8 +264,8 @@ why the numbering has gaps.
   grant `/proc`; a policy that grants it exposes other processes'
   arguments, because Linux children have no PID namespace yet, while their
   environment stays out of reach.
-- **R-26** procage runs no helper program in this release; the class
-  applies once it does.
+- **R-26** procage installs no helper program of its own in this release;
+  the class applies once it does.
 
 Report a suspected escape privately as described in the security policy:
 <https://github.com/hupe1980/procage/blob/main/SECURITY.md>.

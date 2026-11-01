@@ -159,6 +159,7 @@ use procage_policy::{
 };
 
 pub use crate::unix::TMPDIR_GRANT;
+pub use crate::violation::{Coverage, DeniedBy, Violation, Violations};
 pub use child::Child;
 pub use probe::{Probe, probe};
 
@@ -503,6 +504,9 @@ pub struct CageOptions {
     /// The highest Landlock ABI to use (default: the kernel's). It never
     /// raises the ABI above the kernel's.
     pub landlock_abi: Option<u8>,
+    /// Whether spawns report denied operations (see
+    /// [`CageOptions::with_violations`]).
+    pub violations: bool,
 }
 
 impl Default for CageOptions {
@@ -513,6 +517,7 @@ impl Default for CageOptions {
             walk_limit: 200_000,
             homes: Vec::new(),
             landlock_abi: None,
+            violations: false,
         }
     }
 }
@@ -562,6 +567,15 @@ impl CageOptions {
         self.landlock_abi = Some(abi);
         self
     }
+
+    /// These options with violation reporting, for the same code on both
+    /// backends. Linux does not report denials yet: Landlock reports them
+    /// only to the privileged audit subsystem. Every record's coverage is
+    /// [`Coverage::NotObserved`]; confinement is unchanged.
+    pub fn with_violations(mut self) -> Self {
+        self.violations = true;
+        self
+    }
 }
 
 /// Per-spawn bindings of the policy's grants to existing paths.
@@ -592,6 +606,7 @@ pub struct Cage {
     filter: Arc<[seccomp::Insn]>,
     homes: Vec<PathBuf>,
     walk_limit: usize,
+    violations: bool,
 }
 
 impl Cage {
@@ -679,6 +694,7 @@ impl Cage {
             filter,
             homes,
             walk_limit: options.walk_limit,
+            violations: options.violations,
         })
     }
 
@@ -744,7 +760,12 @@ impl Cage {
         };
         let (dropped, removal) = self.prepare(command, grants, fds, session)?;
         let inner = command.spawn().map_err(spawn::decode)?;
-        Ok(Child::new(inner, dropped, removal.disarm()))
+        let coverage = if self.violations {
+            Coverage::NotObserved
+        } else {
+            Coverage::Off
+        };
+        Ok(Child::new(inner, dropped, removal.disarm(), coverage))
     }
 
     /// Turns the calling process into `command`, running in this cage: like

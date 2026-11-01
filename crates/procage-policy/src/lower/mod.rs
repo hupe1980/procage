@@ -13,7 +13,7 @@ use core::fmt;
 use core::str::FromStr;
 
 use crate::linux::LinuxPlan;
-use crate::name::{GrantName, Tag};
+use crate::name::GrantName;
 use crate::policy::{Access, EnvPolicy, HardDenyClass, Policy, PolicyError, Rlimits, Tty};
 use crate::sbpl::EscapeError;
 
@@ -377,8 +377,11 @@ pub struct LowerOptions {
     pub allow_degrade: BTreeSet<Construct>,
     /// The most rules a Seatbelt profile may have (default 2,000).
     pub max_rules: usize,
-    /// The run tag for `(deny default (with message …))`.
-    pub tag: Option<Tag>,
+    /// Whether denials are reported: every deny rule but the run-marker
+    /// block carries a message naming the run ([`RUN_MARKER_PARAM`]) and
+    /// the rule's kind ([`crate::sbpl::DenyReason`]). Off, the profile is
+    /// exactly the one without reporting.
+    pub violations: bool,
 }
 
 impl Default for LowerOptions {
@@ -386,7 +389,7 @@ impl Default for LowerOptions {
         Self {
             allow_degrade: BTreeSet::new(),
             max_rules: 2000,
-            tag: None,
+            violations: false,
         }
     }
 }
@@ -423,9 +426,9 @@ impl LowerOptions {
         self
     }
 
-    /// These options with the run tag `tag`.
-    pub fn with_tag(mut self, tag: Tag) -> Self {
-        self.tag = Some(tag);
+    /// These options with denials reported (see [`LowerOptions::violations`]).
+    pub fn with_violations(mut self) -> Self {
+        self.violations = true;
         self
     }
 

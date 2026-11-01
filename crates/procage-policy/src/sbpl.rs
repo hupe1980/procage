@@ -10,7 +10,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt;
 
-use crate::name::Tag;
+use crate::policy::HardDenyClass;
 use crate::seatbelt::Effect;
 
 /// The longest quoted string emitted inline, in bytes.
@@ -128,6 +128,52 @@ pub enum Filter {
     IpcPosixName(String),
 }
 
+/// Why a deny rule denies: the code a denial message carries after the run
+/// marker, so a reported violation names the kind of rule behind it. A
+/// denial without a code came from the profile's default (nothing allowed
+/// the operation).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum DenyReason {
+    /// A rule of the hard-deny class (data classes included).
+    HardDeny(HardDenyClass),
+    /// A `Protect` rule: the path is read-only.
+    Protect,
+    /// A `Hide` rule: the path is unreadable.
+    Hide,
+    /// A deny rule of the raw Seatbelt layer.
+    Layer,
+}
+
+impl DenyReason {
+    /// The code in denial messages: `hd:<class>`, `protect`, `hide` or
+    /// `layer`. Codes contain no space and no newline.
+    pub fn code(&self) -> String {
+        match self {
+            DenyReason::HardDeny(class) => format!("hd:{}", class.as_str()),
+            DenyReason::Protect => "protect".into(),
+            DenyReason::Hide => "hide".into(),
+            DenyReason::Layer => "layer".into(),
+        }
+    }
+
+    /// The reason a code names, if any.
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "protect" => Some(DenyReason::Protect),
+            "hide" => Some(DenyReason::Hide),
+            "layer" => Some(DenyReason::Layer),
+            _ => {
+                let name = code.strip_prefix("hd:")?;
+                HardDenyClass::ALL
+                    .iter()
+                    .find(|c| c.as_str() == name)
+                    .map(|&c| DenyReason::HardDeny(c))
+            }
+        }
+    }
+}
+
 /// A top-level SBPL rule: `(allow|deny op… filter)`. More than one filter is
 /// rendered as `(require-any …)`, so the filters are alternatives; no filter
 /// means the rule applies to every request of its operations.
@@ -139,6 +185,9 @@ pub struct Rule {
     pub ops: Vec<String>,
     /// Alternative filters; empty means unfiltered.
     pub filters: Vec<Filter>,
+    /// Why a deny rule denies, rendered into its message when the profile
+    /// reports violations.
+    pub reason: Option<DenyReason>,
 }
 
 impl Rule {
@@ -148,7 +197,14 @@ impl Rule {
             effect,
             ops: ops.iter().map(|op| op.to_string()).collect(),
             filters,
+            reason: None,
         }
+    }
+
+    /// This rule with `reason`.
+    pub fn because(mut self, reason: DenyReason) -> Self {
+        self.reason = Some(reason);
+        self
     }
 
     /// Every raw value this rule would quote, for checking before rendering.
@@ -179,6 +235,16 @@ impl Rule {
 
     /// Renders the rule; long values become parameters in `params`.
     pub fn render(&self, params: &mut Params) -> Result<String, EscapeError> {
+        self.render_reporting(params, None)
+    }
+
+    /// Renders the rule; with `marker`, a deny rule with a reason carries
+    /// `(with message (string-append (param marker) " <code>"))`.
+    fn render_reporting(
+        &self,
+        params: &mut Params,
+        marker: Option<&str>,
+    ) -> Result<String, EscapeError> {
         let mut out = String::from(match self.effect {
             Effect::Allow => "(allow",
             Effect::Deny => "(deny",
@@ -201,6 +267,13 @@ impl Rule {
                 }
                 out.push(')');
             }
+        }
+        if let (Some(marker), Effect::Deny, Some(reason)) = (marker, self.effect, &self.reason) {
+            out.push_str(&format!(
+                " (with message (string-append (param {}) {}))",
+                quote(marker.as_bytes())?,
+                quote(format!(" {}", reason.code()).as_bytes())?
+            ));
         }
         out.push(')');
         Ok(out)
@@ -309,7 +382,7 @@ pub const MAX_MERGED_FILTERS: usize = 64;
 /// are put into one rule.
 pub fn merge_adjacent(rules: Vec<Rule>, max_filters: usize) -> Vec<Rule> {
     let mut out: Vec<Rule> = Vec::with_capacity(rules.len());
-    let same = |a: &Rule, b: &Rule| a.effect == b.effect && a.ops == b.ops;
+    let same = |a: &Rule, b: &Rule| a.effect == b.effect && a.ops == b.ops && a.reason == b.reason;
     for rule in rules {
         if rule.filters.is_empty() {
             // An unfiltered rule covers every neighbour like it.
@@ -344,22 +417,24 @@ pub struct Rendered {
     pub params: Vec<(String, String)>,
 }
 
-/// Writes `(version 1)`, `(deny default)` (with the run tag, if any) and the
-/// rules in order, one per line.
-pub fn write_profile(tag: Option<&Tag>, rules: &[Rule]) -> Result<Rendered, EscapeError> {
+/// Writes `(version 1)`, `(deny default)` and the rules in order, one per
+/// line. With `marker` (the name of the run-marker parameter), every denial
+/// is reported with the run's marker: the default's message is the marker,
+/// and a deny rule with a reason appends its code (see [`DenyReason`]).
+pub fn write_profile(marker: Option<&str>, rules: &[Rule]) -> Result<Rendered, EscapeError> {
     let mut params = Params::default();
     let mut text = String::from("(version 1)\n");
-    match tag {
-        Some(tag) => {
+    match marker {
+        Some(marker) => {
             text.push_str(&format!(
-                "(deny default (with message {}))\n",
-                quote(tag.as_str().as_bytes())?
+                "(deny default (with message (param {})))\n",
+                quote(marker.as_bytes())?
             ));
         }
         None => text.push_str("(deny default)\n"),
     }
     for rule in rules {
-        text.push_str(&rule.render(&mut params)?);
+        text.push_str(&rule.render_reporting(&mut params, marker)?);
         text.push('\n');
     }
     Ok(Rendered {

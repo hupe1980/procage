@@ -612,6 +612,19 @@ pub(crate) fn killpg(pgid: libc::pid_t) {
     unsafe { libc::killpg(pgid, libc::SIGKILL) };
 }
 
+/// Whether `path` lies on a volume mounted read-only (`statfs`
+/// `MNT_RDONLY`), such as the sealed system volume.
+pub(crate) fn on_read_only_volume(path: &CStr) -> Result<bool, i32> {
+    let mut fs = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `path` is NUL-terminated; statfs fills the buffer on success.
+    if unsafe { libc::statfs(path.as_ptr(), fs.as_mut_ptr()) } == -1 {
+        return Err(errno());
+    }
+    // SAFETY: statfs returned 0, so the buffer is initialised.
+    let fs = unsafe { fs.assume_init() };
+    Ok(fs.f_flags & libc::MNT_RDONLY as u32 != 0)
+}
+
 /// Spawns `/bin/sleep 30`, in a new session when `setsid`; returns its pid
 /// (for lifetime tests).
 pub(crate) fn spawn_sleeper(setsid_first: bool) -> std::io::Result<u32> {
@@ -696,6 +709,30 @@ pub(crate) fn install_probe(
                 Err(e) => Err(fail(PROBE_CANARY, e)),
                 Ok(()) => Err(fail(PROBE_CANARY, 0)),
             }
+        });
+    }
+}
+
+/// Makes `command`'s child a violation fence: it applies `bytecode` (a
+/// deny-default profile whose message is the fence marker), is denied
+/// opening `/`, which the kernel logs, and exits with status 0 without
+/// executing anything. The spawn then succeeds and gives the fence's pid.
+pub(crate) fn install_fence(
+    command: &mut std::process::Command,
+    ops: ChildOps,
+    bytecode: std::sync::Arc<[u8]>,
+) {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: as for `ChildPlan::install`: `__mac_syscall`, `open` on a
+    // static string and `_exit` are system calls; the bytecode was allocated
+    // in the parent and is owned by the closure.
+    unsafe {
+        command.pre_exec(move || {
+            let code = match ops.apply(&bytecode) {
+                Ok(()) => i32::from(open_readonly(c"/").is_ok()),
+                Err(_) => 2,
+            };
+            libc::_exit(code)
         });
     }
 }

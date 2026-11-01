@@ -28,6 +28,7 @@ pub(crate) fn run(step: &str, args: &[String]) -> StepResult {
         "compile" => compile_case(choice(args, 0, COMPILE_CASES)?),
         "compile-rules" => compile_rules(args),
         "apply-selfcheck" => apply_selfcheck(),
+        "report-denial" => report_denial(args),
         "apply-then-spawn" => apply_then_spawn(),
         "read" => read(choice(
             args,
@@ -362,6 +363,40 @@ fn compile_rules(args: &[String]) -> StepResult {
             emit("err_kind", err_kind(e.text.as_deref()));
         }
     }
+    Ok(())
+}
+
+/// Applies a deny-default profile whose default message is the parameter
+/// `T` (`args[0]`) and whose explicit deny of `<dir>/b` appends a code with
+/// `string-append`, then reads `<dir>/a` (default) and `<dir>/b` (explicit).
+fn report_denial(args: &[String]) -> StepResult {
+    let tag = args
+        .first()
+        .ok_or_else(|| Fail::Usage("missing tag".into()))?;
+    let dir = scratch_arg(args, 1)?;
+    let (a, b) = (format!("{dir}/a"), format!("{dir}/b"));
+    for p in [&a, &b] {
+        std::fs::write(p, "x").map_err(|e| setup(e.to_string()))?;
+    }
+    let sbpl = format!(
+        "(version 1)(deny default (with message (param \"T\")))(allow file-read-metadata)\
+         (deny file-read-data (literal \"{b}\") (with message (string-append (param \"T\") \" hd:secrets\")))"
+    );
+    let sb = sandbox()?;
+    let bc = sb
+        .compile(&sbpl, &[("T", tag)])
+        .map_err(|e| setup(format!("compile failed: {:?}", e.text)))?;
+    sb.apply_path_a(&bc).map_err(|e| {
+        emit("apply_errno", e);
+        setup(format!("apply failed: errno {e}"))
+    })?;
+    let read = |p: &str| match std::fs::read(p) {
+        Ok(_) => 0,
+        Err(e) => io_errno(&e),
+    };
+    let (ea, eb) = (read(&a), read(&b));
+    emit("a_errno", ea);
+    emit("b_errno", eb);
     Ok(())
 }
 

@@ -4,7 +4,7 @@ version = "0.0.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Process sandboxing for Rust on macOS (Seatbelt, without sandbox-exec) and Linux (Landlock, seccomp, namespaces). Under development: 0.0.x contains no API"
+description = "Process sandboxing for Rust on macOS (Seatbelt, without sandbox-exec) and Linux (Landlock, seccomp, namespaces). Under development: pre-1.0, API unstable"
 repository.workspace = true
 readme = "../../README.md"
 authors.workspace = true
@@ -28,6 +28,10 @@ procage-policy = { path = "../procage-policy", version = "0.0.1" }
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 libc = "0.2"
+
+# The violation monitor reads `log stream --style ndjson`.
+[target.'cfg(target_os = "macos")'.dependencies]
+serde_json = { version = "1", default-features = false, features = ["std"] }
 
 # The workspace set, except that unsafe code is denied rather than forbidden so
 # that `macos::sys` and `linux::sys` alone can allow it.

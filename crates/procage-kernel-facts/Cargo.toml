@@ -15,6 +15,8 @@ libc = "0.2"
 [dev-dependencies]
 # For the well-formedness check of lowered profiles (policy_compiles).
 procage-policy = { path = "../procage-policy" }
+# KF-M29 reads `log stream --style ndjson`.
+serde_json = "1"
 
 [[bin]]
 name = "kf-probe"
