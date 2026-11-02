@@ -11,7 +11,7 @@ default:
     @just --list --unsorted
 
 # Every local quality gate, in order; stops at the first failure.
-ci: fmt-check lint test doc package-docs deny msrv no-std semver planning-paths
+ci: fmt-check lint test doc package-docs deny msrv no-std features semver planning-paths
 
 # `ci` plus the Linux facts and tests in containers.
 ci-all: ci kf-linux kf-linux-t1 linux linux-t1
@@ -25,9 +25,10 @@ fmt-check:
 
 lint:
     @echo "==> gate: lint"
-    cargo clippy --workspace --all-targets -- -D warnings
-    cargo clippy --workspace --all-targets --target aarch64-unknown-linux-gnu -- -D warnings
-    cargo clippy --workspace --all-targets --target x86_64-unknown-linux-musl -- -D warnings
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo clippy --workspace --all-targets --all-features --target aarch64-unknown-linux-gnu -- -D warnings
+    cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-musl -- -D warnings
+    cargo clippy -p procage --all-targets -- -D warnings
     # The fuzz targets are their own workspace; check that they still build.
     cargo check --manifest-path crates/procage-policy/fuzz/Cargo.toml --bins
 
@@ -36,6 +37,7 @@ test:
     @echo "==> gate: test"
     cargo test --workspace
     cargo test -p procage-policy --all-features
+    cargo test -p procage --features tokio --lib --test tokio
 
 # Spawn latency against a plain spawn and sandbox-exec or bwrap; run outside any sandbox.
 bench *ARGS:
@@ -69,8 +71,8 @@ bisect:
 
 doc:
     @echo "==> gate: doc"
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --target aarch64-unknown-linux-gnu
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --target aarch64-unknown-linux-gnu
 
 # The published packages (procage and its companion procage-policy) contain the
 # threat model, and the docs build from the packages alone (outside the workspace).
@@ -98,7 +100,7 @@ deny:
 
 msrv:
     @echo "==> gate: msrv"
-    cargo +{{msrv}} check --workspace --all-targets
+    cargo +{{msrv}} check --workspace --all-targets --all-features
 
 # The policy crate must build without std (bare-metal target), with and
 # without its data format.
@@ -106,6 +108,16 @@ no-std:
     @echo "==> gate: no-std"
     cargo build -p procage-policy --target thumbv7em-none-eabihf
     cargo build -p procage-policy --target thumbv7em-none-eabihf --features serde
+
+# Without features, procage depends on no async runtime.
+features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> gate: features"
+    if cargo tree -p procage -e normal --target all --prefix none | grep -E '^(tokio|mio|futures)'; then
+        echo "the default build depends on an async crate" >&2; exit 1
+    fi
+    cargo tree -p procage -e normal --target all --prefix none --features tokio | grep -q '^tokio '
 
 semver:
     @echo "==> gate: semver"
@@ -147,6 +159,7 @@ escape:
     cargo test --locked -p procage --test escape_macos
     PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_macos
     PROCAGE_ESCAPE_BASE=v3 PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_macos
+    PROCAGE_ASYNC=1 cargo test --locked -p procage --features tokio --test escape_macos --test tokio
 
 # Linux facts in a container under Docker's default seccomp profile (tier T2).
 kf-linux tier="T2":
@@ -174,7 +187,7 @@ linux tier="T2":
         -e HOME=/tmp -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/target \
         -e PROCAGE_EXPECT_TIER={{tier}} \
         -v "$PWD":/src:ro -w /src {{rust_image}} \
-        sh -c 'cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle && PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_linux'
+        sh -c 'cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle && PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_linux && PROCAGE_ASYNC=1 cargo test --locked -p procage --features tokio --test escape_linux --test tokio'
 
 # The Linux backend's tests with seccomp and AppArmor unconfined, so user namespaces work (tier T1).
 linux-t1 tier="T1":
@@ -184,4 +197,4 @@ linux-t1 tier="T1":
         -e HOME=/tmp -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/target \
         -e PROCAGE_EXPECT_TIER={{tier}} \
         -v "$PWD":/src:ro -w /src {{rust_image}} \
-        sh -c 'cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle && PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_linux'
+        sh -c 'cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle && PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_linux && PROCAGE_ASYNC=1 cargo test --locked -p procage --features tokio --test escape_linux --test tokio'

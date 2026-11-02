@@ -53,6 +53,8 @@ let status = cage
   backend and tier, and everything accepted short of the policy.
 - 🔎 **Violation reports.** A cage can say what the sandbox denied and which
   rule denied it: every denial on macOS, every refused system call on Linux.
+- ⚡ **Async (tokio).** With the `tokio` feature, `Cage::spawn_async`
+  returns an awaitable child, and violations arrive as a stream.
 - 📦 **Frozen presets and base profiles** that let ordinary programs and
   developer tools start, and `Cage::exec` for helpers that become the caged
   command.

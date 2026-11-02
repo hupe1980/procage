@@ -20,7 +20,7 @@ env:
 
 jobs:
   gates:
-    name: gates (fmt, lint, doc, deny, msrv, no-std, semver, planning paths)
+    name: gates (fmt, lint, doc, deny, msrv, no-std, semver, features, planning paths)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -36,15 +36,16 @@ jobs:
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: just,cargo-deny,cargo-semver-checks
-      - run: just fmt-check lint doc deny msrv no-std semver planning-paths
+      - run: just fmt-check lint doc deny msrv no-std semver features planning-paths
       - name: The macOS backend (lint and docs, cross-checked)
         run: |
-          cargo clippy --workspace --all-targets --target aarch64-apple-darwin -- -D warnings
-          RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --target aarch64-apple-darwin
+          cargo clippy --workspace --all-targets --all-features --target aarch64-apple-darwin -- -D warnings
+          RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --target aarch64-apple-darwin
       - name: Tests (the kernel facts run in the lanes below)
         run: |
           cargo test --workspace --exclude procage-kernel-facts
           cargo test -p procage-policy --all-features
+          cargo test -p procage --features tokio --lib --test tokio
           cargo test -p procage-kernel-facts --lib --bins
 
   macos:
@@ -69,6 +70,10 @@ jobs:
         run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec --test receipts --test audit --test oracle
       - name: Escape suite
         run: cargo test --locked -p procage --test escape_macos
+      - name: Escape suite and the async handle through tokio
+        run: cargo test --locked -p procage --features tokio --test escape_macos --test tokio
+        env:
+          PROCAGE_ASYNC: "1"
       - name: Escape suite with violation reporting
         run: cargo test --locked -p procage --test escape_macos
         env:
@@ -115,6 +120,10 @@ jobs:
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
       - name: Caged children and escape suite
         run: cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle
+      - name: Escape suite and the async handle through tokio
+        run: cargo test --locked -p procage --features tokio --test escape_linux --test tokio
+        env:
+          PROCAGE_ASYNC: "1"
       - name: Escape suite with violation reporting
         run: cargo test --locked -p procage --test escape_linux
         env:

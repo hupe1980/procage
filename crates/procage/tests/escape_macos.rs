@@ -19,6 +19,8 @@
 
 #![cfg(target_os = "macos")]
 
+#[path = "support/asynchronous.rs"]
+mod asynchronous;
 #[path = "support/scratch.rs"]
 mod scratch_support;
 use scratch_support::Scratch;
@@ -168,6 +170,16 @@ fn in_child_with(
     fds: &[std::os::fd::BorrowedFd<'_>],
 ) -> String {
     let cage = cage_for(policy).unwrap_or_else(|e| panic!("cage: {e}"));
+    if asynchronous::on() {
+        let out = asynchronous::output(
+            &cage,
+            child_command(action),
+            grants,
+            fds,
+            Duration::from_secs(20),
+        );
+        return result(&out);
+    }
     let child = cage
         .spawn_with_fds(&mut child_command(action), grants, fds)
         .unwrap_or_else(|e| panic!("spawn: {e}"));

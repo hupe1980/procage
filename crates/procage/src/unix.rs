@@ -264,3 +264,51 @@ mod tests {
         assert!(decide(true, Some(true), &allow).unwrap());
     }
 }
+
+/// The process a run spawned, through std or through tokio.
+#[derive(Debug)]
+pub(crate) enum Proc {
+    Std(std::process::Child),
+    /// tokio's child is not unwind safe, which would take `UnwindSafe` from
+    /// `Child` once the feature is on anywhere in a build; the handle keeps
+    /// no invariant a panic could break.
+    #[cfg(feature = "tokio")]
+    Tokio(std::panic::AssertUnwindSafe<tokio::process::Child>),
+}
+
+impl Proc {
+    /// The pid of a process that has not been waited for yet.
+    pub(crate) fn pid(&self) -> u32 {
+        match self {
+            Proc::Std(c) => c.id(),
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(c) => c
+                .id()
+                .unwrap_or_else(|| unreachable!("a child not yet waited for has a pid")),
+        }
+    }
+
+    pub(crate) fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+        match self {
+            Proc::Std(c) => c.try_wait(),
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(c) => c.try_wait(),
+        }
+    }
+
+    /// Waits for the process, blocking. A tokio child is polled (it may not
+    /// be waited for twice); only the end of a run calls this, after its
+    /// process group was killed.
+    pub(crate) fn wait(&mut self) -> io::Result<std::process::ExitStatus> {
+        match self {
+            Proc::Std(c) => c.wait(),
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(c) => loop {
+                if let Some(status) = c.try_wait()? {
+                    return Ok(status);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            },
+        }
+    }
+}

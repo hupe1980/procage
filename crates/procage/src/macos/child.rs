@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use super::lifetime::{self, Run};
 use super::sys;
 use super::violations::{self, Sink};
+use crate::unix::Proc;
 use crate::violation::{Coverage, Violation, Violations};
 
 /// What a spawn reports: whether the run's marker finds its processes
@@ -33,7 +34,9 @@ pub(super) struct Reporting {
 /// direct child.
 #[derive(Debug)]
 pub struct Child {
-    inner: Option<std::process::Child>,
+    inner: Option<Proc>,
+    /// The child's pid, which is also its process group's id.
+    pid: u32,
     dropped_env: Vec<String>,
     tmpdir: Option<PathBuf>,
     run: Option<Run>,
@@ -50,7 +53,7 @@ pub struct Child {
 
 impl Child {
     pub(super) fn new(
-        inner: std::process::Child,
+        inner: Proc,
         dropped_env: Vec<String>,
         tmpdir: Option<PathBuf>,
         run: Option<Run>,
@@ -59,6 +62,7 @@ impl Child {
         audit: crate::audit::RunAudit,
     ) -> Self {
         Self {
+            pid: inner.pid(),
             inner: Some(inner),
             dropped_env,
             tmpdir,
@@ -96,13 +100,13 @@ impl Child {
         Some(self.receipt.receipt(status, &record, self.killed, &audit))
     }
 
-    fn inner(&self) -> &std::process::Child {
+    pub(crate) fn inner(&self) -> &Proc {
         self.inner
             .as_ref()
             .unwrap_or_else(|| unreachable!("present until drop or detach"))
     }
 
-    fn inner_mut(&mut self) -> &mut std::process::Child {
+    pub(crate) fn inner_mut(&mut self) -> &mut Proc {
         self.inner
             .as_mut()
             .unwrap_or_else(|| unreachable!("present until drop or detach"))
@@ -118,10 +122,18 @@ impl Child {
     /// process being found and killed, it could exit and its pid be reused;
     /// macOS has no process handle that would close that window.
     pub fn kill_all(&mut self) -> io::Result<()> {
-        let child = self.inner_mut();
+        self.signal()?;
+        // Reaped first, the child no longer shows up in the marker search.
+        let waited = self.inner_mut().wait().map(drop);
+        self.end(waited)
+    }
+
+    /// The first half of ending the run: kills the descendants still
+    /// reachable from a running child, and the child's process group.
+    pub(crate) fn signal(&mut self) -> io::Result<()> {
         let pid =
-            libc::pid_t::try_from(child.id()).map_err(|_| io::Error::other("pid out of range"))?;
-        if child.try_wait()?.is_none() {
+            libc::pid_t::try_from(self.pid).map_err(|_| io::Error::other("pid out of range"))?;
+        if self.inner_mut().try_wait()?.is_none() {
             self.killed = true;
             for descendant in sys::descendants(pid) {
                 sys::kill(descendant);
@@ -130,8 +142,12 @@ impl Child {
         // The group outlives a reaped leader while members remain, and its
         // id cannot be handed to another process while it exists.
         sys::killpg(pid);
-        // Reaped first, the child no longer shows up in the marker search.
-        let waited = self.inner_mut().wait().map(drop);
+        Ok(())
+    }
+
+    /// The second half, once the child is reaped (`waited`): the marker
+    /// search and the record.
+    pub(crate) fn end(&mut self, waited: io::Result<()>) -> io::Result<()> {
         let ended = match &self.run {
             Some(run) if self.reporting.forking => lifetime::end(run),
             _ => Ok(()),
@@ -165,6 +181,7 @@ impl Child {
         if let Some(run) = &self.run {
             violations::unregister(run.marker());
         }
+        violations::lock(record).close();
         // The handle keeps a copy for `violations` after the run ended.
         self.ended = Some(violations::lock(record).snapshot());
         delivered
@@ -209,10 +226,28 @@ impl Child {
         record.take_receiver()
     }
 
+    #[cfg(feature = "tokio")]
+    pub(crate) fn violation_stream(&mut self) -> Option<crate::ViolationStream> {
+        let record = self.reporting.record.as_ref()?;
+        let mut record = violations::lock(record);
+        if record.snapshot().coverage() != &Coverage::Observed {
+            return None;
+        }
+        record.take_stream()
+    }
+
     /// Gives up lifetime control: the child keeps running after this handle
     /// is gone. The private temporary directory, if any, is left in place,
     /// and the run's marker is never given to another run of this process.
-    pub fn detach(mut self) -> std::process::Child {
+    pub fn detach(self) -> std::process::Child {
+        match self.release() {
+            Proc::Std(c) => c,
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(_) => unreachable!("an async handle detaches through AsyncChild"),
+        }
+    }
+
+    pub(crate) fn release(mut self) -> Proc {
         self.tmpdir = None;
         if let (Some(_), Some(run)) = (&self.reporting.record, &self.run) {
             violations::unregister(run.marker());
@@ -244,13 +279,21 @@ impl Deref for Child {
     type Target = std::process::Child;
 
     fn deref(&self) -> &std::process::Child {
-        self.inner()
+        match self.inner() {
+            Proc::Std(c) => c,
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(_) => unreachable!("an async handle derefs through AsyncChild"),
+        }
     }
 }
 
 impl DerefMut for Child {
     fn deref_mut(&mut self) -> &mut std::process::Child {
-        self.inner_mut()
+        match self.inner_mut() {
+            Proc::Std(c) => c,
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(_) => unreachable!("an async handle derefs through AsyncChild"),
+        }
     }
 }
 

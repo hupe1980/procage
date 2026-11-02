@@ -6,6 +6,24 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Async spawning (feature `tokio`): `Cage::spawn_async` and
+  `Cage::spawn_async_with_fds` take a `tokio::process::Command` and return
+  an `AsyncChild`, which dereferences to `tokio::process::Child`, ends the
+  run on drop or an awaited `kill_all`, and gives the audit, receipt and
+  violations as `Child` does. `AsyncChild::violation_stream` yields the
+  run's violations (`ViolationStream`, also a `futures_core::Stream`).
+  `SpawnError::NoRuntime` when no tokio runtime runs on the calling thread.
+  The escape suites run through it on every CI lane. Without the feature
+  procage has no async dependency.
+
+### Changed
+
+- The receiver from `Child::violation_receiver` now ends (`recv` returns
+  an error) once the run's record is complete or the run ended, instead of
+  staying open until the handle is dropped.
+
 ## [0.2.0] - 2026-11-02
 
 ### Security

@@ -240,6 +240,9 @@ impl fmt::Display for GrantError {
     }
 }
 
+#[cfg(feature = "tokio")]
+pub use crate::async_child::AsyncChild;
+
 /// Why no caged child runs.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -293,6 +296,9 @@ pub enum SpawnError {
     HardLinks(Vec<crate::LinkFinding>),
     /// A question to [`Cage::explain`] has no answer.
     Explain(procage_policy::explain::ExplainError),
+    /// [`Cage::spawn_async`] was called outside a tokio runtime.
+    #[cfg(feature = "tokio")]
+    NoRuntime,
 }
 
 impl fmt::Display for SpawnError {
@@ -324,6 +330,10 @@ impl fmt::Display for SpawnError {
             SpawnError::Io(e) => write!(f, "{e}"),
             SpawnError::HardLinks(found) => f.write_str(&crate::audit::refusal(found)),
             SpawnError::Explain(e) => write!(f, "{e}"),
+            #[cfg(feature = "tokio")]
+            SpawnError::NoRuntime => {
+                f.write_str("spawn_async needs a tokio runtime on the calling thread")
+            }
         }
     }
 }
@@ -737,6 +747,21 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
     ) -> Result<Child, SpawnError> {
+        let launch = self.launch(command, grants, fds)?;
+        match command.spawn() {
+            Ok(inner) => Ok(self.adopt(launch, crate::unix::Proc::Std(inner))),
+            Err(e) => Err(launch.abandon(e)),
+        }
+    }
+
+    /// Everything a spawn does before the fork: the checks, the child
+    /// sequence installed on `command`, the link check and the record.
+    pub(crate) fn launch(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+    ) -> Result<Launch, SpawnError> {
         let session = if self.plan.hygiene.tty == Tty::Inherit {
             sys::Session::Group
         } else {
@@ -751,23 +776,28 @@ impl Cage {
             Some(run) if self.violations => Some(violations::register(run.marker())),
             _ => None,
         };
-        // A failed spawn leaves no process behind, but the slot is retired
-        // (dropped) rather than freed, to stay on the safe side.
-        let inner = match command.spawn() {
-            Ok(inner) => inner,
-            Err(e) => {
-                if let Some(run) = &prepared.run {
-                    violations::unregister(run.marker());
-                }
-                return Err(spawn::decode(e));
-            }
-        };
+        let names = grants.bindings.iter().map(|(n, _)| n.clone()).collect();
+        Ok(Launch {
+            prepared,
+            run_audit,
+            report,
+            names,
+        })
+    }
+
+    /// The handle of the process `launch` was spawned as.
+    pub(crate) fn adopt(&self, launch: Launch, inner: crate::unix::Proc) -> Child {
+        let Launch {
+            prepared,
+            run_audit,
+            report,
+            mut names,
+        } = launch;
         let tmpdir = prepared.tmpdir.disarm();
-        let mut names: Vec<String> = grants.bindings.iter().map(|(n, _)| n.clone()).collect();
         if tmpdir.is_some() {
             names.push(TMPDIR_GRANT.into());
         }
-        Ok(Child::new(
+        Child::new(
             inner,
             prepared.dropped,
             tmpdir,
@@ -778,7 +808,7 @@ impl Cage {
             },
             crate::receipt::RunFacts::new(self.facts.clone(), names),
             run_audit,
-        ))
+        )
     }
 
     /// Turns the calling process into `command`, running in this cage: like
@@ -929,6 +959,25 @@ impl Cage {
                 Err(e)
             }
         }
+    }
+}
+
+/// A spawn up to the fork ([`Cage::launch`]).
+pub(crate) struct Launch {
+    prepared: Prepared,
+    run_audit: crate::audit::RunAudit,
+    report: Option<violations::Sink>,
+    names: Vec<String>,
+}
+
+impl Launch {
+    /// The spawn failed: no process is left behind, but the run's slot is
+    /// retired (dropped) rather than freed, to stay on the safe side.
+    pub(crate) fn abandon(self, e: std::io::Error) -> SpawnError {
+        if let Some(run) = &self.prepared.run {
+            violations::unregister(run.marker());
+        }
+        spawn::decode(e)
     }
 }
 

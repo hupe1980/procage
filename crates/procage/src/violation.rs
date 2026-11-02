@@ -274,6 +274,28 @@ pub(crate) fn lock(sink: &Sink) -> MutexGuard<'_, Record> {
     sink.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Where a record sends violations as they arrive.
+#[derive(Debug)]
+enum Live {
+    Std(SyncSender<Violation>),
+    #[cfg(feature = "tokio")]
+    Tokio(tokio::sync::mpsc::Sender<Violation>),
+}
+
+impl Live {
+    /// Sends without blocking; `false` once the receiving end is gone.
+    fn send(&self, v: Violation) -> bool {
+        match self {
+            Live::Std(tx) => !matches!(tx.try_send(v), Err(TrySendError::Disconnected(_))),
+            #[cfg(feature = "tokio")]
+            Live::Tokio(tx) => !matches!(
+                tx.try_send(v),
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_))
+            ),
+        }
+    }
+}
+
 /// A run's record while it is collected: the violations so far and the
 /// optional live receiver's sender.
 #[derive(Debug)]
@@ -282,7 +304,7 @@ pub(crate) struct Record {
     /// Where each distinct violation is in the list.
     index: HashMap<Key, usize>,
     cap: usize,
-    live: Option<SyncSender<Violation>>,
+    live: Option<Live>,
     receiver: Option<Receiver<Violation>>,
 }
 
@@ -297,7 +319,7 @@ impl Record {
             violations: Violations::empty(coverage),
             index: HashMap::new(),
             cap,
-            live: Some(live),
+            live: Some(Live::Std(live)),
             receiver: Some(receiver),
         }
     }
@@ -312,11 +334,10 @@ impl Record {
             kept.repeats = kept.repeats.saturating_add(v.repeats);
             return;
         }
-        if let Some(live) = &self.live {
-            match live.try_send(v.clone()) {
-                Ok(()) | Err(TrySendError::Full(_)) => {}
-                Err(TrySendError::Disconnected(_)) => self.live = None,
-            }
+        if let Some(live) = &self.live
+            && !live.send(v.clone())
+        {
+            self.live = None;
         }
         if self.violations.list.len() < self.cap {
             self.index.insert(key, self.violations.list.len());
@@ -327,7 +348,8 @@ impl Record {
     }
 
     /// The record is complete: every report up to now was delivered. A
-    /// record whose reporting stopped stays incomplete.
+    /// record whose reporting stopped stays incomplete. The live receiver
+    /// ends.
     pub(crate) fn finish(&mut self) {
         if matches!(
             self.violations.coverage,
@@ -335,6 +357,12 @@ impl Record {
         ) {
             self.violations.complete = true;
         }
+        self.live = None;
+    }
+
+    /// The run ended: nothing more is sent, and the live receiver ends.
+    pub(crate) fn close(&mut self) {
+        self.live = None;
     }
 
     /// Reporting stopped: the record stays incomplete and says why.
@@ -349,13 +377,61 @@ impl Record {
         self.violations.complete
     }
 
-    /// The live receiver, once.
+    /// The live receiver, once (either this or the stream).
     pub(crate) fn take_receiver(&mut self) -> Option<Receiver<Violation>> {
         self.receiver.take()
     }
 
+    /// The live stream, once (either this or the receiver): it starts with
+    /// what the receiver buffered so far, and ends with the receiver's
+    /// sender.
+    #[cfg(feature = "tokio")]
+    pub(crate) fn take_stream(&mut self) -> Option<ViolationStream> {
+        let buffered = self.receiver.take()?;
+        let (tx, rx) = tokio::sync::mpsc::channel(RECEIVER_BOUND);
+        for v in buffered.try_iter() {
+            let _ = tx.try_send(v);
+        }
+        if self.live.is_some() {
+            self.live = Some(Live::Tokio(tx));
+        }
+        Some(ViolationStream { rx })
+    }
+
     pub(crate) fn snapshot(&self) -> Violations {
         self.violations.clone()
+    }
+}
+
+/// A run's violations as they arrive, on a tokio runtime (feature `tokio`).
+///
+/// It yields each distinct violation once, as the receiver of
+/// `Child::violation_receiver` does, and ends when the run's record is
+/// complete or reporting stops. It buffers 1,024 violations; when it lags,
+/// later ones are only in `Child::violations`.
+#[cfg(feature = "tokio")]
+#[derive(Debug)]
+pub struct ViolationStream {
+    rx: tokio::sync::mpsc::Receiver<Violation>,
+}
+
+#[cfg(feature = "tokio")]
+impl ViolationStream {
+    /// The next violation, or `None` once the stream has ended.
+    pub async fn next(&mut self) -> Option<Violation> {
+        self.rx.recv().await
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl futures_core::Stream for ViolationStream {
+    type Item = Violation;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Violation>> {
+        self.rx.poll_recv(cx)
     }
 }
 
@@ -542,6 +618,51 @@ mod tests {
         assert_eq!(record.snapshot().len(), RECEIVER_BOUND + 10);
         drop(rx);
         record.push(at(0));
+    }
+
+    #[test]
+    fn the_receiver_ends_when_the_record_is_complete() {
+        let mut record = Record::new(Coverage::Observed);
+        let rx = record.take_receiver().unwrap();
+        record.push(
+            parse(
+                &format!("Sandbox: cat(5) deny(1) file-read-data /x\n{M}"),
+                now(),
+            )
+            .unwrap()
+            .1,
+        );
+        record.finish();
+        assert_eq!(rx.iter().count(), 1, "the iterator ends");
+    }
+
+    #[cfg(feature = "tokio")]
+    #[test]
+    fn the_stream_takes_over_the_buffer_and_ends() {
+        let at = |path: usize| {
+            let msg = format!("Sandbox: cat(5) deny(1) file-read-data /x{path}\n{M}");
+            parse(&msg, now()).unwrap().1
+        };
+        let mut record = Record::new(Coverage::Observed);
+        record.push(at(0));
+        let mut stream = record.take_stream().unwrap();
+        assert!(record.take_receiver().is_none() && record.take_stream().is_none());
+        for path in 1..RECEIVER_BOUND + 10 {
+            record.push(at(path));
+        }
+        record.close();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let got = rt.block_on(async {
+            let mut n = 0;
+            while stream.next().await.is_some() {
+                n += 1;
+            }
+            n
+        });
+        assert_eq!(got, RECEIVER_BOUND, "bounded, never blocking, then ended");
+        assert_eq!(record.snapshot().len(), RECEIVER_BOUND + 10);
     }
 
     /// Only equal denials merge, and the count saturates.

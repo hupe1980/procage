@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use crate::unix::Proc;
 use crate::violation::{Coverage, Sink, Violation, Violations, lock};
 
 use super::sys;
@@ -41,7 +42,9 @@ pub(super) enum Reporting {
 /// direct child.
 #[derive(Debug)]
 pub struct Child {
-    inner: Option<std::process::Child>,
+    inner: Option<Proc>,
+    /// The child's pid, which is also its process group's id.
+    pid: u32,
     dropped_env: Vec<String>,
     tmpdir: Option<PathBuf>,
     reporting: Reporting,
@@ -55,7 +58,7 @@ pub struct Child {
 
 impl Child {
     pub(super) fn new(
-        inner: std::process::Child,
+        inner: Proc,
         dropped_env: Vec<String>,
         tmpdir: Option<PathBuf>,
         reporting: Reporting,
@@ -63,6 +66,7 @@ impl Child {
         audit: crate::audit::RunAudit,
     ) -> Self {
         Self {
+            pid: inner.pid(),
             inner: Some(inner),
             dropped_env,
             tmpdir,
@@ -122,13 +126,13 @@ impl Child {
         }
     }
 
-    fn inner(&self) -> &std::process::Child {
+    pub(crate) fn inner(&self) -> &Proc {
         self.inner
             .as_ref()
             .unwrap_or_else(|| unreachable!("present until drop or detach"))
     }
 
-    fn inner_mut(&mut self) -> &mut std::process::Child {
+    pub(crate) fn inner_mut(&mut self) -> &mut Proc {
         self.inner
             .as_mut()
             .unwrap_or_else(|| unreachable!("present until drop or detach"))
@@ -137,10 +141,17 @@ impl Child {
     /// Kills the child's process group and every descendant reachable from
     /// the child, then waits for the child.
     pub fn kill_all(&mut self) -> io::Result<()> {
-        let child = self.inner_mut();
+        self.signal()?;
+        let waited = self.inner_mut().wait().map(drop);
+        self.end(waited)
+    }
+
+    /// The first half of ending the run: kills the descendants still
+    /// reachable from a running child, and the child's process group.
+    pub(crate) fn signal(&mut self) -> io::Result<()> {
         let pid =
-            libc::pid_t::try_from(child.id()).map_err(|_| io::Error::other("pid out of range"))?;
-        let running = child.try_wait()?.is_none();
+            libc::pid_t::try_from(self.pid).map_err(|_| io::Error::other("pid out of range"))?;
+        let running = self.inner_mut().try_wait()?.is_none();
         if running {
             for descendant in descendants(pid) {
                 sys::kill(descendant);
@@ -149,8 +160,12 @@ impl Child {
         // The group outlives a reaped leader while members remain, and its
         // id cannot be handed to another process while it exists.
         sys::killpg(pid);
-        let waited = child.wait().map(drop);
         self.killed |= running;
+        Ok(())
+    }
+
+    /// The second half, once the child is reaped (`waited`): the record.
+    pub(crate) fn end(&mut self, waited: io::Result<()>) -> io::Result<()> {
         // No process of the run is left: the listener hangs up at once.
         if let Reporting::On { done, .. } = &self.reporting {
             let start = Instant::now();
@@ -159,12 +174,23 @@ impl Child {
             }
         }
         self.settle();
+        if let Reporting::On { record, .. } = &self.reporting {
+            lock(record).close();
+        }
         waited
     }
 
     /// Gives up lifetime control: the child keeps running after this handle
     /// is gone. The private temporary directory, if any, is left in place.
-    pub fn detach(mut self) -> std::process::Child {
+    pub fn detach(self) -> std::process::Child {
+        match self.release() {
+            Proc::Std(c) => c,
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(_) => unreachable!("an async handle detaches through AsyncChild"),
+        }
+    }
+
+    pub(crate) fn release(mut self) -> Proc {
         self.tmpdir = None;
         self.inner
             .take()
@@ -213,6 +239,14 @@ impl Child {
             _ => None,
         }
     }
+
+    #[cfg(feature = "tokio")]
+    pub(crate) fn violation_stream(&mut self) -> Option<crate::ViolationStream> {
+        match &self.reporting {
+            Reporting::On { record, .. } => lock(record).take_stream(),
+            _ => None,
+        }
+    }
 }
 
 /// Every process's parent, from `/proc/<pid>/stat` (readable for every
@@ -254,13 +288,21 @@ impl Deref for Child {
     type Target = std::process::Child;
 
     fn deref(&self) -> &std::process::Child {
-        self.inner()
+        match self.inner() {
+            Proc::Std(c) => c,
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(_) => unreachable!("an async handle derefs through AsyncChild"),
+        }
     }
 }
 
 impl DerefMut for Child {
     fn deref_mut(&mut self) -> &mut std::process::Child {
-        self.inner_mut()
+        match self.inner_mut() {
+            Proc::Std(c) => c,
+            #[cfg(feature = "tokio")]
+            Proc::Tokio(_) => unreachable!("an async handle derefs through AsyncChild"),
+        }
     }
 }
 

@@ -208,6 +208,19 @@
 //! after the exit, `Child::audit` lists the trust-handoff files, symbolic
 //! links and repositories it created or changed. See the [`audit`] module.
 //!
+//! # Async (tokio)
+//!
+//! With the `tokio` feature, `Cage::spawn_async` takes a
+//! `tokio::process::Command` and returns an `AsyncChild` that dereferences
+//! to `tokio::process::Child`: await its exit and read its pipes on the
+//! runtime. The checks, the child sequence and the errors are the std
+//! path's; dropping the handle or awaiting `AsyncChild::kill_all` ends the
+//! run as it does for [`native::Child`]. `AsyncChild::violation_stream`
+//! yields the run's violations as they happen and ends when the record is
+//! complete. Without a runtime on the calling thread the spawn fails with
+//! `SpawnError::NoRuntime` before forking. Without the feature procage has
+//! no async dependency.
+//!
 //! Read the [threat model](threat_model) for the adversary, the scope, the
 //! limits of an OS sandbox and the status of every known escape class.
 
@@ -247,6 +260,8 @@ pub use linux as native;
 pub mod audit;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use audit::{Audit, HandoffFinding, HandoffKind, LinkAudit, LinkFinding};
+#[cfg(all(feature = "tokio", any(target_os = "macos", target_os = "linux")))]
+mod async_child;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod explain;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -260,5 +275,7 @@ pub use receipt::{
 };
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod violation;
+#[cfg(all(feature = "tokio", any(target_os = "macos", target_os = "linux")))]
+pub use violation::ViolationStream;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use violation::{Coverage, DeniedBy, Violation, Violations};

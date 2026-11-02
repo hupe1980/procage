@@ -16,12 +16,19 @@ include = ["/src", "/THREAT_MODEL.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 # Each backend is built for its own OS: render both.
 default-target = "aarch64-apple-darwin"
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+features = ["tokio"]
 
 # Helpers run single-threaded, so the exec tests have their own `main`.
 [[test]]
 name = "exec"
 path = "tests/exec.rs"
 harness = false
+
+# The async handle; needs the feature.
+[[test]]
+name = "tokio"
+path = "tests/tokio.rs"
+required-features = ["tokio"]
 
 # Spawn timings next to a plain spawn and the tools others shell out to.
 [[bench]]
@@ -37,6 +44,15 @@ sha2.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 libc.workspace = true
+futures-core = { version = "0.3", default-features = false, optional = true }
+tokio = { version = "1.47", default-features = false, features = ["process", "rt", "sync"], optional = true }
+
+[features]
+# Async spawn, wait and violation streams on a tokio runtime.
+tokio = ["dep:tokio", "dep:futures-core"]
+
+[dev-dependencies]
+tokio = { version = "1.47", default-features = false, features = ["rt-multi-thread", "io-util", "time", "process", "sync"] }
 
 # The workspace set, except that unsafe code is denied rather than forbidden so
 # that `macos::sys` and `linux::sys` alone can allow it.

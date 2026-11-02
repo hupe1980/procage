@@ -21,6 +21,8 @@
 
 #![cfg(target_os = "linux")]
 
+#[path = "support/asynchronous.rs"]
+mod asynchronous;
 #[path = "support/scratch.rs"]
 mod scratch_support;
 use scratch_support::Scratch;
@@ -213,6 +215,16 @@ fn result(out: &Output) -> String {
 }
 
 fn run_in(cage: &Cage, action: &str, grants: &Grants) -> String {
+    if asynchronous::on() {
+        let out = asynchronous::output(
+            cage,
+            child_command(action),
+            grants,
+            &[],
+            Duration::from_secs(20),
+        );
+        return result(&out);
+    }
     let child = cage
         .spawn(&mut child_command(action), grants)
         .unwrap_or_else(|e| panic!("spawn: {e}"));
