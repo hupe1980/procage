@@ -1722,11 +1722,12 @@ fn a_socket_removed_during_the_spawn_does_not_fail_it() {
     let churn = scratch("churn-foreign");
     let mut p = base();
     p.ipc.unix_sockets = vec![abs(&allowed)];
-    let cage = Cage::with_options(
-        &p,
-        &options(Tier::T1).with_lower(masked().allow(Construct::IpcUnixSockets)),
-    )
-    .unwrap();
+    // A host's own system bus is masked at spawn too (a GitHub runner has
+    // one), an approximation accepted by name.
+    let lower = masked()
+        .allow(Construct::IpcUnixSockets)
+        .allow(Construct::HdServiceHandoff);
+    let cage = Cage::with_options(&p, &options(Tier::T1).with_lower(lower)).unwrap();
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = stop.clone();
     let socket = churn.join("s");

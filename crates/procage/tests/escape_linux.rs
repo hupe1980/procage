@@ -1392,6 +1392,37 @@ fn socket_options(tier: Tier, runtime: &Path, snapshot: bool) -> CageOptions {
     options.with_lower(lower)
 }
 
+/// Beside a host's own system bus or service manager (a GitHub runner has
+/// both; a container usually has neither), a T2 cage with
+/// `service-handoff` in force and the network on cannot exist. Returns
+/// `true` when `p` is refused for that reason alone, asserting that every
+/// gap names one of the host's system paths, so the canary's T2 part, which
+/// needs such a cage, runs only on hosts without them.
+fn refused_beside_the_host_bus(p: &Policy, opts: &CageOptions, canary: &str) -> bool {
+    use procage::policy::presets::{SERVICE_SOCKET_DIRS_LINUX, SERVICE_SOCKETS_LINUX};
+    let gaps = match Cage::with_options(p, opts) {
+        Ok(_) => return false,
+        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
+        Err(e) => panic!("{canary}: {e}"),
+    };
+    let system = |subject: &str| {
+        SERVICE_SOCKETS_LINUX
+            .iter()
+            .chain(SERVICE_SOCKET_DIRS_LINUX)
+            .any(|s| subject == *s || subject.starts_with(&format!("{s}/")))
+    };
+    for g in &gaps {
+        assert!(
+            g.construct == Construct::HdServiceHandoff
+                && g.kind == GapKind::Unsupported
+                && g.subject.as_deref().is_some_and(system),
+            "{canary}: refused for more than the host's bus: {gaps:?}"
+        );
+    }
+    println!("{canary}: T2 refused beside the host's bus; its T2 part needs a host without one");
+    true
+}
+
 fn refused_one(r: &str) -> bool {
     [EPERM, EACCES, ECONNREFUSED]
         .iter()
@@ -1558,6 +1589,11 @@ fn r34_an_abstract_bus_is_scoped() {
         p.net = Network::All;
         p.waive.insert(HardDenyClass::ContainerEngines);
         let opts = socket_options(tier, &empty, true).with_landlock_abi(5);
+        if tier == Tier::T2
+            && refused_beside_the_host_bus(&p, &opts, "r34_an_abstract_bus_is_scoped")
+        {
+            continue;
+        }
         let cage = Cage::with_options(&p, &opts).unwrap_or_else(|e| panic!("{tier}: {e}"));
         let got = run_in(&cage, &format!("abstract:{other}"), &Grants::new());
         assert_eq!(
@@ -1576,6 +1612,11 @@ fn r34_an_abstract_bus_is_scoped() {
         p.net = Network::All;
         p.waive.insert(HardDenyClass::ContainerEngines);
         let opts = socket_options(tier, &d, true);
+        if tier == Tier::T2
+            && refused_beside_the_host_bus(&p, &opts, "r34_an_abstract_bus_is_scoped")
+        {
+            continue;
+        }
         if probe().landlock_abi >= 6 {
             let cage = Cage::with_options(&p, &opts).unwrap_or_else(|e| panic!("{tier}: {e}"));
             assert_eq!(
@@ -1616,18 +1657,21 @@ fn r34_a_socket_bound_later_is_refused() {
     p.waive.insert(HardDenyClass::ContainerEngines);
     p.fs.push(rule(Access::Read, &d));
     // T2: the cage is made while no socket exists, then one appears.
-    let cage = Cage::with_options(&p, &socket_options(Tier::T2, &d, false)).unwrap();
-    let bus = std::os::unix::net::UnixListener::bind(d.join("bus")).unwrap();
-    match cage.spawn(&mut child_command("unix:/"), &Grants::new()) {
-        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => assert!(
-            gaps.iter()
-                .any(|g| g.construct == Construct::HdServiceHandoff),
-            "{gaps:?}"
-        ),
-        other => panic!("T2 spawn: {:?}", other.map(|_| ())),
+    let t2 = socket_options(Tier::T2, &d, false);
+    if !refused_beside_the_host_bus(&p, &t2, "r34_a_socket_bound_later_is_refused") {
+        let cage = Cage::with_options(&p, &t2).unwrap();
+        let bus = std::os::unix::net::UnixListener::bind(d.join("bus")).unwrap();
+        match cage.spawn(&mut child_command("unix:/"), &Grants::new()) {
+            Err(SpawnError::Lower(LowerError::Gaps(gaps))) => assert!(
+                gaps.iter()
+                    .any(|g| g.construct == Construct::HdServiceHandoff),
+                "{gaps:?}"
+            ),
+            other => panic!("T2 spawn: {:?}", other.map(|_| ())),
+        }
+        drop(bus);
+        let _ = std::fs::remove_file(d.join("bus"));
     }
-    drop(bus);
-    let _ = std::fs::remove_file(d.join("bus"));
     if !t1("r34_a_socket_bound_later_is_refused") {
         return;
     }
@@ -1672,6 +1716,13 @@ fn r34_an_abstract_bus_bound_later_refuses_the_spawn() {
     p.net = Network::All;
     p.waive.insert(HardDenyClass::ContainerEngines);
     let opts = socket_options(Tier::T2, &d, true).with_landlock_abi(5);
+    if refused_beside_the_host_bus(
+        &p,
+        &opts,
+        "r34_an_abstract_bus_bound_later_refuses_the_spawn",
+    ) {
+        return;
+    }
     let cage = Cage::with_options(&p, &opts).unwrap();
     let name = format!("/tmp/dbus-procage-r34-later-{}", std::process::id());
     let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
