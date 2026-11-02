@@ -61,7 +61,7 @@ Landlock cannot deny inside a tree it allows:
 
 ## The socket classes
 
-`service-handoff` (on Linux) and `container-engines` deny connecting to sockets under every network setting. On macOS a rule matches the socket a path resolves to, so links such as `/var/run/docker.sock` are covered. On Linux with the network off and no `ipc.unix_sockets`, seccomp refuses every socket. Otherwise the cage looks for the sockets when it is made and at each spawn, in the system locations and every runtime directory (`/run/user/*`, `$XDG_RUNTIME_DIR`, `CageOptions::with_runtime_dir`):
+`service-handoff` (on Linux) and `container-engines` deny connecting to sockets under every network setting. On macOS a rule matches the socket a path resolves to, so links such as `/var/run/docker.sock` are covered. On Linux with the network off and no `ipc.unix_sockets`, seccomp refuses every socket; from Landlock ABI 9, with the network off, Landlock refuses connecting outside `ipc.unix_sockets`, so no cover is needed. Otherwise the cage looks for the sockets when it is made and at each spawn, in the system locations and every runtime directory (`/run/user/*`, `$XDG_RUNTIME_DIR`, `CageOptions::with_runtime_dir`):
 
 - **Tier T1** covers each socket it finds and the classes' directories as a whole (`/run/dbus`, `/run/podman`, `/run/containerd`, the runtime directory's `systemd` and `podman`). A socket bound later elsewhere is not covered: an approximation, accepted with `LowerOptions::accept_spawn_snapshot()`.
 - **Tier T2** cannot keep out one socket: while one exists, the cage is refused with a gap naming it (`Cage::fit` can waive the class), and a spawn is refused if one appeared later.

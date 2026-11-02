@@ -110,6 +110,7 @@ threat-modelled and verified in the open: see the
 just ci            # every local gate: fmt, lints, tests, docs, deny, MSRV (1.99), no_std, semver
 just escape        # the macOS escape suite
 just linux-t1      # the Linux tests in Docker, tier T1 (`just linux` for T2)
+just kernel        # the Linux suites on mainline kernels, one per Landlock ABI step
 just test-outside  # the kernel facts, from a terminal outside any sandbox
 ```
 

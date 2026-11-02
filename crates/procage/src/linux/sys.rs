@@ -331,6 +331,7 @@ pub(crate) struct Bridge {
 
 impl Bridge {
     /// The hand-over of listeners on `ports`, with the child's end `socket`.
+    #[cfg(feature = "proxy")]
     pub(crate) fn new(ports: Vec<u16>, socket: OwnedFd) -> Bridge {
         // SAFETY: CMSG_SPACE only computes a size.
         let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as u32) } as usize;

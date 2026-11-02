@@ -29,6 +29,7 @@ lint:
     cargo clippy --workspace --all-targets --all-features --target aarch64-unknown-linux-gnu -- -D warnings
     cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-musl -- -D warnings
     cargo clippy -p procage --all-targets -- -D warnings
+    cargo clippy -p procage --all-targets --target aarch64-unknown-linux-gnu -- -D warnings
     # The fuzz targets are their own workspace; check that they still build.
     cargo check --manifest-path crates/procage-policy/fuzz/Cargo.toml --bins
     cargo check --manifest-path crates/procage-proxy/fuzz/Cargo.toml --bins

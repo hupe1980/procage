@@ -60,7 +60,7 @@ sandbox: sh (pid 816) was denied file-write-create /Users/me/project/.git/hooks/
 
 ## Reading the record
 
-- **While it runs.** `Child::violation_receiver` yields violations as they arrive. It buffers 1,024; when it lags, later violations are still in the record.
+- **While it runs.** `Child::violation_receiver` yields violations as they arrive. It buffers 1,024; when it lags, later violations are still in the record. It ends once the record is complete or the run ended.
 - **Complete.** `Violations::complete` is true once the child has exited and every denial reported before that has arrived. `Child::violations` waits up to a second for this; on a loaded host it may return an incomplete record, which you can read again.
 - **Coverage.** `Violations::coverage` says what the record can show: `Observed` (macOS: every denial the kernel logs), `SystemCalls` (Linux: every refused system call), `Off` (the cage was built without the option), `Unavailable(reason)` (reporting could not start or stopped), or `NotObserved` (a platform that reports nothing).
 - **Bounded.** A record keeps 10,000 violations and counts the rest (`Violations::dropped`).

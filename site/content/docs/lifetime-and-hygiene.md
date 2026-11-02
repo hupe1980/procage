@@ -15,7 +15,7 @@ The **run** starts at spawn and ends when the `Child` handle is dropped or `Chil
 
 Ending the run kills the child's process group, every descendant that can still be found from the child, and, for a forking policy:
 
-- **Linux, `Lifetime::Run` (default):** `setsid` and `setpgid` fail with `EPERM` inside the cage, so every descendant stays in the child's process group and dies with it, wherever it was reparented. Programs that daemonize or create job-control groups fail there. The common case is git: its automatic `gc --auto` detaches into a session of its own, so a caged `git commit` succeeds but prints `fatal: setsid failed: Operation not permitted`. Run caged git with `gc.autoDetach=false` (for example `GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=gc.autoDetach`, `GIT_CONFIG_VALUE_0=false` on the `Command`), and it collects in the foreground instead.
+- **Linux, `Lifetime::Run` (default):** `setsid` and `setpgid` fail with `EPERM` inside the cage, so every descendant stays in the child's process group and dies with it, wherever it was reparented. Programs that daemonize or create job-control groups fail there. Git's background `gc --auto` prints `fatal: setsid failed`: set `gc.autoDetach=false` (`GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=gc.autoDetach`, `GIT_CONFIG_VALUE_0=false`).
 - **Linux, `Lifetime::Tree`:** programs may start their own sessions and process groups (job-control shells). The run kills the group and the descendants found from the child; a descendant whose parent exits in a session of its own outlives the run.
 - **macOS:** the sandbox cannot filter those calls, so each run's processes carry a marker in their profile and are found by it, including descendants reparented to `launchd` and those of a child that already exited. `Lifetime::Tree` behaves like `Run`.
 
@@ -38,7 +38,7 @@ child.kill_all()?; // or just drop `child`
 
 ## File descriptors
 
-A descriptor opened before the sandbox was applied reads or writes past every path rule (R-21). procage marks every inherited descriptor close-on-exec in the child, so it receives only standard input, output and error, even when the caller forgot `O_CLOEXEC`. `Cage::spawn_with_fds` hands chosen descriptors over at the same numbers; every other descriptor numbered 3 or higher is closed.
+A descriptor opened before the sandbox was applied reads or writes past every path rule (R-21). procage marks every inherited descriptor close-on-exec in the child, so it receives only standard input, output and error, even when the caller forgot `O_CLOEXEC`. `Cage::spawn_with_fds` hands chosen descriptors over at the same numbers, close-on-exec or not; every other descriptor numbered 3 or higher is closed.
 
 ## Environment
 

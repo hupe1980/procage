@@ -42,13 +42,14 @@ Both tiers accept Landlock ABI 1 (Linux 5.13) and later. What an older ABI canno
 | ABI | Linux | For example | Below it |
 |---|---|---|---|
 | 1 | 5.13 | Ubuntu 22.04 (5.15) | No sandbox at all |
-| 3 | 6.2 | Ubuntu 22.04 HWE, 23.10 | Landlock cannot deny truncation, so procage refuses `truncate` by path and `open` with `O_TRUNC` without write access *everywhere*, also inside writable paths (truncate through a descriptor opened for writing instead), and `openat2` fails with `ENOSYS`. Debian 12 (6.1) is at ABI 2 |
+| 2 | 5.19 | Debian 12 (6.1) | Files cannot move or link between directories: such a move fails with `EXDEV` |
+| 3 | 6.2 | Ubuntu 22.04 HWE, 23.10 | Landlock cannot deny truncation, so procage refuses `truncate` by path and `open` with `O_TRUNC` without write access *everywhere*, also inside writable paths (truncate through a descriptor opened for writing instead), and `openat2` fails with `ENOSYS`. |
 | 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off seccomp still refuses IP sockets, but a TCP socket the caller hands over can connect (tier T2) |
 | 6 | 6.12 | Debian 13, RHEL 10 | No signal scope: `Signals::SelfAndChildren` is a gap. Abstract Unix sockets are not scoped |
 | 9 | 7.1 | | No Unix-socket rules: `ipc.unix_sockets` is approximated on T1 and refused on T2 |
 | 10 | 7.2 | | No UDP rules: with the network off, a UDP socket the caller hands over can send |
 
-RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 11 (`procage::linux::BACKEND_MAX_ABI`); every step of the table, and ABI 11, was tested on a mainline kernel (see [where the tests have run](@/docs/testing.md#where-they-have-run)). ABI 11's no-new-privileges flag changes nothing: the child sets no-new-privileges itself before its seccomp filter on every kernel.
+RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 11 (`procage::linux::BACKEND_MAX_ABI`); the [kernel matrix](@/docs/testing.md#where-they-have-run) runs every step of the table, and ABI 11, on a mainline kernel. ABI 11's no-new-privileges flag changes nothing: the child sets no-new-privileges itself before its seccomp filter on every kernel.
 
 ### Testing against older kernels
 
@@ -95,7 +96,7 @@ The tests (`tests/spawn_linux.rs`, `tests/escape_linux.rs`) run in containers on
 - With `Lifetime::Tree`, a descendant that double-forks into a session of its own outlives the run.
 - No loopback networking: a gap on both tiers. Proxy-only networking needs T1 and a [proxy of the cage's own](@/docs/proxy.md); it is a gap on T2.
 - Protect, and hide inside a writable tree, are gaps on T2; glob rules are gaps on both tiers.
-- Files move and link between directories of the writable trees (and the run's `TMPDIR`) from Landlock ABI 2 (Linux 5.19); on ABI 1 every move or link between directories fails with `EXDEV`, as a cross-device move would. Landlock refuses a move that would give a file a right it lacks where it is, and one out of a read-only tree.
+- Below Landlock ABI 2 no file moves or links between directories (`EXDEV`). From ABI 2 they do within the writable trees and the run's `TMPDIR`; Landlock refuses a move that would give a file a right it lacks, or take it out of a read-only tree.
 - The probe is cached per process, not per boot.
 
 ## Options

@@ -52,7 +52,7 @@ just bench         # the spawn benchmark (indicative)
 `just bench` spawns a no-op program 300 times per case and prints median,
 p90 and p99 (`-- --quick` for 30; CI runs that and never fails on timing).
 It refuses to run inside another sandbox. Median overhead over a plain
-spawn, measured 2026-11-02:
+spawn, procage 0.3.0:
 
 | Case | macOS 26.6.2, M4 Pro | Linux 7.0 T1 (Docker) | Linux 7.0 T2 (Docker) |
 |---|---|---|---|
@@ -70,7 +70,7 @@ The bench also times `Cage::explain`'s evaluator: 0.61 ms per question for a
 
 ## Where they have run
 
-The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; older Landlock ABIs are exercised through `CageOptions::with_landlock_abi`. CI runs the kernel facts, the escape suites and the explain oracle on every push, on GitHub's macOS 26 and Ubuntu 24.04 (x86_64, tiers T1 and T2) runners.
+The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; lower ABIs are also exercised through `CageOptions::with_landlock_abi`, and every ABI step on a real kernel in the kernel matrix below. CI runs the kernel facts, the escape suites and the explain oracle on every push, on GitHub's macOS 26 and Ubuntu 24.04 (x86_64, tiers T1 and T2) runners.
 
 On Linux, CI also boots Ubuntu mainline kernels with virtme-ng, one job per Landlock ABI step: 5.15 (ABI 1), 6.6 (3), 6.8 (4), 6.12 (6), 7.0 (8), 7.1 (9), 7.2 (10) and 7.3 (11). Each runs the kernel facts with the expected ABI and every Linux suite. `just kernel` boots the same kernels locally under QEMU.
 

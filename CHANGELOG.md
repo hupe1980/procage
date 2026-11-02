@@ -6,67 +6,52 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
 ### Added
 
-- Async spawning (feature `tokio`): `Cage::spawn_async` and
-  `Cage::spawn_async_with_fds` take a `tokio::process::Command` and return
-  an `AsyncChild`, which dereferences to `tokio::process::Child`, ends the
-  run on drop or an awaited `kill_all`, and gives the audit, receipt and
-  violations as `Child` does. `AsyncChild::violation_stream` yields the
-  run's violations (`ViolationStream`, also a `futures_core::Stream`).
-  `SpawnError::NoRuntime` when no tokio runtime runs on the calling thread.
-  The escape suites run through it on every CI lane. Without the feature
-  procage has no async dependency.
-- Egress through an allowlist (feature `proxy`, new crate `procage-proxy`):
-  with `Network::Proxy` and `CageOptions::with_proxy`, each run gets a
-  proxy of its own (HTTP `CONNECT`, plain HTTP, SOCKS5) that connects only
-  to the hosts an `Allowlist` names, and no other route: on macOS the
-  profile allows only the run's fresh proxy ports, on Linux tier T1 the
-  child's network namespace holds only its proxy listeners (`Network::Proxy`
-  was a gap on Linux; it stays one on T2). One canonical host parser,
-  every IPv4 notation read as an address, resolved addresses checked, no
-  DNS query for a refused name, no allow-all, opaque relay, 64 connections
-  and 10-second handshakes per run. Refusals are violations
-  (`DeniedBy::Allowlist`). New escape classes R-35 (parser differential)
-  and R-36 (direct egress around the proxy), with canaries on macOS and T1
-  and a fuzz target for the parser.
-- Kernel matrix: `just kernel` and a CI job per kernel boot Ubuntu mainline
-  kernels for each Landlock ABI step (5.15, 6.6, 6.8, 6.12, 7.0, 7.1, 7.2,
-  7.3) with virtme-ng and run the kernel facts and every Linux suite in
-  them; `PROCAGE_KF_EXPECT_ABI` fails a lane whose kernel reports another
-  ABI.
-- Landlock ABI 9 to 11 (`BACKEND_MAX_ABI` 11): from ABI 9, `ipc.unix_sockets`
-  is exact on both tiers and the service and engine socket classes need no
-  cover while the network is off; from ABI 10, a UDP socket the caller hands
-  over cannot send with the network off.
-- `CageOptions::with_link_exemption(path)`: a store whose files are never
-  rewritten in place (a local clone's `.git/objects`, hard-linked to the
-  source repository's) is not examined for protected files by the link
-  check, which keeps refusing everywhere else; hidden files are examined
-  everywhere. `Audit::links_exempt` lists a run's exemptions.
+- Feature `tokio`: `Cage::spawn_async` and `spawn_async_with_fds` return an
+  `AsyncChild` (dereferences to `tokio::process::Child`, ends the run on drop
+  or `kill_all().await`); `AsyncChild::violation_stream` (`ViolationStream`,
+  a `futures_core::Stream`); `SpawnError::NoRuntime`. No async dependency
+  without the feature.
+- Feature `proxy` and crate `procage-proxy`: with `Network::Proxy` and
+  `CageOptions::with_proxy`, each run gets a proxy of its own (HTTP
+  `CONNECT`, plain HTTP, SOCKS5) that connects only to the hosts an
+  `Allowlist` names, and no other route, on macOS and Linux T1 (a gap on
+  T2). Refusals are violations (`DeniedBy::Allowlist`). Escape classes R-35
+  (parser differential) and R-36 (direct egress around the proxy).
+- Landlock ABI 9 to 11 (`BACKEND_MAX_ABI` 11): from ABI 9 `ipc.unix_sockets`
+  is exact on both tiers and the socket classes need no cover while the
+  network is off; from ABI 10 a UDP socket the caller hands over cannot send
+  with the network off.
+- `CageOptions::with_link_exemption(path)`: protected files under a store
+  that is never rewritten in place (a local clone's `.git/objects`) are not
+  examined by the link check; hidden files still are. `Audit::links_exempt`.
+- Kernel matrix: CI and `just kernel` boot mainline kernels 5.15, 6.6, 6.8,
+  6.12, 7.0, 7.1, 7.2 and 7.3 with virtme-ng and run the kernel facts and
+  every Linux suite in them.
 
 ### Fixed
 
-- Linux: files could not move or link between directories, even inside one
-  writable tree (`EXDEV`), so `cargo build`, package managers and atomic
-  saves failed. Write now includes Landlock's `REFER` right (ABI 2 and
-  later): moves and links between the writable trees and the run's
-  `TMPDIR` work, and Landlock still refuses any that would give a file a
-  right it lacks, or take one out of a read-only tree. Protected and hidden
-  targets stay out of reach: on T1 they are separate mounts, and on T2 none
-  lies in a writable tree without a gap (R-04, R-08, R-30).
-
-- Linux: `spawn_with_fds` did not hand over descriptors that have
-  close-on-exec set, which is how the standard library opens every file and
-  socket: they were closed at the exec. They now stay open, as on macOS.
-- Linux tier T1: a socket removed by the host after its cover was mounted
-  no longer fails the spawn.
+- Linux: files could not move or link between directories (`EXDEV`), so
+  `cargo build`, package managers and atomic saves failed. `Write` includes
+  Landlock's `REFER` right from ABI 2; protected and hidden targets stay out
+  of reach. On ABI 1 such moves still fail.
+- Linux: `spawn_with_fds` closed handed-over descriptors that had
+  close-on-exec set; they stay open, as on macOS.
+- Linux T1: a socket removed by the host after its cover was mounted no
+  longer fails the spawn.
 
 ### Changed
 
-- The receiver from `Child::violation_receiver` now ends (`recv` returns
-  an error) once the run's record is complete or the run ended, instead of
-  staying open until the handle is dropped.
+- The receiver from `Child::violation_receiver` ends once the run's record
+  is complete or the run ended.
+
+### Documentation
+
+- Caged git: set `gc.autoDetach=false`, since `setsid` fails under
+  `Lifetime::Run`.
 
 ## [0.2.0] - 2026-11-02
 
@@ -156,7 +141,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/hupe1980/procage/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hupe1980/procage/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hupe1980/procage/releases/tag/v0.1.0
 [0.0.1]: https://crates.io/crates/procage/0.0.1

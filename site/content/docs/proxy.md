@@ -1,7 +1,7 @@
 +++
 title = "Proxy: network through an allowlist"
 description = "The proxy feature: a caged child reaches the hosts an allowlist names through a proxy of its run's own, and no other route. One canonical host parser, checked resolution, no allow-all."
-weight = 79
+weight = 81
 
 [extra]
 group = "Guides"

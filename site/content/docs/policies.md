@@ -43,7 +43,7 @@ policy.fs.push(FsRule::new(Access::Read, FsTarget::Glob(Glob::new("/data/**/*.cs
 | Access | Meaning |
 |---|---|
 | `Read` | Read files and list directories |
-| `Write` | Create, change and remove; includes read |
+| `Write` | Create, change, remove, and move or link between writable trees; includes read |
 | `Exec` | Execute programs; includes read |
 | `Protect` | Readable but not writable, even inside a writable tree |
 | `Hide` | Neither readable nor writable, even inside a readable tree |
@@ -62,7 +62,7 @@ The order of rules never changes the result. `AbsPath` is an absolute path held 
 |---|---|---|
 | `None` (default) | exact | exact: `socket` is refused for every family (`socketpair` still works); tier T1 also gets an empty network namespace |
 | `Loopback(Ports)` | exact | gap |
-| `Proxy { http, socks }` | exact: outbound only to those loopback ports | gap |
+| `Proxy { http, socks }` | exact: outbound only to those loopback ports | T1 with [`with_proxy`](@/docs/proxy.md): exact; T2: gap |
 | `All` | exact | exact |
 
 ## Processes

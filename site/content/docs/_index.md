@@ -1,6 +1,6 @@
 +++
 title = "procage documentation"
-description = "How procage cages child processes on macOS and Linux: policies, presets, hard-deny classes, the Seatbelt and Landlock backends, fitting a policy to the host, helpers, lifetime, hygiene and the threat model."
+description = "How procage cages child processes on macOS and Linux: policies, presets, hard-deny classes, the Seatbelt and Landlock backends, fitting a policy to the host, helpers, lifetime, hygiene, an egress allowlist, async spawning and the threat model."
 sort_by = "weight"
 template = "docs.html"
 page_template = "doc.html"
@@ -30,5 +30,7 @@ procage is a Rust library that runs a child process in an OS sandbox. You descri
 - **Violations.** An opt-in [record](@/docs/violations.md) of what the sandbox denied, and which rule denied it.
 - **Explain and diff.** [Ask](@/docs/explain.md) which rule allows or denies reading, writing or executing a path, and what a policy change allows; the kernel checks every answer.
 - **Receipts.** Every finished run gives a [receipt](@/docs/receipts.md): policy digest, backend and tier, and everything accepted short of the policy.
+- **Egress allowlist.** With the `proxy` feature, a run reaches only the hosts an [allowlist](@/docs/proxy.md) names (macOS, Linux T1).
+- **Async.** With the `tokio` feature, [`Cage::spawn_async`](@/docs/async.md) returns an awaitable child and a violation stream.
 - **Audits.** A protected file with a second name refuses the spawn; the opt-in [handoff audit](@/docs/audits.md) lists what a run left behind.
 - **Evidence.** Every known escape class has a stable id and a status in the [threat model](@/docs/threat-model.md), backed by caged [canaries and kernel facts](@/docs/testing.md).
