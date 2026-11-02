@@ -66,7 +66,7 @@
 //!
 //! Every preset keeps the default [`Lifetime::Run`](crate::Lifetime::Run):
 //! the processes a forking preset's child starts end with the run. On Linux
-//! `setsid` and `setpgid` fail inside them; their macOS profiles end with
+//! `setsid` fails inside them; their macOS profiles end with
 //! the run-marker block.
 //!
 //! On Linux, `build` is a capability gap (Linux cages have no loopback

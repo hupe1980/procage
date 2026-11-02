@@ -15,7 +15,7 @@ The **run** starts at spawn and ends when the `Child` handle is dropped or `Chil
 
 Ending the run kills the child's process group, every descendant that can still be found from the child, and, for a forking policy:
 
-- **Linux, `Lifetime::Run` (default):** `setsid` and `setpgid` fail with `EPERM` inside the cage, so every descendant stays in the child's process group and dies with it, wherever it was reparented. Programs that daemonize or create job-control groups fail there. Git's background `gc --auto` prints `fatal: setsid failed`: set `gc.autoDetach=false` (`GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=gc.autoDetach`, `GIT_CONFIG_VALUE_0=false`).
+- **Linux, `Lifetime::Run` (default):** `setsid` fails with `EPERM` inside the cage, so every descendant stays in the child's session and dies with it, wherever it was reparented. Process groups work (test runners such as cargo-nextest start each test in one); they stay in the session. Programs that daemonize fail. With `Tty::Inherit` the child shares the caller's session, so `setpgid` fails too. Git's background `gc --auto` prints `fatal: setsid failed`: set `gc.autoDetach=false` (`GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=gc.autoDetach`, `GIT_CONFIG_VALUE_0=false`).
 - **Linux, `Lifetime::Tree`:** programs may start their own sessions and process groups (job-control shells). The run kills the group and the descendants found from the child; a descendant whose parent exits in a session of its own outlives the run.
 - **macOS:** the sandbox cannot filter those calls, so each run's processes carry a marker in their profile and are found by it, including descendants reparented to `launchd` and those of a child that already exited. `Lifetime::Tree` behaves like `Run`.
 

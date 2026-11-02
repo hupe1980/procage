@@ -703,6 +703,9 @@ pub struct Cage {
     walk_limit: usize,
     /// With violation reporting: the filter whose `EPERM` denies notify.
     notifying: Option<Arc<[seccomp::Insn]>>,
+    /// The filter for [`Cage::exec`] under `Lifetime::Run`: the command
+    /// keeps the caller's session, so `setpgid` is refused too.
+    exec_filter: Option<Arc<[seccomp::Insn]>>,
     /// The runtime directories searched for service sockets.
     runtime: Vec<PathBuf>,
     /// The approximations the caller accepts, for sockets found at spawn.
@@ -816,6 +819,25 @@ impl Cage {
         } else {
             None
         };
+        let exec_filter = if policy.process.fork
+            && policy.process.lifetime == procage_policy::Lifetime::Run
+            && policy.tty != Tty::Inherit
+        {
+            use procage_policy::linux::{Action, Condition, SeccompRule, Syscall};
+            let mut rules = plan.seccomp.clone();
+            rules.push(SeccompRule {
+                syscall: Syscall::Setpgid,
+                condition: Condition::Always,
+                action: Action::Eperm,
+                reason: Some(procage_policy::DenyReason::Lifetime),
+            });
+            Some(Arc::from(
+                seccomp::build(&rules, &seccomp::NATIVE, false)
+                    .map_err(|name| SpawnError::Unsupported(Unsupported::Syscall { name }))?,
+            ))
+        } else {
+            None
+        };
         let homes = classes::homes(&options.homes);
         let rules = spawn::rule_paths(&plan);
         classes::home_gaps(&mut plan, &rules, &homes, &options.lower, target)?;
@@ -873,6 +895,7 @@ impl Cage {
             homes,
             walk_limit: options.walk_limit,
             notifying,
+            exec_filter,
             runtime,
             allowed: options.lower.allow_degrade.clone(),
             facts,
@@ -1262,7 +1285,10 @@ impl Cage {
             limits: crate::unix::limits(&self.plan.hygiene.limits),
             keep,
             ruleset,
-            filter: self.filter.to_vec(),
+            filter: match (&self.exec_filter, session) {
+                (Some(exec), sys::Session::Keep) => exec.to_vec(),
+                _ => self.filter.to_vec(),
+            },
             notify,
             bridge,
         }

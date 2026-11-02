@@ -6,6 +6,14 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux: under `Lifetime::Run`, `setpgid` failed, so cargo-nextest and
+  other programs that start process groups could not run. Only `setsid`
+  is refused now; ending a run also kills the child's session, which no
+  process of the run can leave. With `Tty::Inherit` and for `Cage::exec`
+  (the caller's session) `setpgid` stays refused.
+
 ## [0.3.0] - 2026-11-02
 
 ### Added

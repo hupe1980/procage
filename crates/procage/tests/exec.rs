@@ -286,7 +286,8 @@ fn a_threaded_helper_execs(tier: &str) {
     assert_eq!(out, ["ok"], "{tier}");
 }
 
-/// Linux: a descendant of the command cannot start its own session.
+/// Linux: a descendant of the command can start neither its own session
+/// nor its own process group: the caller's group is the run.
 #[cfg(target_os = "linux")]
 fn descendants_cannot_leave_the_group(tier: &str) {
     if !Path::new("/usr/bin/setsid").exists() {
@@ -294,7 +295,8 @@ fn descendants_cannot_leave_the_group(tier: &str) {
         return;
     }
     let dir = scratch(&format!("setsid-{tier}"));
-    let script = "/usr/bin/setsid /bin/true 2>/dev/null; echo setsid=$?";
+    let script = "/usr/bin/setsid /bin/true 2>/dev/null; echo setsid=$?; \
+        perl -e 'exit(setpgrp(0, 0) ? 0 : 1)'; echo setpgid=$?";
     let mut h = helper(
         "shell",
         tier,
@@ -302,7 +304,7 @@ fn descendants_cannot_leave_the_group(tier: &str) {
     );
     let out: Vec<String> = lines(&mut h).collect();
     h.wait().unwrap();
-    assert_eq!(out, ["setsid=1"], "{tier}");
+    assert_eq!(out, ["setsid=1", "setpgid=1"], "{tier}");
 }
 
 /// Linux: an exec'd command has no supervisor, so a reporting cage still

@@ -431,6 +431,21 @@ fn child_entry() {
             return;
         }
         "session-sleeper" => format!("{}", testing::spawn_sleeper(true).unwrap()),
+        // A sleeper in a process group of its own, as test runners start
+        // each test.
+        "group-sleeper" => {
+            use std::os::unix::process::CommandExt;
+            match Command::new("/bin/sleep")
+                .arg("30")
+                .process_group(0)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .spawn()
+            {
+                Ok(c) => c.id().to_string(),
+                Err(e) => code(e.raw_os_error().unwrap_or(-1)),
+            }
+        }
         "sessions" => {
             // The child leads its group and session already; each call is
             // tried in a process that leads neither.
@@ -442,11 +457,16 @@ fn child_entry() {
             };
             format!("{} {}", try_in_child("setsid"), try_in_child("setpgid"))
         }
-        "double-fork" => {
-            // An intermediate starts a sleeper in its own session and exits;
-            // the sleeper is reparented away from this child. The sleeper
-            // inherits the pipe, so read one line, not to EOF.
-            let mut cmd = child_command("session-sleeper");
+        // An intermediate starts a sleeper in its own session (or, with
+        // `group-`, its own process group) and exits; the sleeper is
+        // reparented away from this child. The sleeper inherits the pipe,
+        // so read one line, not to EOF.
+        "double-fork" | "group-double-fork" => {
+            let mut cmd = child_command(if action == "group-double-fork" {
+                "group-sleeper"
+            } else {
+                "session-sleeper"
+            });
             cmd.stderr(Stdio::null());
             let mut intermediate = cmd.spawn().unwrap();
             let pid = first_result(intermediate.stdout.take().unwrap()).unwrap();
@@ -1146,7 +1166,8 @@ fn r23_descendants_of_an_exited_child_die_with_the_run() {
     }
 }
 
-/// By default no process of the run can start a session or a process group.
+/// By default no process of the run can start a session; it can start a
+/// process group, which stays in the child's session.
 #[test]
 fn r23_sessions_are_locked() {
     for tier in tiers() {
@@ -1154,7 +1175,25 @@ fn r23_sessions_are_locked() {
         p.process.fork = true;
         let (child, got) = start(&cage(&p, tier), "sessions");
         drop(child);
-        assert_eq!(got, format!("{EPERM} {EPERM}"), "{tier}");
+        assert_eq!(got, format!("{EPERM} ok"), "{tier}");
+    }
+}
+
+/// A descendant in a process group of its own (as test runners start each
+/// test), reparented away from the child, is outside the child's group and
+/// tree but not its session: it dies with the run.
+#[test]
+fn r23_a_descendant_in_a_group_of_its_own_dies_with_the_run() {
+    for tier in tiers() {
+        let mut p = policy();
+        p.process.fork = true;
+        let (child, pid) = start(&cage(&p, tier), "group-double-fork");
+        let pid: u32 = pid
+            .parse()
+            .unwrap_or_else(|_| panic!("{tier}: no group: {pid}"));
+        assert!(testing::alive(pid), "{tier}");
+        drop(child);
+        assert_dies(pid, &format!("{tier}: descendant"));
     }
 }
 

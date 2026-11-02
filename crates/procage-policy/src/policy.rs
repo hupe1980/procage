@@ -167,9 +167,10 @@ pub enum Lifetime {
     /// Every process the child starts belongs to the run and is killed when
     /// it ends, wherever it was reparented and also after the child exited.
     ///
-    /// On Linux, `setsid` and `setpgid` fail with `EPERM` inside the cage,
-    /// so every descendant stays in the child's process group. Programs that
-    /// daemonize or create job-control groups fail there (git's automatic
+    /// On Linux, `setsid` fails with `EPERM` inside the cage, so every
+    /// descendant stays in the child's session; process groups stay in it
+    /// (with `Tty::Inherit`, the caller's session, `setpgid` fails too).
+    /// Programs that daemonize fail there (git's automatic
     /// `gc --auto` prints `setsid failed`; set `gc.autoDetach=false` for
     /// caged git). On macOS, where
     /// the sandbox cannot filter those calls, the run's processes carry a

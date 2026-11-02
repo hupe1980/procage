@@ -1,0 +1,434 @@
+otmVersion: 0.2.0
+project:
+  id: 046-process-groups
+  name: Process groups under Lifetime::Run on Linux
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child (a test runner, a build, an agent)
+    trust: untrusted
+  - id: actor.harness
+    name: The harness that spawns and ends runs
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface; the change is to Landlock rights and a pre-spawn file walk
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked component.end-of-run: /proc stat is parsed after the last closing parenthesis, so a process
+      name cannot shift the session field'
+    technique: injection
+  - disposition: no-threat-detected
+    reason: 'checked component.end-of-run: a refused setsid or setpgid is still a reported violation with reason
+      Lifetime'
+    technique: missing-audit-trail
+  - disposition: not-applicable
+    reason: single user; runs of one caller
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.end-of-run: at most 64 scans of /proc, each killing only members not yet killed;
+      a killed process cannot fork'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  - disposition: not-applicable
+    reason: no data is stored
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: the change reads only process ids, parents and sessions
+    technique: sensitive-data-exposure
+  exclusions: []
+  extends: null
+  generated: '2026-11-02T19:53:38Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: fd9a0d5d01ec8c3fe0521d902d609a82a9a69d55c63e0c001404abe77570753a
+  - path: spec.md
+    sha256: 0d7a3dedada60e8319e2f1698a2d2ba8ed48c684e91689a961e18e3823c0d314
+  surfaces:
+  - external-input
+  - authorization
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness process
+  risk:
+    trustRating: 90
+- id: tz.kernel
+  name: seccomp and the process table
+  risk:
+    trustRating: 95
+assets:
+- id: asset.host
+  name: 'The host after the run: no process of the run keeps running unsandboxed time'
+  risk:
+    availability: 60
+    confidentiality: 40
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#Context
+    classification: internal
+components:
+- id: component.end-of-run
+  name: 'Ending a run: descendants, session and group killed'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.exec
+  name: Cage::exec filter
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.lowering
+  name: Lifetime::Run lowering (seccomp rules)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.calls
+  name: Processes of the run call setsid and setpgid
+  source: actor.caged-code
+  destination: component.lowering
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.kernel
+- id: flow.end
+  name: The harness ends the run
+  source: actor.harness
+  destination: component.end-of-run
+  assets:
+  - asset.host
+  attributes:
+    crosses: []
+threats:
+- id: threat.caller-session
+  name: With the caller terminal or under exec, a descendant leaves the caller group, which is the run boundary
+    there, and outlives the run
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-404
+  risk:
+    impact: 70
+    likelihood: 40
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.exec
+    - component.lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.fork-during-kill
+  name: Members fork while the run is being ended, so a new member is missed
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-362
+  risk:
+    impact: 60
+    likelihood: 30
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.end-of-run
+    profile: stride
+    severity: low
+    technique: broken-access-control
+- id: threat.group-outlives-run
+  name: A descendant in a process group of its own, reparented away from the child, outlives the run
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-404
+  risk:
+    impact: 70
+    likelihood: 60
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.calls
+    - component.end-of-run
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.session-escape
+  name: A descendant leaves the child session with setsid and outlives the run
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-404
+  risk:
+    impact: 70
+    likelihood: 60
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.calls
+    - component.lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+mitigations:
+- id: mitigation.group-boundary-kept
+  name: setpgid stays refused with Tty::Inherit and for Cage::exec
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.caller-session
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/tests/exec.rs
+- id: mitigation.session-boundary
+  name: setsid refused under Lifetime::Run; ending the run kills the child session, repeated until no live member
+    is new
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.group-outlives-run
+    - threat.session-escape
+    - threat.fork-during-kill
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/src/linux/child.rs
+    - crates/procage/tests/escape_linux.rs
+requirements:
+- id: SR-001
+  statement: Under Lifetime::Run no process of the run MUST be able to start a session; starting a process group
+    MUST work with the defaults.
+  priority: P1
+  mitigations:
+  - mitigation.session-boundary
+  acceptance:
+  - given: a forking default policy on T1 and T2
+    then: setsid fails with EPERM and setpgid succeeds
+    when: a process of the run calls setsid and setpgid(0, 0)
+  - given: the lowering with fork and Lifetime::Run
+    then: setsid is denied in both, setpgid only with Tty::Inherit
+    when: it is lowered with Tty::None and Tty::Inherit
+  tasks: []
+- id: SR-002
+  statement: Ending a run MUST kill every live process of the child session, including those in other process groups
+    and outside the child tree.
+  priority: P1
+  mitigations:
+  - mitigation.session-boundary
+  acceptance:
+  - given: a descendant in a process group of its own whose parent exited
+    then: it dies within two seconds on T1 and T2
+    when: the run ends
+  tasks: []
+- id: SR-003
+  statement: With the caller session (Tty::Inherit, Cage::exec) setpgid MUST stay refused under Lifetime::Run.
+  priority: P1
+  mitigations:
+  - mitigation.group-boundary-kept
+  acceptance:
+  - given: Cage::exec of a shell
+    then: both fail
+    when: a descendant calls setsid and setpgid(0, 0)
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-02
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r23_sessions_are_locked
+  result: pass
+  verdict: verified
+  justification: In a forking default cage on T1 and T2, a process of the run that leads neither its session nor
+    its group calls setsid (EPERM) and setpgid(0, 0) (ok); procage-policy/tests/gaps.rs the_linux_lifetime_lock_follows_the_setting
+    asserts setsid denied with Tty::None and Tty::Inherit and setpgid only with Tty::Inherit. Passed in both container
+    lanes (Linux 7.0, ABI 8), 2026-11-02.
+  verified_at: '2026-11-02T19:48:32Z'
+  commit: 48a52d4
+- id: verification.sr-001.2026-11-02-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r23_sessions_are_locked
+  result: pass
+  verdict: verified
+  justification: In a forking default cage on T1 and T2, a process of the run that leads neither its session nor
+    its group calls setsid (EPERM) and setpgid(0, 0) (ok); procage-policy/tests/gaps.rs the_linux_lifetime_lock_follows_the_setting
+    asserts setsid denied with Tty::None and Tty::Inherit and setpgid only with Tty::Inherit. Passed in both container
+    lanes (Linux 7.0, ABI 8), 2026-11-02.
+  verified_at: '2026-11-02T19:53:38Z'
+  commit: 48a52d4
+- id: verification.sr-002.2026-11-02
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r23_a_descendant_in_a_group_of_its_own_dies_with_the_run
+  result: pass
+  verdict: verified
+  justification: An intermediate starts /bin/sleep with process_group(0) and exits, so the sleeper is outside the
+    child's group and tree; dropping the handle kills it within two seconds on T1 and T2. The existing R-23 canaries
+    (double fork, exited child, descendants) pass unchanged.
+  verified_at: '2026-11-02T19:48:32Z'
+  commit: 48a52d4
+- id: verification.sr-002.2026-11-02-2
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r23_a_descendant_in_a_group_of_its_own_dies_with_the_run
+  result: pass
+  verdict: verified
+  justification: An intermediate starts /bin/sleep with process_group(0) and exits, so the sleeper is outside the
+    child's group and tree; dropping the handle kills it within two seconds on T1 and T2. The existing R-23 canaries
+    (double fork, exited child, descendants) pass unchanged.
+  verified_at: '2026-11-02T19:53:38Z'
+  commit: 48a52d4
+- id: verification.sr-003.2026-11-02
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/exec.rs::descendants_cannot_leave_the_group
+  result: pass
+  verdict: verified
+  justification: Through Cage::exec a shell's descendants run setsid (exit 1) and perl setpgrp(0, 0) (exit 1) on
+    T1 and T2; the cage's exec filter adds the setpgid denial (src/linux/mod.rs exec_filter, chosen for Session::Keep).
+  verified_at: '2026-11-02T19:48:32Z'
+  commit: 48a52d4
+- id: verification.sr-003.2026-11-02-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/exec.rs::descendants_cannot_leave_the_group
+  result: pass
+  verdict: verified
+  justification: Through Cage::exec a shell's descendants run setsid (exit 1) and perl setpgrp(0, 0) (exit 1) on
+    T1 and T2; the cage's exec filter adds the setpgid denial (src/linux/mod.rs exec_filter, chosen for Session::Keep).
+  verified_at: '2026-11-02T19:53:38Z'
+  commit: 48a52d4
+decisions: []

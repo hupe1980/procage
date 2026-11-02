@@ -17,7 +17,7 @@ use crate::linux::{
 use crate::name::Port;
 use crate::path::AbsPath;
 use crate::policy::{
-    Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Signals,
+    Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Signals, Tty,
 };
 use crate::sbpl::DenyReason;
 
@@ -451,12 +451,16 @@ pub(super) fn lower(
         seccomp.push(enosys(Syscall::Clone3));
     } else {
         match policy.process.lifetime {
-            // Fork keeps the process group; only these calls leave it. The
-            // child's own session or group is started before the filter.
+            // Only `setsid` leaves the child's session, which it starts
+            // before the filter and which ends with the run; a new process
+            // group stays in it. With the caller's terminal the child
+            // shares the caller's session, so its group is the boundary.
             Lifetime::Run => {
                 ledger.outcome(Construct::LifetimeRun, Outcome::Exact, None, "");
                 seccomp.push(because(deny(Syscall::Setsid), DenyReason::Lifetime));
-                seccomp.push(because(deny(Syscall::Setpgid), DenyReason::Lifetime));
+                if policy.tty == Tty::Inherit {
+                    seccomp.push(because(deny(Syscall::Setpgid), DenyReason::Lifetime));
+                }
             }
             Lifetime::Tree => {
                 ledger.outcome(Construct::LifetimeTree, Outcome::Exact, None, "");

@@ -263,6 +263,11 @@ fn the_linux_lifetime_lock_follows_the_setting() {
     assert_eq!(locked(&p), (false, false));
     p.process.fork = true;
     assert_eq!(p.process.lifetime, Lifetime::Run);
+    // A new process group stays in the child's own session.
+    assert_eq!(locked(&p), (true, false));
+    // Sharing the caller's terminal, the child is in the caller's session:
+    // its group is the boundary.
+    p.tty = procage_policy::Tty::Inherit;
     assert_eq!(locked(&p), (true, true));
     p.process.lifetime = Lifetime::Tree;
     assert_eq!(locked(&p), (false, false));

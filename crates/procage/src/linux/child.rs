@@ -30,11 +30,12 @@ pub(super) enum Reporting {
 ///
 /// It dereferences to [`std::process::Child`] for I/O and waiting. The run
 /// ends when the handle is dropped or [`Child::kill_all`] is called, not when
-/// the child exits by itself. Ending it kills the child's process group and
-/// every descendant that can still be found from the child, then reaps the
-/// child. Under the default [`Lifetime::Run`](procage_policy::Lifetime::Run)
-/// no process of the run can leave the group (`setsid` and `setpgid` fail),
-/// so the group kill reaches all of them, also after the child exited. With
+/// the child exits by itself. Ending it kills the child's session and process
+/// group and every descendant that can still be found from the child, then
+/// reaps the child. Under the default
+/// [`Lifetime::Run`](procage_policy::Lifetime::Run) no process of the run can
+/// leave the child's session (`setsid` fails; process groups stay in it), so
+/// the session kill reaches all of them, also after the child exited. With
 /// `Lifetime::Tree`, a descendant whose parent exits in a session of its own
 /// is out of reach. [`Child::detach`] gives up that control.
 ///
@@ -157,7 +158,8 @@ impl Child {
     }
 
     /// The first half of ending the run: kills the descendants still
-    /// reachable from a running child, and the child's process group.
+    /// reachable from a running child, the child's session and its process
+    /// group.
     pub(crate) fn signal(&mut self) -> io::Result<()> {
         let pid =
             libc::pid_t::try_from(self.pid).map_err(|_| io::Error::other("pid out of range"))?;
@@ -167,8 +169,28 @@ impl Child {
                 sys::kill(descendant);
             }
         }
-        // The group outlives a reaped leader while members remain, and its
-        // id cannot be handed to another process while it exists.
+        // The child leads its own session unless it shares the caller's
+        // terminal; under `Lifetime::Run` no descendant can leave it, though
+        // it may start process groups. Members forked meanwhile are found
+        // by the next look.
+        let mut killed = Vec::new();
+        for _ in 0..64 {
+            let members: Vec<libc::pid_t> = processes()
+                .into_iter()
+                .filter(|p| p.session == pid && !p.zombie && !killed.contains(&p.pid))
+                .map(|p| p.pid)
+                .collect();
+            if members.is_empty() {
+                break;
+            }
+            for member in members {
+                sys::kill(member);
+                killed.push(member);
+            }
+        }
+        // The group and the session outlive a reaped leader while members
+        // remain, and their id cannot be handed to another process while
+        // they exist.
         sys::killpg(pid);
         self.killed |= running;
         Ok(())
@@ -262,9 +284,10 @@ impl Child {
     }
 }
 
-/// Every process's parent, from `/proc/<pid>/stat` (readable for every
-/// process, unlike the `children` lists, which some kernels lack).
-fn parents() -> Vec<(libc::pid_t, libc::pid_t)> {
+/// Every process with its parent and session, from `/proc/<pid>/stat`
+/// (readable for every process, unlike the `children` lists, which some
+/// kernels lack).
+fn processes() -> Vec<Process> {
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return Vec::new();
     };
@@ -273,24 +296,40 @@ fn parents() -> Vec<(libc::pid_t, libc::pid_t)> {
         .filter_map(|e| {
             let pid: libc::pid_t = e.file_name().to_str()?.parse().ok()?;
             let stat = std::fs::read_to_string(e.path().join("stat")).ok()?;
-            // `pid (comm) state ppid ...`; comm may contain spaces and ')'.
-            let rest = &stat[stat.rfind(')')? + 1..];
-            let ppid = rest.split_whitespace().nth(1)?.parse().ok()?;
-            Some((pid, ppid))
+            // `pid (comm) state ppid pgrp session ...`; comm may contain
+            // spaces and ')'.
+            let mut rest = stat[stat.rfind(')')? + 1..].split_whitespace();
+            let zombie = rest.next()? == "Z";
+            let ppid = rest.next()?.parse().ok()?;
+            let session = rest.nth(1)?.parse().ok()?;
+            Some(Process {
+                pid,
+                ppid,
+                session,
+                zombie,
+            })
         })
         .collect()
 }
 
+/// One process, from `/proc/<pid>/stat`.
+struct Process {
+    pid: libc::pid_t,
+    ppid: libc::pid_t,
+    session: libc::pid_t,
+    zombie: bool,
+}
+
 /// Every process below `pid` that can still be found from it.
 fn descendants(pid: libc::pid_t) -> Vec<libc::pid_t> {
-    let parents = parents();
+    let all = processes();
     let mut out = Vec::new();
     let mut queue = vec![pid];
     while let Some(p) = queue.pop() {
-        for &(child, parent) in &parents {
-            if parent == p && !out.contains(&child) {
-                out.push(child);
-                queue.push(child);
+        for proc in &all {
+            if proc.ppid == p && !out.contains(&proc.pid) {
+                out.push(proc.pid);
+                queue.push(proc.pid);
             }
         }
     }

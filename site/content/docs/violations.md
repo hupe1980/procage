@@ -92,7 +92,7 @@ With reporting on, the filter hands each refused call to a *listener* (seccomp u
 |---|---|
 | `HardDeny(class)` | A hard-deny class: process access, kernel surface, namespaces, socket families, terminal injection |
 | `NotGranted` | The policy does not grant it: no network, no forking, `Signals::None`, SysV IPC |
-| `Lifetime` | `setsid`/`setpgid` under `Lifetime::Run`, so that ending the run reaches every descendant |
+| `Lifetime` | `setsid` under `Lifetime::Run` (and `setpgid` with `Tty::Inherit` or `Cage::exec`), so that ending the run reaches every descendant |
 | `OlderKernel` | Below Landlock ABI 3, truncation is refused everywhere |
 | `Layer` | Your raw Linux layer's `syscalls_deny` |
 
