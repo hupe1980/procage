@@ -24,4 +24,9 @@ violation reporting and through the async handle.
 | 6.8 | 4 | hung at boot under emulation; left to CI |
 | 5.15 | 1 | Landlock not in the default LSM list: the lane passes `lsm=…,landlock`; then T1 and ABI 1, KF-L01 passes, KF-L15 observes no hang-up of the seccomp listener after the child exits (open; CI decides) |
 
-The CI matrix (KVM, x86_64) is the record of the final code.
+## Results (2026-11-02, CI, x86_64 with KVM)
+
+Every kernel above passes the facts and all suites on commit `692982f`
+(run 41503537476). The CI jobs boot the guest from QEMU running as root,
+with the suites as the runner user, as `just kernel` does; QEMU as the
+runner user failed every T1 mount and T2 spawn with `EACCES`.

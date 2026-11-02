@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Implemented (2026-11-02; CI kernel lanes after push)
+**Status**: Implemented (2026-11-02)
 
 **Input**: procage supports Linux from Landlock ABI 1 (5.13) but CI runs one kernel (7.0, ABI 8). Older-kernel behaviour is tested by capping the ABI in-process, which proves the lowering but not the kernel. Newer ABIs (9 in 7.1: pathname Unix sockets; 10 in 7.2: UDP and quiet rules; 11 in 7.3: no-new-privileges on restrict) would make some approximations exact, but the backend stops at ABI 8.
 

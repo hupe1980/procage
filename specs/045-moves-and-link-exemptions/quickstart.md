@@ -15,8 +15,7 @@ just linux-t1 && just linux                              # canaries on T1 and T2
 | Linux T2 (container, 7.0, ABI 8) | `just linux` | passed (the exemption test is not applicable: T2 cannot protect) |
 | macOS | `just ci` | every gate green |
 
-ABI 1 (moves between directories fail with `EXDEV`) is asserted by the
-kernel lane's 5.15 job in CI.
+| CI kernel matrix (5.15 to 7.3.1) | every Linux suite, run 41503537476 | passed; on 5.15 (ABI 1) moves between directories fail with `EXDEV` as asserted |
 
 Security convergence: SR-001 to SR-006 verified (see
 `security/convergence-report.md`).
