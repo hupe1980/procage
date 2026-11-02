@@ -9,11 +9,24 @@ use super::{
     Construct, GapKind, GrantSlot, Hygiene, Ledger, LowerError, LowerOptions, Outcome,
     SeatbeltPlan, Target, fs_construct, subject_of,
 };
+use crate::explain::Decider;
 use crate::policy::{
     Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Ports, Signals,
 };
 use crate::sbpl::{self, DenyReason, Filter, Rule};
 use crate::seatbelt::{self, Effect};
+
+/// A rule and where it came from.
+pub(crate) type Tagged = (Rule, Decider);
+
+/// The rules of a profile before rendering, in blocks of one effect each
+/// (the marker block excepted), in profile order: quiet denies, allows,
+/// denies inside allowed trees, the hard-deny tier, the run marker.
+pub(crate) struct Emitted {
+    pub(crate) blocks: [Vec<Tagged>; 5],
+    grants: Vec<GrantSlot>,
+    degradations: Vec<super::Degradation>,
+}
 
 /// Operations an access kind allows (or, for protect and hide, denies).
 fn ops(access: Access) -> &'static [&'static str] {
@@ -50,10 +63,11 @@ fn loopback(ports: &Ports) -> Vec<String> {
 /// construct gets an `Unrepresentable` gap.
 fn push(
     ledger: &mut Ledger<'_>,
-    block: &mut Vec<Rule>,
+    block: &mut Vec<Tagged>,
     construct: Construct,
     subject: Option<String>,
     rule: Rule,
+    by: Decider,
 ) {
     for value in rule.values() {
         if let Err(e) = sbpl::quote(value) {
@@ -61,7 +75,7 @@ fn push(
             return;
         }
     }
-    block.push(rule);
+    block.push((rule, by));
 }
 
 fn raw_filter(filter: &seatbelt::Filter) -> Vec<Filter> {
@@ -200,7 +214,8 @@ fn class_outcome(class: HardDenyClass) -> Outcome {
     }
 }
 
-pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltPlan, LowerError> {
+/// The tagged rules of `policy`, or its gaps.
+pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, LowerError> {
     let mut ledger = Ledger::new(Target::MacOs, options);
     // Quiet denies come first, so every later allow wins over them.
     let mut quiet = Vec::new();
@@ -226,17 +241,27 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             Access::Hide => r = r.because(DenyReason::Hide),
             _ => {}
         }
-        push(&mut ledger, block, construct, subject, r);
+        push(
+            &mut ledger,
+            block,
+            construct,
+            subject,
+            r,
+            Decider::Rule(rule.clone()),
+        );
     }
 
     let mut grants = Vec::new();
     for grant in &policy.grants {
         ledger.outcome(Construct::Grant, Outcome::Exact, None, "");
         let class = format!("procage.{}", grant.name);
-        allow.push(Rule::new(
-            Effect::Allow,
-            ops(grant.access),
-            vec![Filter::Extension(class.clone())],
+        allow.push((
+            Rule::new(
+                Effect::Allow,
+                ops(grant.access),
+                vec![Filter::Extension(class.clone())],
+            ),
+            Decider::Grant(grant.name.clone()),
         ));
         grants.push(GrantSlot {
             name: grant.name.clone(),
@@ -246,7 +271,8 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
     }
     grants.sort();
 
-    let socket = || Rule::new(Effect::Allow, &["system-socket"], vec![]);
+    let net = |rule: Rule| (rule, Decider::Setting("network"));
+    let socket = || net(Rule::new(Effect::Allow, &["system-socket"], vec![]));
     match &policy.net {
         Network::None => {
             ledger.outcome(Construct::NetNone, Outcome::Exact, None, "");
@@ -254,16 +280,16 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
         Network::Loopback(ports) => {
             ledger.outcome(Construct::NetLoopback, Outcome::Exact, None, "");
             let addrs = loopback(ports);
-            allow.push(Rule::new(
+            allow.push(net(Rule::new(
                 Effect::Allow,
                 &["network-outbound"],
                 addrs.iter().cloned().map(Filter::RemoteIp).collect(),
-            ));
-            allow.push(Rule::new(
+            )));
+            allow.push(net(Rule::new(
                 Effect::Allow,
                 &["network-bind", "network-inbound"],
                 addrs.into_iter().map(Filter::LocalIp).collect(),
-            ));
+            )));
             allow.push(socket());
         }
         Network::Proxy { http, socks } => {
@@ -273,12 +299,16 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                 .chain(socks.iter())
                 .map(|p| Filter::RemoteIp(format!("localhost:{p}")))
                 .collect();
-            allow.push(Rule::new(Effect::Allow, &["network-outbound"], filters));
+            allow.push(net(Rule::new(
+                Effect::Allow,
+                &["network-outbound"],
+                filters,
+            )));
             allow.push(socket());
         }
         Network::All => {
             ledger.outcome(Construct::NetAll, Outcome::Exact, None, "");
-            allow.push(Rule::new(Effect::Allow, &["network*"], vec![]));
+            allow.push(net(Rule::new(Effect::Allow, &["network*"], vec![])));
             allow.push(socket());
         }
     }
@@ -287,10 +317,13 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
         Exec::Granted => {}
         Exec::Any => {
             ledger.outcome(Construct::ExecAny, Outcome::Exact, None, "");
-            allow.push(Rule::new(
-                Effect::Allow,
-                &["process-exec*", "file-map-executable"],
-                vec![],
+            allow.push((
+                Rule::new(
+                    Effect::Allow,
+                    &["process-exec*", "file-map-executable"],
+                    vec![],
+                ),
+                Decider::Setting("exec"),
             ));
         }
         Exec::Never => {
@@ -302,21 +335,30 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
     // the prefix (see `RUN_MARKER_PARAM`).
     let mut marker = Vec::new();
     if policy.process.fork {
-        allow.push(Rule::new(Effect::Allow, &["process-fork"], vec![]));
+        allow.push((
+            Rule::new(Effect::Allow, &["process-fork"], vec![]),
+            Decider::Setting("fork"),
+        ));
         let construct = match policy.process.lifetime {
             Lifetime::Run => Construct::LifetimeRun,
             Lifetime::Tree => Construct::LifetimeTree,
         };
         ledger.outcome(construct, Outcome::Exact, None, "");
-        marker.push(Rule::new(
-            Effect::Deny,
-            &["mach-lookup"],
-            vec![Filter::GlobalNamePrefixParam(super::RUN_PREFIX_PARAM)],
+        marker.push((
+            Rule::new(
+                Effect::Deny,
+                &["mach-lookup"],
+                vec![Filter::GlobalNamePrefixParam(super::RUN_PREFIX_PARAM)],
+            ),
+            Decider::Setting("lifetime"),
         ));
-        marker.push(Rule::new(
-            Effect::Allow,
-            &["mach-lookup"],
-            vec![Filter::GlobalNameParam(super::RUN_MARKER_PARAM)],
+        marker.push((
+            Rule::new(
+                Effect::Allow,
+                &["mach-lookup"],
+                vec![Filter::GlobalNameParam(super::RUN_MARKER_PARAM)],
+            ),
+            Decider::Setting("lifetime"),
         ));
     } else {
         ledger.outcome(Construct::ForkDenied, Outcome::Exact, None, "");
@@ -324,17 +366,23 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
     match policy.process.signals {
         Signals::SelfAndChildren => {
             ledger.outcome(Construct::SignalsSelfAndChildren, Outcome::Exact, None, "");
-            allow.push(Rule::new(
-                Effect::Allow,
-                &["signal"],
-                vec![Filter::Target("self"), Filter::Target("children")],
+            allow.push((
+                Rule::new(
+                    Effect::Allow,
+                    &["signal"],
+                    vec![Filter::Target("self"), Filter::Target("children")],
+                ),
+                Decider::Setting("signals"),
             ));
         }
         // `hd-process-access` still denies signals to processes outside
         // the sandbox: its block comes after this one.
         Signals::SameUser => {
             ledger.outcome(Construct::SignalsSameUser, Outcome::Exact, None, "");
-            allow.push(Rule::new(Effect::Allow, &["signal"], vec![]));
+            allow.push((
+                Rule::new(Effect::Allow, &["signal"], vec![]),
+                Decider::Setting("signals"),
+            ));
         }
         Signals::None => {
             ledger.outcome(Construct::SignalsNone, Outcome::Exact, None, "");
@@ -342,18 +390,27 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
     }
     if policy.ipc.posix_shm {
         ledger.outcome(Construct::PosixShm, Outcome::Exact, None, "");
-        allow.push(Rule::new(Effect::Allow, &["ipc-posix-shm*"], vec![]));
+        allow.push((
+            Rule::new(Effect::Allow, &["ipc-posix-shm*"], vec![]),
+            Decider::Setting("ipc"),
+        ));
     }
     if policy.ipc.sysv {
         ledger.outcome(Construct::SysvIpc, Outcome::Exact, None, "");
-        allow.push(Rule::new(Effect::Allow, &["ipc-sysv*"], vec![]));
+        allow.push((
+            Rule::new(Effect::Allow, &["ipc-sysv*"], vec![]),
+            Decider::Setting("ipc"),
+        ));
     }
     // A path filter on the network operations matches Unix-socket
     // addresses only, so IP stays as the network setting says.
     const UNIX_OPS: [&str; 3] = ["network-bind", "network-inbound", "network-outbound"];
     if !policy.ipc.unix_sockets.is_empty() {
         ledger.outcome(Construct::IpcUnixSockets, Outcome::Exact, None, "");
-        allow.push(Rule::new(Effect::Allow, &["system-socket"], vec![]));
+        allow.push((
+            Rule::new(Effect::Allow, &["system-socket"], vec![]),
+            Decider::Setting("ipc.unix_sockets"),
+        ));
         for path in &policy.ipc.unix_sockets {
             let r = Rule::new(
                 Effect::Allow,
@@ -366,6 +423,7 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                 Construct::IpcUnixSockets,
                 Some(path.to_string()),
                 r,
+                Decider::Setting("ipc.unix_sockets"),
             );
         }
         // A hidden path stays unreachable through its sockets too.
@@ -375,24 +433,28 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                 FsTarget::Literal(p) => Filter::Literal(p.as_bytes().to_vec()),
                 FsTarget::Glob(_) => continue,
             };
-            within.push(Rule::new(Effect::Deny, &UNIX_OPS, vec![filter]).because(DenyReason::Hide));
+            within.push((
+                Rule::new(Effect::Deny, &UNIX_OPS, vec![filter]).because(DenyReason::Hide),
+                Decider::Rule(rule.clone()),
+            ));
         }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
+    let base = |rules: Vec<Rule>| rules.into_iter().map(|r| (r, Decider::Base(policy.base)));
     match policy.base {
         Base::None => {}
         Base::V1 => {
             ledger.outcome(Construct::BaseV1, Outcome::Exact, None, "");
-            allow.extend(crate::base::macos_v1(policy.tty));
+            allow.extend(base(crate::base::macos_v1(policy.tty)));
         }
         Base::V2 | Base::V3 => {
             if policy.base == Base::V3 {
                 ledger.outcome(Construct::BaseV3, Outcome::Exact, None, "");
-                quiet.extend(crate::base::macos_v3_quiet());
+                quiet.extend(base(crate::base::macos_v3_quiet()));
             } else {
                 ledger.outcome(Construct::BaseV2, Outcome::Exact, None, "");
             }
-            allow.extend(crate::base::macos_v2(policy.tty));
+            allow.extend(base(crate::base::macos_v2(policy.tty)));
             let paths = policy
                 .fs
                 .iter()
@@ -401,7 +463,9 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                     FsTarget::Glob(_) => None,
                 })
                 .chain(&policy.ipc.unix_sockets);
-            allow.extend(crate::base::macos_v2_ancestors(paths));
+            allow.extend(base(
+                crate::base::macos_v2_ancestors(paths).into_iter().collect(),
+            ));
         }
     }
 
@@ -418,7 +482,14 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             if effect == Effect::Deny {
                 r = r.because(DenyReason::Layer);
             }
-            push(&mut ledger, block, Construct::SeatbeltLayer, None, r);
+            push(
+                &mut ledger,
+                block,
+                Construct::SeatbeltLayer,
+                None,
+                r,
+                Decider::Layer,
+            );
         }
     }
     if policy.linux.is_some() {
@@ -435,31 +506,54 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
             continue;
         }
         if ledger.outcome(Construct::of_class(class), class_outcome(class), None, "") {
-            hard.extend(
-                hard_deny(class, policy)
-                    .into_iter()
-                    .map(|r| r.because(DenyReason::HardDeny(class))),
-            );
+            hard.extend(hard_deny(class, policy).into_iter().map(|r| {
+                (
+                    r.because(DenyReason::HardDeny(class)),
+                    Decider::HardDeny(class),
+                )
+            }));
             if class == HardDenyClass::ProcessAccess {
                 // An explicit, unfiltered deny first (the default deny does
                 // not hold the argument query), then process information
                 // for the run's own sandbox again.
-                quiet.push(Rule::new(Effect::Deny, &["process-info-pidinfo"], vec![]).quietly());
-                allow.push(Rule::new(
-                    Effect::Allow,
-                    &["process-info-pidinfo"],
-                    vec![Filter::Target("same-sandbox")],
+                let by = Decider::HardDeny(class);
+                quiet.push((
+                    Rule::new(Effect::Deny, &["process-info-pidinfo"], vec![]).quietly(),
+                    by.clone(),
+                ));
+                allow.push((
+                    Rule::new(
+                        Effect::Allow,
+                        &["process-info-pidinfo"],
+                        vec![Filter::Target("same-sandbox")],
+                    ),
+                    by,
                 ));
             }
         }
     }
 
     let degradations = ledger.finish()?;
+    Ok(Emitted {
+        blocks: [quiet, allow, within, hard, marker],
+        grants,
+        degradations,
+    })
+}
 
+pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltPlan, LowerError> {
+    let Emitted {
+        blocks: [quiet, allow, within, hard, marker],
+        grants,
+        degradations,
+    } = emit(policy, options)?;
+    let strip = |block: Vec<Tagged>| block.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
+    let marker = strip(marker);
     let run_marker = !marker.is_empty();
     let mut rules =
         Vec::with_capacity(quiet.len() + allow.len() + within.len() + hard.len() + marker.len());
-    for mut block in [quiet, allow, within, hard] {
+    for block in [quiet, allow, within, hard] {
+        let mut block = strip(block);
         if !options.violations {
             // Without reporting, reasons must not keep apart rules that would
             // otherwise be deduplicated or merged.

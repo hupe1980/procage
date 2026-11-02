@@ -413,6 +413,8 @@ pub enum SpawnError {
     /// A protected, hidden or class file has another name (a hard link),
     /// which path rules do not cover; see [`LinkAudit`](crate::LinkAudit).
     HardLinks(Vec<crate::LinkFinding>),
+    /// A question to [`Cage::explain`] has no answer.
+    Explain(procage_policy::explain::ExplainError),
 }
 
 impl fmt::Display for SpawnError {
@@ -438,6 +440,7 @@ impl fmt::Display for SpawnError {
             ),
             SpawnError::Io(e) => write!(f, "{e}"),
             SpawnError::HardLinks(found) => f.write_str(&crate::audit::refusal(found)),
+            SpawnError::Explain(e) => write!(f, "{e}"),
         }
     }
 }
@@ -646,6 +649,8 @@ pub struct Cage {
     facts: Arc<crate::receipt::CageFacts>,
     /// The audits every spawn runs.
     audit: Arc<crate::audit::CageAudit>,
+    /// Answers [`Cage::explain`].
+    explainer: Arc<crate::explain::Lazy>,
 }
 
 impl Cage {
@@ -772,6 +777,11 @@ impl Cage {
         }
         let facts = Arc::new(facts(policy, options, &plan, &[]));
         let audit = Arc::new(cage_audit(policy, options, &plan, &homes));
+        let explainer = Arc::new(crate::explain::Lazy::new(
+            policy.clone(),
+            target,
+            options.lower.clone(),
+        ));
         Ok(Cage {
             plan,
             filter,
@@ -782,7 +792,38 @@ impl Cage {
             allowed: options.lower.allow_degrade.clone(),
             facts,
             audit,
+            explainer,
         })
+    }
+
+    /// Why a child of this cage, spawned with `grants`, may or may not
+    /// perform `op` on `path` as the file is now: the deciding rule and what
+    /// would change it (see [`procage_policy::explain`]).
+    ///
+    /// Symbolic links in `path` are resolved, the grants are bound as a
+    /// spawn binds them, and the homes are the cage's. The grant of the
+    /// private temporary directory is left out: its path exists only during
+    /// a run.
+    ///
+    /// The answer names the policy's rules: show it to the user, do not
+    /// relay it into the cage unfiltered.
+    pub fn explain(
+        &self,
+        op: procage_policy::explain::Op,
+        path: impl AsRef<Path>,
+        grants: &Grants,
+    ) -> Result<procage_policy::explain::Answer, SpawnError> {
+        let path = path.as_ref();
+        let question = crate::explain::question(op, path).map_err(|error| SpawnError::Path {
+            path: path.display().to_string(),
+            error,
+        })?;
+        let bound = self.bind(grants, &self.declared())?;
+        let context = crate::explain::context(bound, &self.homes).map_err(SpawnError::Io)?;
+        self.explainer
+            .get()?
+            .explain(&question, &context)
+            .map_err(SpawnError::Explain)
     }
 
     /// The lowered plan.

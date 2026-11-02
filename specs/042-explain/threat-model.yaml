@@ -126,14 +126,16 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-01T21:15:36Z'
+  generated: '2026-11-02T05:54:41Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
+  - path: plan.md
+    sha256: b936f3550a0ff35f833d4bbec62138f0f67584c9a4d66c8b1890b9ac2bac5da2
   - path: spec.md
-    sha256: d3da7d6b06d23b68e63e3ddb78dee58ddf969a2e9bd99571afac3ad310faa3d3
+    sha256: da310a7dc08b62184db9a3ae8e3622a79a9678eb6329ecc988f73e8bcb474474
   surfaces:
   - external-input
   - authorization
@@ -323,7 +325,7 @@ threats:
     assets:
     - asset.answer
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - flow.answer
@@ -343,17 +345,19 @@ threats:
     source: spec.md#FR-003
     assets:
     - asset.answer
-    status: open
+    status: retired
     actor: actor.consumer
     disposition: needs-clarification
     elements:
     - component.query
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: injection
 - id: threat.diff-hides-loosening
   name: diff misses a newly allowed operation (an overlapping subpath or glob, a waiver, a base or preset version
-    change, network, process or signal rules), so a reviewer approves a loosening
+    change, network, process or signal rules, or a change on only one target or tier), so a reviewer approves a
+    loosening
   categories:
   - Elevation of Privilege
   cwes:
@@ -366,7 +370,7 @@ threats:
     assets:
     - asset.diff
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.policy-author
     constitution: VII. A library, not a harness (loosening a frozen preset is a breaking change)
     elements:
@@ -391,7 +395,7 @@ threats:
     source: spec.md#SC-003
     assets:
     - asset.harness
-    status: open
+    status: mitigated
     actor: actor.policy-author
     elements:
     - component.evaluator
@@ -415,7 +419,7 @@ threats:
     assets:
     - asset.host
     - asset.answer
-    status: open
+    status: mitigated
     actor: actor.consumer
     constitution: III. The kernel is the oracle
     elements:
@@ -439,7 +443,7 @@ threats:
     assets:
     - asset.host
     - asset.answer
-    status: open
+    status: mitigated
     actor: actor.consumer
     elements:
     - component.evaluator
@@ -464,7 +468,7 @@ threats:
     assets:
     - asset.answer
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.query
@@ -473,8 +477,8 @@ threats:
     severity: high
     technique: injection
 - id: threat.oracle-overclaim
-  name: The oracle or the docs claim proof the oracle does not give (sandbox_check used for an unproven operation,
-    ENOENT counted as agreement, a lane that skips, rule kinds no generated question reaches)
+  name: The oracle or the docs claim proof the oracle does not give (ENOENT counted as agreement, a lane that skips,
+    rule kinds no generated question reaches, an operation explained but never asked of the kernel)
   categories:
   - Repudiation
   cwes:
@@ -486,7 +490,7 @@ threats:
     source: spec.md#FR-004
     assets:
     - asset.answer
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     elements:
@@ -508,13 +512,14 @@ threats:
     source: spec.md#FR-006
     assets:
     - asset.answer
-    status: open
+    status: retired
     actor: actor.consumer
     disposition: needs-clarification
     elements:
     - component.evaluator
     - component.docs
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: missing-audit-trail
 - id: threat.single-target-diff
@@ -529,12 +534,13 @@ threats:
     source: spec.md#FR-002
     assets:
     - asset.diff
-    status: open
+    status: retired
     actor: actor.reviewer
     disposition: needs-clarification
     elements:
     - component.diff
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: privilege-escalation-via-config
 - id: threat.unmodelled-guess
@@ -551,7 +557,7 @@ threats:
     source: spec.md#FR-005
     assets:
     - asset.answer
-    status: open
+    status: mitigated
     actor: actor.contributor
     elements:
     - component.evaluator
@@ -560,43 +566,46 @@ threats:
     technique: missing-audit-trail
 mitigations:
 - id: mitigation.bounded-evaluation
-  name: explain is linear in the plan; diff has a documented bound and refuses beyond it
+  name: explain matches regexes with a linear-time NFA; diff compares rule lists by sorting, with no pattern pairs
   riskReduction: 80
   attributes:
     threats:
     - threat.evaluator-exhaustion
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-009
     touchpoints:
-    - component.evaluator
-    - component.diff
+    - crates/procage-policy/src/explain/regex.rs
+    - crates/procage-policy/src/explain/diff.rs
 - id: mitigation.canonical-question
-  name: Questions take a canonical-path type; lexical and known-alias spellings are refused naming the canonical
-    form; pattern characters stay literal
+  name: Cage::explain resolves the path on the host; the policy crate refuses lexical and macOS alias spellings
+    naming the canonical form; question paths are bytes, never patterns
   riskReduction: 80
   attributes:
     threats:
     - threat.non-canonical-query
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-006
     touchpoints:
-    - component.query
+    - crates/procage-policy/src/explain/mod.rs
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
 - id: mitigation.closed-operations
   name: A closed set of modelled operations; anything else answers not modelled
   riskReduction: 85
   attributes:
     threats:
     - threat.unmodelled-guess
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-007
     touchpoints:
-    - component.evaluator
+    - crates/procage-policy/src/explain/mod.rs
+    - crates/procage-policy/src/explain/macos.rs
 - id: mitigation.differential-oracle
   name: Generated questions per preset, target and rule kind, asked of the kernel on every lane; any disagreement
     or unresolved outcome fails and names the question; no skip
@@ -606,14 +615,13 @@ mitigations:
     - threat.false-denied
     - threat.oracle-overclaim
     - threat.misleading-remedy
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-001
     - SR-002
     touchpoints:
-    - component.oracle
-    - component.evaluator
+    - crates/procage/tests/oracle.rs
 - id: mitigation.full-question
   name: Questions carry the target, tier and grants; T1 answers outside the spawn-time covers say covered at spawn
     with the limits
@@ -621,65 +629,64 @@ mitigations:
   attributes:
     threats:
     - threat.false-denied
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-004
     touchpoints:
-    - component.query
-    - component.evaluator
+    - crates/procage-policy/src/explain/linux.rs
+    - crates/procage/src/linux/mod.rs
 - id: mitigation.minimal-remedy
-  name: The suggested change is the narrowest that flips the question, checked by applying it and diffing
+  name: The remedy is the narrowest change for the deciding rule, verified by re-lowering, and carries its own diff
   riskReduction: 75
   attributes:
     threats:
     - threat.misleading-remedy
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-005
     touchpoints:
-    - component.evaluator
-    - component.diff
+    - crates/procage-policy/src/explain/mod.rs
 - id: mitigation.proven-list
   name: The docs' list of proven operations is checked against the oracle suite; nothing else is called proven
   riskReduction: 70
   attributes:
     threats:
     - threat.oracle-overclaim
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-003
     touchpoints:
-    - component.docs
-    - component.oracle
+    - site/content/docs/explain.md
+    - crates/procage/tests/oracle.rs
 - id: mitigation.relay-guidance
   name: The docs say an answer names the deciding rule and is for the user, not to be relayed into the cage unfiltered
   riskReduction: 50
   attributes:
     threats:
     - threat.answer-reveals-rules
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-010
     touchpoints:
-    - component.docs
+    - site/content/docs/explain.md
+    - crates/procage-policy/src/explain/mod.rs
 - id: mitigation.sound-diff
-  name: diff is checked against explain on generated policy pairs, covers every rule dimension, and lists what it
-    does not compare
+  name: diff is the rule-list difference for every target given, plus every other differing plan field as a setting,
+    checked against explain on generated pairs
   riskReduction: 85
   attributes:
     threats:
     - threat.diff-hides-loosening
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-008
     touchpoints:
-    - component.diff
-    - component.evaluator
+    - crates/procage-policy/src/explain/diff.rs
 requirements:
 - id: SR-001
   statement: On every CI lane, a differential oracle MUST ask the kernel at least 1,000 generated questions per
@@ -701,65 +708,68 @@ requirements:
     when: the oracle starts
   tasks: []
 - id: SR-002
-  statement: The oracle MUST classify a kernel outcome as allowed, denied or unresolved (absent file, other error),
-    MUST fail on an unresolved question rather than count it as agreement, and MUST use sandbox_check only for operations
-    a kernel fact proves reliable.
+  statement: The oracle MUST ask a caged child on every lane and classify its observed result as allowed (success),
+    denied (EACCES, EPERM, EROFS) or unresolved (anything else, including ENOENT for a file the generator made),
+    and MUST fail on an unresolved question rather than count it as agreement.
   priority: P1
   mitigations:
   - mitigation.differential-oracle
   acceptance:
-  - given: a question about a file that does not exist
-    then: the question is unresolved and the suite fails unless the generator creates the file first
-    when: the caged child observes ENOENT
-  - given: an operation without a kernel fact for sandbox_check
-    then: it uses a caged child's observed result
-    when: the oracle checks it
+  - given: a question whose open fails with ENOENT or another unexpected errno
+    then: the suite fails naming the question
+    when: the oracle compares it
+  - given: any lane
+    then: it uses a caged child's observed open or execve result, never sandbox_check
+    when: the oracle asks the kernel
   tasks: []
 - id: SR-003
-  statement: The docs MUST list, per target, exactly the operations the oracle suite proves, and MUST NOT call any
-    other answer proven.
+  statement: explain MUST model exactly the operations the oracle suite proves on every target, and the docs MUST
+    list exactly those; no other answer is called proven.
   priority: P1
   mitigations:
   - mitigation.proven-list
   acceptance:
-  - given: the docs list and the oracle suite's covered operations
-    then: they are equal per target
+  - given: the modelled operations, the oracle suite's covered operations and the docs list
+    then: they are equal on every target
     when: a test compares them
   tasks: []
 - id: SR-004
-  statement: A question MUST carry the target, the Linux tier and the per-spawn grants; on Linux T1 a path outside
-    the spawn-time covers MUST answer covered at spawn with the cover's limits, never a plain denied.
+  statement: A question MUST carry the target, the Linux tier, the per-spawn grants and the homes; on Linux an answer
+    that holds only for paths existing at spawn (class covers on T1, piecewise hides on T2) MUST say so with the
+    limit, never a plain denied.
   priority: P1
   mitigations:
   - mitigation.full-question
   acceptance:
-  - given: a protected directory on T1 and a file created in it after spawn
-    then: the answer says covered at spawn and names the limit, and the oracle agrees with the kernel's observed
-      result
-    when: a write to it is explained
+  - given: a trust-handoff name under a writable tree on T1
+    then: the answer is denied by that class with the spawn caveat, and the oracle agrees for a file that existed
+      at spawn
+    when: a write to a file in it is explained
   - given: a path outside the policy and a grant for it
     then: it is allowed by the grant with it and denied by the deciding rule without it, as the kernel observes
     when: it is explained with and without the grant
   tasks: []
 - id: SR-005
-  statement: What would change an answer MUST be the narrowest change that flips that question (a literal rule or
-    grant for the path asked, a waiver by class only when a hard-deny class decides), and MUST name every other
-    question it also flips.
+  statement: A remedy MUST be the narrowest change for the deciding rule (a literal rule of the asked access for
+    the path asked, a waiver by class only when a hard-deny class decides, the removal of the deciding protect or
+    hide rule), MUST be offered only when re-lowering confirms it flips the question, and MUST carry the diff of
+    the change so it names every other question it also flips.
   priority: P1
   mitigations:
   - mitigation.minimal-remedy
   acceptance:
   - given: every generated denied question of a preset
-    then: the question flips and the diff lists only the path asked, or exactly the questions the suggestion names
-    when: its suggested change is applied and the old and new policies are diffed
+    then: the question flips and the diff equals the remedy's diff
+    when: its remedy is applied and the old and new policies are diffed
   - given: a write to .git/hooks/x
-    then: the answer is denied by hard deny trust-handoff and names that waiver, and no subpath grant
+    then: the answer is denied by hard deny trust-handoff, the remedy is that waiver, and no subpath rule
     when: explained
   tasks: []
 - id: SR-006
-  statement: explain MUST accept only a canonical absolute path; a relative path, dot or dot-dot components, repeated
-    separators, a trailing separator and a known alias or firmlink spelling MUST return an error naming the canonical
-    form; pattern characters in a question path MUST stay literal.
+  statement: 'explain MUST accept only a canonical absolute path: a relative path, dot or dot-dot components, repeated
+    separators, a trailing separator and the macOS alias spellings MUST return an error naming the canonical form;
+    Cage::explain MUST resolve symbolic links on the host first; pattern characters in a question path MUST stay
+    literal.'
   priority: P1
   mitigations:
   - mitigation.canonical-question
@@ -770,6 +780,9 @@ requirements:
   - given: a path containing * and [ under a protect rule for a sibling
     then: the answer is about that literal path only, and the oracle agrees
     when: it is explained
+  - given: a symbolic link to a protected file
+    then: the answer is about the file it resolves to
+    when: Cage::explain is asked about the link
   tasks: []
 - id: SR-007
   statement: An operation outside the modelled set MUST return not modelled, never allowed, denied or a default.
@@ -782,9 +795,10 @@ requirements:
     when: it is explained under every preset
   tasks: []
 - id: SR-008
-  statement: For two policies on one target, every question whose explain answers differ MUST be covered by a diff
-    entry naming its direction; changes to waivers, the base, the preset version, network, process and signal rules
-    MUST appear; anything diff does not compare MUST be listed as not compared, never as unchanged.
+  statement: For two policies and the targets given, every question whose explain answers differ on a target MUST
+    be covered by a diff entry for that target naming its direction; changes to waivers, the base, the preset version,
+    network, process and signal rules MUST appear; every other plan field that differs MUST be listed as a changed
+    setting, never as unchanged.
   priority: P1
   mitigations:
   - mitigation.sound-diff
@@ -796,22 +810,25 @@ requirements:
     then: the diff names that path and its operations only, or that class and its operations only
     when: they are diffed
   - given: every frozen preset pair vN and vN+1
-    then: the result matches the changelog entry of that version
-    when: diffed
+    then: every entry comes from the base and the base setting is listed, as the changelog says
+    when: diffed on every target
+  - given: a change only Linux expresses (a Linux layer rule)
+    then: every entry is tagged with the Linux target
+    when: diffed for macOS and Linux
   tasks: []
 - id: SR-009
-  statement: explain MUST run in time linear in the plan size and under 1 ms per question on the reference machine;
-    diff MUST have a documented bound on pattern pairs and MUST return an error beyond it instead of running unbounded.
+  statement: explain MUST run in time linear in the plan size and path length and under 1 ms per question in release
+    on the reference machine; diff MUST run in O(n log n) in the plans' rules, with no pattern intersection.
   priority: P3
   mitigations:
   - mitigation.bounded-evaluation
   acceptance:
-  - given: the largest preset and a path of the maximum length with deep globs in the policy
-    then: it answers in under 1 ms
-    when: explain is benchmarked
-  - given: two policies over the diff bound
-    then: diff returns the bound error
-    when: diffed
+  - given: agent_workspace v3 and a 4,000-byte path
+    then: it answers in under 1 ms per question (a debug build is bounded at 20 ms)
+    when: explain is timed in release
+  - given: two policies of 10,000 rules each
+    then: it finishes in under a second (a debug build is bounded at 10 s)
+    when: diffed in release
   tasks: []
 - id: SR-010
   statement: The explain docs MUST state that an answer names the deciding rule and is meant for the user, and that
@@ -824,5 +841,118 @@ requirements:
     then: both say so
     when: they describe answers
   tasks: []
-verification: []
+verification:
+- id: verification.sr-001.2026-11-02
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/oracle.rs::explain_agrees_with_the_kernel
+  result: pass
+  verdict: verified
+  justification: Asks every expressible preset and the rule-kinds policy 1,277-1,278 questions per lane (macOS,
+    Linux T1 and T2, run 2026-11-02), asserts at least 1,000, fails naming each disagreement, asserts every required
+    rule kind is reached and that flipping any one kind's answers is detected; a non-gap cage error (AlreadySandboxed)
+    panics in fitted().
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-002.2026-11-02
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/oracle.rs::explain_agrees_with_the_kernel
+  result: pass
+  verdict: verified
+  justification: classify() maps 0 to allowed, EACCES/EPERM/EROFS to denied and every other errno (ENOENT included)
+    to Unresolved, which disagreements() counts as a failure; the kernel side is only the caged child's open and
+    caged spawns, no sandbox_check.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-003.2026-11-02
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/oracle.rs::the_docs_list_the_proven_operations
+  result: pass
+  verdict: verified
+  justification: The site page's table lists exactly MODELLED with "proven" for each of the three targets; explain_agrees_with_the_kernel
+    asserts the asked operations equal MODELLED on every lane.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-004.2026-11-02
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/oracle.rs::explain_agrees_with_the_kernel
+  result: pass
+  verdict: verified
+  justification: On T1 the rule-kinds policy asks writes under .git/hooks, .envrc and .vscode in a writable tree;
+    the answers carry SPAWN_COVER ("T1 cover" is a required kind) and agree with the kernel; crates/procage-policy/tests/explain.rs::every_rule_kind_on_macos
+    asserts a path is allowed by the grant with it bound and denied by the default without; the oracle binds the
+    grant and agrees.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-005.2026-11-02
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-policy/tests/explain.rs::every_remedy_flips_its_question
+  result: pass
+  verdict: verified
+  justification: For every denied question of every preset and the kinds policy on three targets, applies the remedy,
+    asserts the question becomes allowed, that an added rule is a literal for the asked path, and that the policy
+    diff equals the remedy's diff; every_rule_kind_on_macos asserts the .git/hooks write is denied by trust-handoff
+    with exactly that waiver.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-006.2026-11-02
+  requirement: SR-006
+  method: test
+  evidence: crates/procage-policy/tests/explain.rs::non_canonical_paths_name_their_canonical_form
+  result: pass
+  verdict: verified
+  justification: Asserts /etc/hosts names /private/etc/hosts, /work/a/../b names /work/b and a relative path has
+    no canonical form (unit test canonical_forms adds // . and trailing separators); pattern_characters_stay_literal
+    asserts /work/a*[b is unaffected by a protect on /work/ab; oracle.rs::explain_follows_links asserts a link to
+    a hidden file gets the hidden file's answer on all three lanes.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-007.2026-11-02
+  requirement: SR-007
+  method: test
+  evidence: crates/procage-policy/tests/explain.rs::unmodelled_operations_are_never_guessed
+  result: pass
+  verdict: verified
+  justification: Asks metadata, unlink, network and signal operations under every preset on every target and asserts
+    NotModelled with Decider::None.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-008.2026-11-02
+  requirement: SR-008
+  method: test
+  evidence: crates/procage-policy/tests/explain.rs::diff_covers_every_changed_answer
+  result: pass
+  verdict: verified
+  justification: For v3 presets and the kinds policy times 18 mutations (rules, base, every waiver, a grant) on
+    three targets, every question whose answer differs is covered by an entry with the matching direction; one_more_writable_path_or_waiver,
+    preset_versions_differ_only_in_their_base (base setting listed, entries from the base or build v2's sockets)
+    and entries_are_tagged_with_their_target cover the other scenarios.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-009.2026-11-02
+  requirement: SR-009
+  method: test
+  evidence: crates/procage-policy/tests/explain.rs::explain_is_fast_on_long_paths
+  result: pass
+  verdict: verified
+  justification: Bounds explain at 1 ms in release (20 ms debug) for a 4,000-byte path under agent_workspace v3
+    on three targets, measured 0.61 ms by the spawn bench; diff_is_fast_on_large_policies bounds a 10,000-rule diff
+    at 1 s in release (measured about 0.05 s); the regex is a Pike VM and diff sorts without pattern pairs.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
+- id: verification.sr-010.2026-11-02
+  requirement: SR-010
+  method: review
+  evidence: site/content/docs/explain.md:41
+  result: pass
+  verdict: verified
+  justification: The page says an answer names the policy's rules and must not be relayed into the cage unfiltered;
+    the crate docs (crates/procage-policy/src/explain/mod.rs module header) and both Cage::explain docs say the
+    same.
+  verified_at: '2026-11-02T05:55:25Z'
+  commit: 6c4d948
 decisions: []

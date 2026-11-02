@@ -62,6 +62,11 @@
         <a href="{{ get_url(path='@/docs/violations.md') }}">Violations</a>
       </article>
       <article class="card">
+        <h3>Explain a denial, diff a change</h3>
+        <p>Ask why a path can or cannot be read, written or executed: the deciding rule, and the narrowest change that would allow it. Diff two policies to see every rule one allows that the other does not. The kernel checks every answer on every CI lane.</p>
+        <a href="{{ get_url(path='@/docs/explain.md') }}">Explain and diff</a>
+      </article>
+      <article class="card">
         <h3>A hard-deny tier in every policy</h3>
         <p>Secrets, trust-handoff files such as git hooks and shell startup files, persistence locations, privilege changes and more are denied last, in every policy, and waivable only by class name.</p>
         <a href="{{ get_url(path='@/docs/hard-deny.md') }}">Hard-deny classes</a>

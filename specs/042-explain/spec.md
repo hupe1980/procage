@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: When a caged command fails, its author asks "why was this denied, and which rule would allow it?"; a reviewer of a policy change asks "what does this change allow that the old one did not?". procage should answer both from the policy itself, and prove its answers by comparing them with the kernel.
 
@@ -22,8 +22,8 @@ by which kind of rule. What is missing is an evaluator over the plan:
 
 Seatbelt and Landlock semantics are partly undocumented. So the evaluator is
 only trusted where a **differential oracle** agrees: the same questions asked
-of the kernel (macOS `sandbox_check` for operations proven reliable; observed
-errno in a caged child on Linux) must give the same answers. A disagreement is
+of the kernel (the observed result of a caged child, on every lane) must give
+the same answers. A disagreement is
 a test failure, which turns undocumented semantics into procage's own
 regression suite.
 
@@ -31,16 +31,28 @@ regression suite.
 
 ### Session 2026-11-01
 
-- Q: For which operations does `explain` answer? → A: File read, write,
-  create, unlink, rename, exec, metadata; network connect and bind by
-  family; Unix-socket connect; signal; process info. Others return "not
-  modelled", never a guess.
-- Q: Which kernel answer is the oracle on macOS? → A: `sandbox_check` only for
-  operations a kernel fact proves reliable; others are checked by a caged
-  child's observed result.
 - Q: Does `explain` follow symbolic links? → A: It answers for canonical
   paths only, like the policy; a non-canonical query is an error that names
   the canonical form.
+
+### Session 2026-11-02
+
+- Q: For which operations does `explain` answer in 0.2.0? → A: Opening a
+  file for reading, opening an existing file for writing, and executing a
+  file. Every other operation returns "not modelled", never a guess.
+- Q: Does an answer say whether it is proven by the oracle? → A: No marker
+  is needed: `explain` models exactly the operations the oracle proves on
+  every target, and the docs list them.
+- Q: How does a reviewer see a change that loosens only one target or tier?
+  → A: `diff` takes the targets to compare and tags every entry with its
+  target.
+- Q: Who resolves symbolic links in a question path? → A: procage's
+  `Cage::explain` resolves the path first; the policy crate alone refuses
+  lexically non-canonical paths and the macOS alias spellings (`/etc`,
+  `/tmp`, `/var`) by naming the canonical form.
+- Q: What does the oracle ask the kernel on macOS? → A: A caged child's
+  observed result, as on Linux; `sandbox_check` is not used. On Linux the
+  homes and grants the cage resolved at spawn are part of the question.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -100,11 +112,11 @@ allowed or newly denied operation.
 ### Functional Requirements
 
 - **FR-001**: The policy crate MUST provide `explain` over a lowered plan,
-  for the operations listed in the clarifications, returning the decision and
-  the deciding rule.
+  for file read, file write and exec (Session 2026-11-02), returning the
+  decision and the deciding rule.
 - **FR-002**: The policy crate MUST provide `diff` between two policies for
-  one target, as sets of (operation, path pattern) allowed by one and not
-  the other.
+  the targets given, as entries (target, operation, path pattern, direction)
+  allowed by one and not the other.
 - **FR-003**: The evaluator MUST stay portable (no system calls, `no_std`
   with allocation), like the rest of the policy crate.
 - **FR-004**: A differential oracle MUST compare `explain` with the kernel on
@@ -117,7 +129,8 @@ allowed or newly denied operation.
 
 ### Key Entities
 
-- **Question**: operation, canonical path (or socket, signal target), grants.
+- **Question**: operation, canonical path, and a context of the per-spawn
+  grants and (on Linux) the homes.
 - **Answer**: allowed or denied, deciding rule, what would change it.
 
 <!-- threatspec:begin -->
@@ -128,37 +141,39 @@ allowed or newly denied operation.
   - Given the oracle suite on each lane, when it runs, then every rule kind is reached, at least 1,000 questions per preset and target are asked, and all agree
   - Given an evaluator mutated to flip the decision of one rule kind, when the oracle runs, then it fails and names a question of that kind
   - Given a lane that is itself sandboxed, when the oracle starts, then it fails with AlreadySandboxed
-- **SR-002** (P1): The oracle MUST classify a kernel outcome as allowed, denied or unresolved (absent file, other error), MUST fail on an unresolved question rather than count it as agreement, and MUST use sandbox_check only for operations a kernel fact proves reliable.
+- **SR-002** (P1): The oracle MUST ask a caged child on every lane and classify its observed result as allowed (success), denied (EACCES, EPERM, EROFS) or unresolved (anything else, including ENOENT for a file the generator made), and MUST fail on an unresolved question rather than count it as agreement.
   - Mitigates: `threat.false-denied`, `threat.misleading-remedy`, `threat.oracle-overclaim` via `mitigation.differential-oracle`
-  - Given a question about a file that does not exist, when the caged child observes ENOENT, then the question is unresolved and the suite fails unless the generator creates the file first
-  - Given an operation without a kernel fact for sandbox_check, when the oracle checks it, then it uses a caged child's observed result
-- **SR-003** (P1): The docs MUST list, per target, exactly the operations the oracle suite proves, and MUST NOT call any other answer proven.
+  - Given a question whose open fails with ENOENT or another unexpected errno, when the oracle compares it, then the suite fails naming the question
+  - Given any lane, when the oracle asks the kernel, then it uses a caged child's observed open or execve result, never sandbox_check
+- **SR-003** (P1): explain MUST model exactly the operations the oracle suite proves on every target, and the docs MUST list exactly those; no other answer is called proven.
   - Mitigates: `threat.oracle-overclaim` via `mitigation.proven-list`
-  - Given the docs list and the oracle suite's covered operations, when a test compares them, then they are equal per target
-- **SR-004** (P1): A question MUST carry the target, the Linux tier and the per-spawn grants; on Linux T1 a path outside the spawn-time covers MUST answer covered at spawn with the cover's limits, never a plain denied.
+  - Given the modelled operations, the oracle suite's covered operations and the docs list, when a test compares them, then they are equal on every target
+- **SR-004** (P1): A question MUST carry the target, the Linux tier, the per-spawn grants and the homes; on Linux an answer that holds only for paths existing at spawn (class covers on T1, piecewise hides on T2) MUST say so with the limit, never a plain denied.
   - Mitigates: `threat.false-denied` via `mitigation.full-question`
-  - Given a protected directory on T1 and a file created in it after spawn, when a write to it is explained, then the answer says covered at spawn and names the limit, and the oracle agrees with the kernel's observed result
+  - Given a trust-handoff name under a writable tree on T1, when a write to a file in it is explained, then the answer is denied by that class with the spawn caveat, and the oracle agrees for a file that existed at spawn
   - Given a path outside the policy and a grant for it, when it is explained with and without the grant, then it is allowed by the grant with it and denied by the deciding rule without it, as the kernel observes
-- **SR-005** (P1): What would change an answer MUST be the narrowest change that flips that question (a literal rule or grant for the path asked, a waiver by class only when a hard-deny class decides), and MUST name every other question it also flips.
+- **SR-005** (P1): A remedy MUST be the narrowest change for the deciding rule (a literal rule of the asked access for the path asked, a waiver by class only when a hard-deny class decides, the removal of the deciding protect or hide rule), MUST be offered only when re-lowering confirms it flips the question, and MUST carry the diff of the change so it names every other question it also flips.
   - Mitigates: `threat.misleading-remedy` via `mitigation.minimal-remedy`
-  - Given every generated denied question of a preset, when its suggested change is applied and the old and new policies are diffed, then the question flips and the diff lists only the path asked, or exactly the questions the suggestion names
-  - Given a write to .git/hooks/x, when explained, then the answer is denied by hard deny trust-handoff and names that waiver, and no subpath grant
-- **SR-006** (P1): explain MUST accept only a canonical absolute path; a relative path, dot or dot-dot components, repeated separators, a trailing separator and a known alias or firmlink spelling MUST return an error naming the canonical form; pattern characters in a question path MUST stay literal.
+  - Given every generated denied question of a preset, when its remedy is applied and the old and new policies are diffed, then the question flips and the diff equals the remedy's diff
+  - Given a write to .git/hooks/x, when explained, then the answer is denied by hard deny trust-handoff, the remedy is that waiver, and no subpath rule
+- **SR-006** (P1): explain MUST accept only a canonical absolute path: a relative path, dot or dot-dot components, repeated separators, a trailing separator and the macOS alias spellings MUST return an error naming the canonical form; Cage::explain MUST resolve symbolic links on the host first; pattern characters in a question path MUST stay literal.
   - Mitigates: `threat.non-canonical-query` via `mitigation.canonical-question`
   - Given /etc/hosts on macOS and /a/../b, when they are explained, then each is an error naming /private/etc/hosts and /b
   - Given a path containing * and [ under a protect rule for a sibling, when it is explained, then the answer is about that literal path only, and the oracle agrees
+  - Given a symbolic link to a protected file, when Cage::explain is asked about the link, then the answer is about the file it resolves to
 - **SR-007** (P2): An operation outside the modelled set MUST return not modelled, never allowed, denied or a default.
   - Mitigates: `threat.unmodelled-guess` via `mitigation.closed-operations`
   - Given each operation kind the kernel knows and explain does not model, when it is explained under every preset, then the answer is not modelled
-- **SR-008** (P1): For two policies on one target, every question whose explain answers differ MUST be covered by a diff entry naming its direction; changes to waivers, the base, the preset version, network, process and signal rules MUST appear; anything diff does not compare MUST be listed as not compared, never as unchanged.
+- **SR-008** (P1): For two policies and the targets given, every question whose explain answers differ on a target MUST be covered by a diff entry for that target naming its direction; changes to waivers, the base, the preset version, network, process and signal rules MUST appear; every other plan field that differs MUST be listed as a changed setting, never as unchanged.
   - Mitigates: `threat.diff-hides-loosening` via `mitigation.sound-diff`
   - Given generated policy pairs and generated questions, when explain disagrees between the two for a question, then a diff entry covers that question with the right direction
   - Given a policy and the same policy with one more writable path, or one more waiver, when they are diffed, then the diff names that path and its operations only, or that class and its operations only
-  - Given every frozen preset pair vN and vN+1, when diffed, then the result matches the changelog entry of that version
-- **SR-009** (P3): explain MUST run in time linear in the plan size and under 1 ms per question on the reference machine; diff MUST have a documented bound on pattern pairs and MUST return an error beyond it instead of running unbounded.
+  - Given every frozen preset pair vN and vN+1, when diffed on every target, then every entry comes from the base and the base setting is listed, as the changelog says
+  - Given a change only Linux expresses (a Linux layer rule), when diffed for macOS and Linux, then every entry is tagged with the Linux target
+- **SR-009** (P3): explain MUST run in time linear in the plan size and path length and under 1 ms per question in release on the reference machine; diff MUST run in O(n log n) in the plans' rules, with no pattern intersection.
   - Mitigates: `threat.evaluator-exhaustion` via `mitigation.bounded-evaluation`
-  - Given the largest preset and a path of the maximum length with deep globs in the policy, when explain is benchmarked, then it answers in under 1 ms
-  - Given two policies over the diff bound, when diffed, then diff returns the bound error
+  - Given agent_workspace v3 and a 4,000-byte path, when explain is timed in release, then it answers in under 1 ms per question (a debug build is bounded at 20 ms)
+  - Given two policies of 10,000 rules each, when diffed in release, then it finishes in under a second (a debug build is bounded at 10 s)
 - **SR-010** (P3): The explain docs MUST state that an answer names the deciding rule and is meant for the user, and that a harness MUST NOT relay it into the cage unfiltered.
   - Mitigates: `threat.answer-reveals-rules` via `mitigation.relay-guidance`
   - Given the crate docs and the site page on explain, when they describe answers, then both say so
@@ -175,8 +190,8 @@ allowed or newly denied operation.
 
 ## Assumptions
 
-- `sandbox_check` is reliable for the file read/write operations it was
-  measured on; other operations use caged children.
+- A caged child's observed `open` and `execve` results are the kernel's
+  answer; a missing file is unresolved, never agreement.
 
 ## Out of Scope
 

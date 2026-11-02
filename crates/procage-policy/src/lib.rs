@@ -15,6 +15,9 @@
 //!   [lowering table](mod@lower#lowering-table) states, for every construct and
 //!   target, whether it is expressed exactly, approximated (only with
 //!   permission, then recorded) or not at all.
+//! - **Explain and diff**: [`explain`] says which rule allows or denies
+//!   reading, writing or executing a path in a plan, and what one policy
+//!   allows that another does not.
 //!
 //! This crate applies nothing to any process. A plan is data for procage's
 //! spawn backends, and says nothing about enforcement by itself: what a
@@ -44,6 +47,7 @@
 extern crate alloc;
 
 pub mod base;
+pub mod explain;
 #[cfg(feature = "serde")]
 mod format;
 pub mod glob;

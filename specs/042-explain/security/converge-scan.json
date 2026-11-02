@@ -1,0 +1,603 @@
+{
+  "feature": "042-explain",
+  "commit": "6c4d948",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "On every CI lane, a differential oracle MUST ask the kernel at least 1,000 generated questions per preset and target, reaching every rule kind (allow, protect, hide, hard-deny class, base, default, grant, T1 cover), for every operation listed as proven, and MUST fail naming the question on any disagreement; a lane that cannot confine its children MUST fail, never skip.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the oracle suite on each lane",
+          "then": "every rule kind is reached, at least 1,000 questions per preset and target are asked, and all agree",
+          "when": "it runs"
+        },
+        {
+          "given": "an evaluator mutated to flip the decision of one rule kind",
+          "then": "it fails and names a question of that kind",
+          "when": "the oracle runs"
+        },
+        {
+          "given": "a lane that is itself sandboxed",
+          "then": "it fails with AlreadySandboxed",
+          "when": "the oracle starts"
+        }
+      ],
+      "mitigations": [
+        "mitigation.differential-oracle"
+      ],
+      "tasks": [
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US3] [SR-001] [SR-002] [SR-003] Oracle: per lane, every preset v1\u2013v3 and a rule-kinds policy (+ exec of the test binary); a generated tree with at least 1,000 read/write questions per policy and target answered by one caged child (`O_RDONLY`, `O_WRONLY` without truncation, errno printed), exec questions as caged spawns of copies of `true` (one set-user-ID on macOS); classification allowed/denied/unresolved; fail on any disagreement or unresolved question naming it; every rule kind reached; flipping the answers of one kind is detected; covered ops equal `MODELLED` \u2014 crates/procage/tests/oracle.rs"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[US3] [SR-001] Run the oracle on macOS (`cargo test -p procage --test oracle`), Linux T1 and T2 (`just linux-t1`, `just linux`); fix every disagreement in the evaluator, never in the oracle's classification \u2014 crates/procage-policy/src/explain/"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/tests/oracle.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The oracle MUST ask a caged child on every lane and classify its observed result as allowed (success), denied (EACCES, EPERM, EROFS) or unresolved (anything else, including ENOENT for a file the generator made), and MUST fail on an unresolved question rather than count it as agreement.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a question whose open fails with ENOENT or another unexpected errno",
+          "then": "the suite fails naming the question",
+          "when": "the oracle compares it"
+        },
+        {
+          "given": "any lane",
+          "then": "it uses a caged child's observed open or execve result, never sandbox_check",
+          "when": "the oracle asks the kernel"
+        }
+      ],
+      "mitigations": [
+        "mitigation.differential-oracle"
+      ],
+      "tasks": [
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US3] [SR-001] [SR-002] [SR-003] Oracle: per lane, every preset v1\u2013v3 and a rule-kinds policy (+ exec of the test binary); a generated tree with at least 1,000 read/write questions per policy and target answered by one caged child (`O_RDONLY`, `O_WRONLY` without truncation, errno printed), exec questions as caged spawns of copies of `true` (one set-user-ID on macOS); classification allowed/denied/unresolved; fail on any disagreement or unresolved question naming it; every rule kind reached; flipping the answers of one kind is detected; covered ops equal `MODELLED` \u2014 crates/procage/tests/oracle.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/tests/oracle.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "explain MUST model exactly the operations the oracle suite proves on every target, and the docs MUST list exactly those; no other answer is called proven.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the modelled operations, the oracle suite's covered operations and the docs list",
+          "then": "they are equal on every target",
+          "when": "a test compares them"
+        }
+      ],
+      "mitigations": [
+        "mitigation.proven-list"
+      ],
+      "tasks": [
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[US3] [SR-001] [SR-002] [SR-003] Oracle: per lane, every preset v1\u2013v3 and a rule-kinds policy (+ exec of the test binary); a generated tree with at least 1,000 read/write questions per policy and target answered by one caged child (`O_RDONLY`, `O_WRONLY` without truncation, errno printed), exec questions as caged spawns of copies of `true` (one set-user-ID on macOS); classification allowed/denied/unresolved; fail on any disagreement or unresolved question naming it; every rule kind reached; flipping the answers of one kind is detected; covered ops equal `MODELLED` \u2014 crates/procage/tests/oracle.rs"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[SR-003] [SR-010] Docs: site page `explain.md` (proven operations per target, answer fields, caveats, relay guidance), crate docs, README feature line, CHANGELOG Added; a test compares the page's proven list with `MODELLED` \u2014 site/content/docs/explain.md, crates/procage-policy/src/explain/mod.rs, README.md, CHANGELOG.md"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/tests/oracle.rs",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/explain.md",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "A question MUST carry the target, the Linux tier, the per-spawn grants and the homes; on Linux an answer that holds only for paths existing at spawn (class covers on T1, piecewise hides on T2) MUST say so with the limit, never a plain denied.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a trust-handoff name under a writable tree on T1",
+          "then": "the answer is denied by that class with the spawn caveat, and the oracle agrees for a file that existed at spawn",
+          "when": "a write to a file in it is explained"
+        },
+        {
+          "given": "a path outside the policy and a grant for it",
+          "then": "it is allowed by the grant with it and denied by the deciding rule without it, as the kernel observes",
+          "when": "it is explained with and without the grant"
+        }
+      ],
+      "mitigations": [
+        "mitigation.full-question"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-004] Linux evaluator: rights per op, unhandled rights allowed, union of covering Landlock rules (grants from the context), attribution to the policy rule, grant, layer entry or base; T1 masks and read-only binds; classes with the context's homes, system paths and `anywhere` names under writable trees, with the spawn caveat; T2 piecewise hides with the piecewise caveat \u2014 crates/procage-policy/src/explain/linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/explain/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "A remedy MUST be the narrowest change for the deciding rule (a literal rule of the asked access for the path asked, a waiver by class only when a hard-deny class decides, the removal of the deciding protect or hide rule), MUST be offered only when re-lowering confirms it flips the question, and MUST carry the diff of the change so it names every other question it also flips.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "every generated denied question of a preset",
+          "then": "the question flips and the diff equals the remedy's diff",
+          "when": "its remedy is applied and the old and new policies are diffed"
+        },
+        {
+          "given": "a write to .git/hooks/x",
+          "then": "the answer is denied by hard deny trust-handoff, the remedy is that waiver, and no subpath rule",
+          "when": "explained"
+        }
+      ],
+      "mitigations": [
+        "mitigation.minimal-remedy"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US1] [SR-005] Remedy: up to three narrowest changes for the deciding rule (literal rule of the asked access, waiver of the deciding class, removal of the deciding protect or hide rule), each re-lowered (approximations it needs accepted and listed) and re-asked; carries the diff of the change; none if nothing flips \u2014 crates/procage-policy/src/explain/mod.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-005] [SR-006] [SR-007] Unit tests: each rule kind on each target, `.git/hooks/x` \u2192 trust-handoff with that waiver, non-canonical paths name their canonical form, pattern characters literal, `Op::Other` not modelled under every preset, every remedy of generated denied questions flips \u2014 crates/procage-policy/tests/explain.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/explain/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "explain MUST accept only a canonical absolute path: a relative path, dot or dot-dot components, repeated separators, a trailing separator and the macOS alias spellings MUST return an error naming the canonical form; Cage::explain MUST resolve symbolic links on the host first; pattern characters in a question path MUST stay literal.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "/etc/hosts on macOS and /a/../b",
+          "then": "each is an error naming /private/etc/hosts and /b",
+          "when": "they are explained"
+        },
+        {
+          "given": "a path containing * and [ under a protect rule for a sibling",
+          "then": "the answer is about that literal path only, and the oracle agrees",
+          "when": "it is explained"
+        },
+        {
+          "given": "a symbolic link to a protected file",
+          "then": "the answer is about the file it resolves to",
+          "when": "Cage::explain is asked about the link"
+        }
+      ],
+      "mitigations": [
+        "mitigation.canonical-question"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-006] [SR-007] Types `Op` (`MODELLED` = read, write, exec; `Other(String)` answers not modelled), `Question` (`mode` default `0o644`), `Context`, `Decision`, `Decider`, `Answer`, `Change`, `Remedy`, `ExplainError::NotCanonical { canonical: Option<AbsPath> }`; the canonical check (lexical form; macOS `/etc`, `/tmp`, `/var` \u2192 `/private/\u2026`) \u2014 crates/procage-policy/src/explain/mod.rs, crates/procage-policy/src/lib.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-005] [SR-006] [SR-007] Unit tests: each rule kind on each target, `.git/hooks/x` \u2192 trust-handoff with that waiver, non-canonical paths name their canonical form, pattern characters literal, `Op::Other` not modelled under every preset, every remedy of generated denied questions flips \u2014 crates/procage-policy/tests/explain.rs"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[US1] [SR-006] `Cage::explain(op, path, &Grants)` on both backends: resolve the path (or its parent for a missing file), bind grants as a spawn would, homes on Linux; `SpawnError::Explain` \u2014 crates/procage/src/macos/mod.rs, crates/procage/src/linux/mod.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/explain/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "An operation outside the modelled set MUST return not modelled, never allowed, denied or a default.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "each operation kind the kernel knows and explain does not model",
+          "then": "the answer is not modelled",
+          "when": "it is explained under every preset"
+        }
+      ],
+      "mitigations": [
+        "mitigation.closed-operations"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-006] [SR-007] Types `Op` (`MODELLED` = read, write, exec; `Other(String)` answers not modelled), `Question` (`mode` default `0o644`), `Context`, `Decision`, `Decider`, `Answer`, `Change`, `Remedy`, `ExplainError::NotCanonical { canonical: Option<AbsPath> }`; the canonical check (lexical form; macOS `/etc`, `/tmp`, `/var` \u2192 `/private/\u2026`) \u2014 crates/procage-policy/src/explain/mod.rs, crates/procage-policy/src/lib.rs"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-007] macOS evaluator: last matching rule in profile order; read `file-read-data`, write `file-write-data`, exec `process-exec`; ops by name or `*` prefix; `literal`, `subpath`, `regex`, `path-ancestors`, grant `extension`, `file-mode`; any other filter on a modelled op makes the answer `NotModelled` \u2014 crates/procage-policy/src/explain/macos.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US1] [SR-005] [SR-006] [SR-007] Unit tests: each rule kind on each target, `.git/hooks/x` \u2192 trust-handoff with that waiver, non-canonical paths name their canonical form, pattern characters literal, `Op::Other` not modelled under every preset, every remedy of generated denied questions flips \u2014 crates/procage-policy/tests/explain.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/explain/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/explain/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "For two policies and the targets given, every question whose explain answers differ on a target MUST be covered by a diff entry for that target naming its direction; changes to waivers, the base, the preset version, network, process and signal rules MUST appear; every other plan field that differs MUST be listed as a changed setting, never as unchanged.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "generated policy pairs and generated questions",
+          "then": "a diff entry covers that question with the right direction",
+          "when": "explain disagrees between the two for a question"
+        },
+        {
+          "given": "a policy and the same policy with one more writable path, or one more waiver",
+          "then": "the diff names that path and its operations only, or that class and its operations only",
+          "when": "they are diffed"
+        },
+        {
+          "given": "every frozen preset pair vN and vN+1",
+          "then": "every entry comes from the base and the base setting is listed, as the changelog says",
+          "when": "diffed on every target"
+        },
+        {
+          "given": "a change only Linux expresses (a Linux layer rule)",
+          "then": "every entry is tagged with the Linux target",
+          "when": "diffed for macOS and Linux"
+        }
+      ],
+      "mitigations": [
+        "mitigation.sound-diff"
+      ],
+      "tasks": [
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-008] [SR-009] `diff(a, b, targets, options)`: multiset difference of tagged rules (macOS) or Landlock rules, mounts, classes and seccomp rules (Linux); added allow or removed deny loosens, the opposite tightens; every other differing plan field, base, preset tag and waivers as settings; `PathSet::contains` and `DiffEntry::covers` \u2014 crates/procage-policy/src/explain/diff.rs"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US2] [SR-008] [SR-009] Diff tests: generated pairs \u00d7 generated questions (every differing answer covered with the right direction), one more writable path or waiver, a T2-only change tagged T2, preset vN\u2192vN+1 entries all from the base with the base setting, 10,000-rule pairs under a second \u2014 crates/procage-policy/tests/explain.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/explain/diff.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "explain MUST run in time linear in the plan size and path length and under 1 ms per question in release on the reference machine; diff MUST run in O(n log n) in the plans' rules, with no pattern intersection.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "agent_workspace v3 and a 4,000-byte path",
+          "then": "it answers in under 1 ms per question (a debug build is bounded at 20 ms)",
+          "when": "explain is timed in release"
+        },
+        {
+          "given": "two policies of 10,000 rules each",
+          "then": "it finishes in under a second (a debug build is bounded at 10 s)",
+          "when": "diffed in release"
+        }
+      ],
+      "mitigations": [
+        "mitigation.bounded-evaluation"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-009] SBPL regex subset as a Thompson NFA over bytes (`^ $ . \\ [..] [^..] ( | ) * + ? {m,n}`; anything else is a parse error), with unit tests over every regex the lowering emits and a long-path linear-time case \u2014 crates/procage-policy/src/explain/regex.rs"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[US2] [SR-008] [SR-009] `diff(a, b, targets, options)`: multiset difference of tagged rules (macOS) or Landlock rules, mounts, classes and seccomp rules (Linux); added allow or removed deny loosens, the opposite tightens; every other differing plan field, base, preset tag and waivers as settings; `PathSet::contains` and `DiffEntry::covers` \u2014 crates/procage-policy/src/explain/diff.rs"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[US2] [SR-008] [SR-009] Diff tests: generated pairs \u00d7 generated questions (every differing answer covered with the right direction), one more writable path or waiver, a T2-only change tagged T2, preset vN\u2192vN+1 entries all from the base with the base setting, 10,000-rule pairs under a second \u2014 crates/procage-policy/tests/explain.rs"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[SR-009] Explain timing: the spawn bench prints the release time per question for the largest preset and a maximum-length path; a debug test bounds it loosely \u2014 crates/procage/benches/spawn.rs, crates/procage-policy/tests/explain.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/explain/diff.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/explain/regex.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "The explain docs MUST state that an answer names the deciding rule and is meant for the user, and that a harness MUST NOT relay it into the cage unfiltered.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "the crate docs and the site page on explain",
+          "then": "both say so",
+          "when": "they describe answers"
+        }
+      ],
+      "mitigations": [
+        "mitigation.relay-guidance"
+      ],
+      "tasks": [
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[SR-003] [SR-010] Docs: site page `explain.md` (proven operations per target, answer fields, caveats, relay guidance), crate docs, README feature line, CHANGELOG Added; a test compares the page's proven list with `MODELLED` \u2014 site/content/docs/explain.md, crates/procage-policy/src/explain/mod.rs, README.md, CHANGELOG.md"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/explain/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/explain.md",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.answer-reveals-rules",
+    "threat.diff-hides-loosening",
+    "threat.evaluator-exhaustion",
+    "threat.false-denied",
+    "threat.misleading-remedy",
+    "threat.non-canonical-query",
+    "threat.oracle-overclaim",
+    "threat.unmodelled-guess"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-009",
+      "summary": "Requirement 'SR-009' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-010",
+      "summary": "Requirement 'SR-010' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 8,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 8
+    },
+    "threats_by_severity": {
+      "low": 2,
+      "high": 5,
+      "medium": 1
+    },
+    "mitigations": 9,
+    "requirements": 10,
+    "requirements_with_tasks": 10,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 7,
+      "medium": 3
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

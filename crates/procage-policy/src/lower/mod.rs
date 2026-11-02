@@ -2,7 +2,7 @@
 
 mod fit;
 mod linux;
-mod macos;
+pub(crate) mod macos;
 
 pub use fit::{Lift, Relax, Relaxation, Relaxed, lift};
 

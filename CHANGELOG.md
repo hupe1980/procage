@@ -28,6 +28,13 @@ All notable changes to procage are listed here. The format follows
 
 ### Added
 
+- Explain and diff (`procage_policy::explain`): `Cage::explain` and
+  `Explainer` say whether a path may be read, written or executed, by
+  which rule, with any spawn-time caveat and the narrowest change that
+  would allow a denial; `explain::diff` lists what one policy allows or
+  denies that another does not, per target. Every answer is checked
+  against the kernel on every CI lane by the oracle suite
+  (`tests/oracle.rs`). `SpawnError::Explain`.
 - Receipts: `Child::receipt` describes every finished run (policy digest,
   preset and base, backend and tier, OS build or kernel, approximations,
   relaxations, waivers, violation summary, exit); `Receipt::{to_json,

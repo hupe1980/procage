@@ -214,6 +214,7 @@ fn main() {
         }
     }
     let plain = rows[0].1.median;
+    let explain = explain_time(n);
     println!("{}", host());
     println!(
         "{n} iterations per case{}",
@@ -231,4 +232,35 @@ fn main() {
             overhead.as_secs_f64() * 1e3
         );
     }
+    println!(
+        "explain, agent_workspace v3, a 4,000-byte path: {:.3} ms per question (median)",
+        explain.as_secs_f64() * 1e3
+    );
+}
+
+/// The time `Explainer::explain` takes for the longest path a question
+/// can have, on the largest preset without a network.
+fn explain_time(n: usize) -> Duration {
+    use procage::policy::explain::{Context, Explainer, Op, Question};
+    #[cfg(target_os = "macos")]
+    let target = procage::policy::Target::MacOs;
+    #[cfg(target_os = "linux")]
+    let target = procage::policy::Target::Linux {
+        tier: procage::policy::Tier::T1,
+        landlock_abi: 6,
+    };
+    let root = procage::policy::AbsPath::new("/work").unwrap();
+    let policy = presets::agent_workspace::v3(&root);
+    let options = procage::policy::LowerOptions::default().accept_spawn_snapshot();
+    let ex = Explainer::new(&policy, target, &options).expect("explainer");
+    let path = format!(
+        "/work{}",
+        "/abcdefghijklmnopqrstuvwxyz0123456789".repeat(110)
+    );
+    let question = Question::new(Op::Write, path);
+    let context = Context::default();
+    measure(n, || {
+        ex.explain(&question, &context).expect("answer");
+    })
+    .median
 }

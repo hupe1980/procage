@@ -45,6 +45,10 @@ let status = cage
 - 🧹 **Hygiene and lifetime.** Inherited descriptors are closed,
   secret-looking variables dropped, and every process a run started is
   killed when it ends, double-forked daemons included.
+- 🧭 **Explain and diff.** `Cage::explain` names the rule that allows or
+  denies reading, writing or executing a path and the narrowest change
+  that would allow it; `explain::diff` shows what a policy change allows.
+  The kernel checks every answer on every CI lane.
 - 🧾 **Receipts.** Every finished run says how it was caged: policy digest,
   backend and tier, and everything accepted short of the policy.
 - 🔎 **Violation reports.** A cage can say what the sandbox denied and which
