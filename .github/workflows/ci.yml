@@ -155,7 +155,9 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 busybox-static zstd
           pipx install virtme-ng==1.42
       - name: The suites in the guest
-        run: .github/kernel-lane.sh "${{ matrix.kernel }}"
+        # QEMU's file server runs as root, as in `just kernel`, and the
+        # suites as the runner user in the guest.
+        run: sudo -E env "PATH=$PATH" PROCAGE_LANE_USER="$(id -un)" .github/kernel-lane.sh "${{ matrix.kernel }}"
 
   fuzz:
     name: fuzz (60 s per target)
