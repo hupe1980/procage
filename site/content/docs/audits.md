@@ -43,4 +43,4 @@ for finding in child.audit().unwrap().handoff.unwrap_or_default() {
 
 It notes before the run the trust-handoff files, symbolic links and `.git` directories of the writable trees, and lists after it what was **created**, **modified**, **linked** or a new **repository**. It walks the trees twice, so it is opt-in. `Child::audit` is `None` until the child exits, and reading it ends the run.
 
-Both audits stay on one device, never follow a link and stop at the walk limit (`CageOptions::with_walk_limit`, default 200,000); past it the result says it is incomplete, never clean. Receipts carry the counts, and the paths only with the policy included.
+Both audits stay on one device, never follow a link and stop at the walk limit (`CageOptions::with_walk_limit`, default 200,000); past it, or at an entry the caller cannot read, the result says it is incomplete, never clean. A directory another user owns that the caller cannot search (such as `/var/spool/cron/crontabs`) is skipped: nothing in it can be one of the caller's links. Receipts carry the counts, and the paths only with the policy included.

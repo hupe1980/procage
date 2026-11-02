@@ -1,0 +1,7 @@
+verdicts:
+  - requirement: SR-009
+    verdict: verified
+    method: test
+    evidence: crates/procage-policy/tests/explain.rs::explain_is_fast_on_long_paths
+    result: pass
+    justification: In a release build on the reference machine (Apple M4 Pro, 2026-11-02) explain answers a 4,000-byte path under agent_workspace v3 in under 1 ms on three targets (0.61 ms by the spawn bench), and diff_is_fast_on_large_policies diffs two 10,000-rule policies in under a second (about 0.05 s); debug builds run both cases without a bound.

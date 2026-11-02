@@ -1,6 +1,6 @@
 ## Security Convergence — 042-explain
 
-Commit `6c4d948` · 2026-11-02T05:55:25Z
+Commit `25f401e` · 2026-11-02T06:40:09Z
 
 | Metric | Value |
 |---|---|
@@ -26,5 +26,5 @@ Commit `6c4d948` · 2026-11-02T05:55:25Z
 | SR-006 | verified | test | `crates/procage-policy/tests/explain.rs::non_canonical_paths_name_their_canonical_form` | Asserts /etc/hosts names /private/etc/hosts, /work/a/../b names /work/b and a relative path has no canonical form (unit test canonical_forms adds // . and trailing separators); pattern_characters_stay_literal asserts /work/a*[b is unaffected by a protect on /work/ab; oracle.rs::explain_follows_links asserts a link to a hidden file gets the hidden file's answer on all three lanes. |
 | SR-007 | verified | test | `crates/procage-policy/tests/explain.rs::unmodelled_operations_are_never_guessed` | Asks metadata, unlink, network and signal operations under every preset on every target and asserts NotModelled with Decider::None. |
 | SR-008 | verified | test | `crates/procage-policy/tests/explain.rs::diff_covers_every_changed_answer` | For v3 presets and the kinds policy times 18 mutations (rules, base, every waiver, a grant) on three targets, every question whose answer differs is covered by an entry with the matching direction; one_more_writable_path_or_waiver, preset_versions_differ_only_in_their_base (base setting listed, entries from the base or build v2's sockets) and entries_are_tagged_with_their_target cover the other scenarios. |
-| SR-009 | verified | test | `crates/procage-policy/tests/explain.rs::explain_is_fast_on_long_paths` | Bounds explain at 1 ms in release (20 ms debug) for a 4,000-byte path under agent_workspace v3 on three targets, measured 0.61 ms by the spawn bench; diff_is_fast_on_large_policies bounds a 10,000-rule diff at 1 s in release (measured about 0.05 s); the regex is a Pike VM and diff sorts without pattern pairs. |
+| SR-009 | verified | test | `crates/procage-policy/tests/explain.rs::explain_is_fast_on_long_paths` | In a release build on the reference machine (Apple M4 Pro, 2026-11-02) explain answers a 4,000-byte path under agent_workspace v3 in under 1 ms on three targets (0.61 ms by the spawn bench), and diff_is_fast_on_large_policies diffs two 10,000-rule policies in under a second (about 0.05 s); debug builds run both cases without a bound. |
 | SR-010 | verified | review | `site/content/docs/explain.md:41` | The page says an answer names the policy's rules and must not be relayed into the cage unfiltered; the crate docs (crates/procage-policy/src/explain/mod.rs module header) and both Cage::explain docs say the same. |

@@ -170,11 +170,12 @@ otherwise deny them); the post-run audit lists each exactly once.
   - Given Linux T1 and a .vscode/settings.json that did not exist at spawn, when the child creates it, then the audit lists it as created
   - Given a child that creates a symbolic link build pointing to the home directory and a nested .git directory, when the audit runs, then it lists the link with its target and the repository metadata, each once
   - Given a run that touched nothing of these kinds, when the audit runs, then it is empty and complete
-- **SR-004** (P1): Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited, past the limit or when any entry cannot be read; an incomplete link check MUST NOT refuse the spawn, and an incomplete result MUST NOT be presentable as an empty complete one, in the audit result or in the receipt.
+- **SR-004** (P1): Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited, past the limit or when any entry cannot be read (a directory another user owns that the caller cannot search is skipped: the caller cannot have linked into it, and the child cannot reach it); an incomplete link check MUST NOT refuse the spawn, and an incomplete result MUST NOT be presentable as an empty complete one, in the audit result or in the receipt.
   - Mitigates: `threat.silent-partial` via `mitigation.typed-incomplete`
   - Given a protect subpath with more files than a small walk limit, when the cage spawns with Refuse, then the child runs, links_complete is false with the visited count, and the receipt says the audit is incomplete
   - Given a child that creates more files than the walk limit, when the post-run audit runs, then handoff_complete is false with the count reached, within the time bound of SC-003 scaled to the limit
   - Given a child that makes a directory in a tree unreadable, when either audit runs, then the result is incomplete
+  - Given a root-owned directory the caller cannot search among the class paths (such as /var/spool/cron/crontabs), when the link check runs, then the result stays complete, while a closed directory the caller owns makes it incomplete
 - **SR-005** (P1): Audit walks MUST NOT follow symbolic links or cross to another device, and MUST read link targets without resolving them.
   - Mitigates: `threat.walk-follows-link` via `mitigation.nofollow-walk`
   - Given a child that creates a link loop pointing to its own directory and a link out pointing to the home directory, when the post-run audit runs, then it terminates, lists both links with their targets, and lists nothing from the home directory

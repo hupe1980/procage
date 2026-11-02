@@ -2,6 +2,7 @@
 
 ```sh
 cargo test -p procage-policy explain     # evaluator, regex, remedy, diff soundness
+cargo test --release -p procage-policy --test explain -- _is_fast   # SR-009's bounds
 cargo test -p procage --test oracle      # macOS: the oracle on this machine
 just linux-t1 && just linux              # the oracle on Linux T1 and T2
 ```

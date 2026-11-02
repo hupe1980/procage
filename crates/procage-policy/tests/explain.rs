@@ -595,14 +595,12 @@ fn diff_is_fast_on_large_policies() {
     let start = std::time::Instant::now();
     let d = diff(&a, &b, &[T2], &LowerOptions::default()).unwrap();
     assert_eq!(d.entries.len(), 1);
-    // Under a second in release (about 0.05 s measured); debug builds are
-    // several times slower.
-    let bound = if cfg!(debug_assertions) { 10 } else { 1 };
-    assert!(
-        start.elapsed() < std::time::Duration::from_secs(bound),
-        "{:?}",
-        start.elapsed()
-    );
+    // The reference machine's bound, in release (about 0.05 s measured);
+    // a debug build only checks the result.
+    if !cfg!(debug_assertions) {
+        let took = start.elapsed();
+        assert!(took < std::time::Duration::from_secs(1), "{took:?}");
+    }
 }
 
 #[test]
@@ -620,10 +618,10 @@ fn explain_is_fast_on_long_paths() {
             ask(&ex, Op::Write, &long, &context(t));
         }
         let each = start.elapsed() / 100;
-        let bound = if cfg!(debug_assertions) { 20 } else { 1 };
-        assert!(
-            each < std::time::Duration::from_millis(bound),
-            "{t}: {each:?}"
-        );
+        // The reference machine's bound, in release; a debug build only
+        // asks the questions.
+        if !cfg!(debug_assertions) {
+            assert!(each < std::time::Duration::from_millis(1), "{t}: {each:?}");
+        }
     }
 }

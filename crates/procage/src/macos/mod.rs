@@ -1159,7 +1159,7 @@ fn cage_audit(policy: &Policy, options: &CageOptions) -> crate::audit::CageAudit
             false,
         ));
     }
-    let targets = crate::audit::Targets::new(policy, class_paths);
+    let targets = crate::audit::Targets::new(policy, class_paths, sys::uid());
     let handoff = options.handoff_audit.then(|| {
         let trees = policy
             .fs

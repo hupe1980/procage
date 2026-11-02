@@ -1584,7 +1584,7 @@ fn cage_audit(
         let system: Vec<PathBuf> = class.system.iter().map(to_path).collect();
         class_paths.extend(crate::audit::class_paths(homes, &rels, &system, class.hide));
     }
-    let targets = crate::audit::Targets::new(policy, class_paths);
+    let targets = crate::audit::Targets::new(policy, class_paths, sys::ids().0);
     let handoff = options.handoff_audit.then(|| {
         let trees = policy
             .fs

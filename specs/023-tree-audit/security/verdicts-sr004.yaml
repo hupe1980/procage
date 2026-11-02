@@ -1,0 +1,7 @@
+verdicts:
+  - requirement: SR-004
+    verdict: verified
+    method: test
+    evidence: crates/procage/src/audit.rs::tests::walks_stay_put_and_say_what_they_could_not_read
+    result: pass
+    justification: A closed directory is incomplete without a caller and when the caller owns it, and skipped when another user owns it; crates/procage/tests/audit.rs::a_quiet_run_is_complete_and_empty passes with a root-owned 1730 /var/spool/cron/crontabs as uid 65534 (Docker, 2026-11-02) and failed before the change; past_the_walk_limit_the_audit_is_incomplete still holds.

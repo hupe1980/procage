@@ -117,14 +117,14 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-01T23:37:20Z'
+  generated: '2026-11-02T06:33:34Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
   - path: plan.md
-    sha256: 78c04192187a6a64b98879a32477aa668300ed8bc0fb9edb5ea9b0f49c146c36
+    sha256: 6b0238e7a05d0dae083eb0fa0f02efae5024f6bab2a36c727552043a55a4e496
   - path: spec.md
     sha256: d54c1646b06b626a478ac9225a97e167e130631b8d5151eb2d912e8dd77894b7
   surfaces:
@@ -394,7 +394,7 @@ threats:
     source: spec.md#FR-001; spec.md#Clarifications; plan.md#Complexity-Tracking
     assets:
     - asset.protected
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: I. Fail closed, never silently weaker
     elements:
@@ -465,7 +465,7 @@ threats:
     source: spec.md#FR-002; contracts/api.md (Child::audit returns None while running)
     assets:
     - asset.findings
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.postrun
@@ -536,7 +536,7 @@ threats:
     source: spec.md#Key-Entities
     assets:
     - asset.findings
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: II. Types over strings
     elements:
@@ -558,7 +558,7 @@ threats:
     source: spec.md#Clarifications (hard links made during the run)
     assets:
     - asset.protected
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: III. The kernel is the oracle
     elements:
@@ -695,7 +695,7 @@ threats:
     assets:
     - asset.protected
     - asset.findings
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: I. Fail closed, never silently weaker
     elements:
@@ -722,7 +722,7 @@ threats:
     assets:
     - asset.findings
     - asset.harness
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: I. Fail closed, never silently weaker
     elements:
@@ -833,7 +833,7 @@ mitigations:
   attributes:
     threats:
     - threat.audit-too-early
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-006
@@ -863,7 +863,7 @@ mitigations:
   attributes:
     threats:
     - threat.finding-injection
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-007
@@ -907,7 +907,7 @@ mitigations:
   attributes:
     threats:
     - threat.in-run-link
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-012
@@ -922,7 +922,7 @@ mitigations:
   attributes:
     threats:
     - threat.alias-missed
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-001
@@ -996,7 +996,7 @@ mitigations:
   attributes:
     threats:
     - threat.report-mode-silent
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-002
@@ -1027,7 +1027,7 @@ mitigations:
   attributes:
     threats:
     - threat.silent-partial
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-004
@@ -1104,9 +1104,11 @@ requirements:
     when: the audit runs
   tasks: []
 - id: SR-004
-  statement: Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited,
-    past the limit or when any entry cannot be read; an incomplete link check MUST NOT refuse the spawn, and an
-    incomplete result MUST NOT be presentable as an empty complete one, in the audit result or in the receipt.
+  statement: 'Both audits MUST stop at the walk limit and MUST mark their result incomplete, with the entries visited,
+    past the limit or when any entry cannot be read (a directory another user owns that the caller cannot search
+    is skipped: the caller cannot have linked into it, and the child cannot reach it); an incomplete link check
+    MUST NOT refuse the spawn, and an incomplete result MUST NOT be presentable as an empty complete one, in the
+    audit result or in the receipt.'
   priority: P1
   mitigations:
   - mitigation.typed-incomplete
@@ -1120,6 +1122,9 @@ requirements:
   - given: a child that makes a directory in a tree unreadable
     then: the result is incomplete
     when: either audit runs
+  - given: a root-owned directory the caller cannot search among the class paths (such as /var/spool/cron/crontabs)
+    then: the result stays complete, while a closed directory the caller owns makes it incomplete
+    when: the link check runs
   tasks: []
 - id: SR-005
   statement: Audit walks MUST NOT follow symbolic links or cross to another device, and MUST read link targets without
@@ -1384,6 +1389,30 @@ verification:
     asserts links_visited or the receipt of an incomplete link check.
   verified_at: '2026-11-01T23:30:39Z'
   commit: 10b728b
+- id: verification.sr-004.2026-11-02
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/src/audit.rs::tests::walks_stay_put_and_say_what_they_could_not_read
+  result: pass
+  verdict: verified
+  justification: A closed directory is incomplete without a caller and when the caller owns it, and skipped when
+    another user owns it; crates/procage/tests/audit.rs::a_quiet_run_is_complete_and_empty passes with a root-owned
+    1730 /var/spool/cron/crontabs as uid 65534 (Docker, 2026-11-02) and failed before the change; past_the_walk_limit_the_audit_is_incomplete
+    still holds.
+  verified_at: '2026-11-02T06:33:09Z'
+  commit: 25f401e
+- id: verification.sr-004.2026-11-02-2
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/src/audit.rs::tests::walks_stay_put_and_say_what_they_could_not_read
+  result: pass
+  verdict: verified
+  justification: A closed directory is incomplete without a caller and when the caller owns it, and skipped when
+    another user owns it; crates/procage/tests/audit.rs::a_quiet_run_is_complete_and_empty passes with a root-owned
+    1730 /var/spool/cron/crontabs as uid 65534 (Docker, 2026-11-02) and failed before the change; past_the_walk_limit_the_audit_is_incomplete
+    still holds.
+  verified_at: '2026-11-02T06:33:35Z'
+  commit: 25f401e
 - id: verification.sr-004.2026-11-02-3
   requirement: SR-004
   method: test

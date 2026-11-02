@@ -15,7 +15,8 @@
     path, links }>, complete, visited }`: walks each target without following
     links and without leaving its device; a regular file with `st_nlink > 1`
     is a finding. Past the limit (or on an unreadable entry) the result is
-    incomplete.
+    incomplete; a directory another user owns that the caller cannot search
+    is skipped (2026-11-02: `/var/spool/cron/crontabs` on Ubuntu).
   - `Snapshot` and `handoff(&before, &after) -> HandoffResult { findings:
     Vec<HandoffFinding { path, kind: Created | Modified | Link { target } |
     Repository }>, complete }`: the walk of the writable trees records

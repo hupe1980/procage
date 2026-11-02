@@ -1,6 +1,6 @@
 # Threat Model: Explain and diff, checked against the kernel
 
-**Feature**: `042-explain` · **Generated**: 2026-11-02T05:54:41Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
+**Feature**: `042-explain` · **Generated**: 2026-11-02T06:39:58Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
 
 > Rendered by ThreatSpec. Edit `threat-model.yaml`, not this file.
 
@@ -238,11 +238,12 @@ For two policies and the targets given, every question whose explain answers dif
 
 explain MUST run in time linear in the plan size and path length and under 1 ms per question in release on the reference machine; diff MUST run in O(n log n) in the plans' rules, with no pattern intersection.
 
-- **Given** agent_workspace v3 and a 4,000-byte path, **when** explain is timed in release, **then** it answers in under 1 ms per question (a debug build is bounded at 20 ms)
-- **Given** two policies of 10,000 rules each, **when** diffed in release, **then** it finishes in under a second (a debug build is bounded at 10 s)
+- **Given** agent_workspace v3 and a 4,000-byte path, **when** explain is timed in a release build on the reference machine, **then** it answers in under 1 ms per question
+- **Given** two policies of 10,000 rules each, **when** diffed in a release build on the reference machine, **then** it finishes in under a second
 - Mitigations: `mitigation.bounded-evaluation`
 - Tasks: T001 ✓, T011 ✓, T012 ✓, T013 ✓
 - Verification `verification.sr-009.2026-11-02`: test → pass (verified) — `crates/procage-policy/tests/explain.rs::explain_is_fast_on_long_paths`
+- Verification `verification.sr-009.2026-11-02-2`: test → pass (verified) — `crates/procage-policy/tests/explain.rs::explain_is_fast_on_long_paths`
 
 ### SR-010 (P3) — verified
 

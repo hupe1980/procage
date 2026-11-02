@@ -172,8 +172,8 @@ allowed or newly denied operation.
   - Given a change only Linux expresses (a Linux layer rule), when diffed for macOS and Linux, then every entry is tagged with the Linux target
 - **SR-009** (P3): explain MUST run in time linear in the plan size and path length and under 1 ms per question in release on the reference machine; diff MUST run in O(n log n) in the plans' rules, with no pattern intersection.
   - Mitigates: `threat.evaluator-exhaustion` via `mitigation.bounded-evaluation`
-  - Given agent_workspace v3 and a 4,000-byte path, when explain is timed in release, then it answers in under 1 ms per question (a debug build is bounded at 20 ms)
-  - Given two policies of 10,000 rules each, when diffed in release, then it finishes in under a second (a debug build is bounded at 10 s)
+  - Given agent_workspace v3 and a 4,000-byte path, when explain is timed in a release build on the reference machine, then it answers in under 1 ms per question
+  - Given two policies of 10,000 rules each, when diffed in a release build on the reference machine, then it finishes in under a second
 - **SR-010** (P3): The explain docs MUST state that an answer names the deciding rule and is meant for the user, and that a harness MUST NOT relay it into the cage unfiltered.
   - Mitigates: `threat.answer-reveals-rules` via `mitigation.relay-guidance`
   - Given the crate docs and the site page on explain, when they describe answers, then both say so

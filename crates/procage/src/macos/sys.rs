@@ -608,6 +608,12 @@ pub(crate) fn live_of_user(pid: libc::pid_t) -> bool {
     n == size && info.pbi_uid == uid && info.pbi_status != libc::SZOMB
 }
 
+/// The real uid.
+pub(crate) fn uid() -> u32 {
+    // SAFETY: getuid is a system call without arguments.
+    unsafe { libc::getuid() }
+}
+
 /// Sends SIGKILL to `pid`.
 pub(crate) fn kill(pid: libc::pid_t) {
     // SAFETY: a plain system call.

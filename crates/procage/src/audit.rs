@@ -195,6 +195,9 @@ pub(crate) struct Targets {
     /// Protect and hide globs: the fixed prefix to walk and the pattern.
     /// Matching is conservative: a file that may match counts.
     globs: Vec<(PathBuf, String, bool)>,
+    /// The caller's uid: a directory another user owns that the caller
+    /// cannot search is skipped (see [`walk_skipping`]).
+    caller: Option<u32>,
 }
 
 impl Targets {
@@ -203,12 +206,14 @@ impl Targets {
     pub(crate) fn new(
         policy: &procage_policy::Policy,
         class_paths: Vec<(PathBuf, bool)>,
+        caller: u32,
     ) -> Targets {
         use procage_policy::{Access, FsTarget};
         use std::os::unix::ffi::OsStrExt;
         let to_path = |b: &[u8]| PathBuf::from(std::ffi::OsStr::from_bytes(b));
         let mut t = Targets {
             classes: class_paths,
+            caller: Some(caller),
             ..Targets::default()
         };
         for rule in &policy.fs {
@@ -275,8 +280,9 @@ pub(crate) fn links(targets: &Targets, limit: usize) -> LinkResult {
             Err(_) => r.complete = false,
         }
     }
+    let caller = targets.caller;
     for (root, hidden) in &targets.trees {
-        walk(root, limit, &mut r, &mut |path, m, _| {
+        walk(root, limit, caller, &mut r, &mut |path, m, _| {
             note(&mut seen, path, m, *hidden)
         });
     }
@@ -284,13 +290,14 @@ pub(crate) fn links(targets: &Targets, limit: usize) -> LinkResult {
         walk_skipping(
             root,
             limit,
+            caller,
             &mut r,
             &mut |path, m, _| note(&mut seen, path, m, *hidden),
             &cache,
         );
     }
     for (prefix, pattern, hidden) in &targets.globs {
-        walk(prefix, limit, &mut r, &mut |path, m, _| {
+        walk(prefix, limit, caller, &mut r, &mut |path, m, _| {
             match glob_match(pattern, path) {
                 Some(true) => note(&mut seen, path, m, *hidden),
                 // Classes and alternatives are matched conservatively: the
@@ -395,13 +402,20 @@ fn cache(dir: &Path) -> bool {
 /// Walks `root` (not following links, not leaving its device), calling
 /// `each` for every entry; marks `r` incomplete past `limit` or on an
 /// unreadable entry. A missing root is nothing to walk.
+///
+/// With `caller`, a directory another user owns that the caller cannot
+/// search is skipped, not incomplete (such as `/var/spool/cron/crontabs`):
+/// the caller cannot have named its entries to link them, and the child,
+/// running as the caller, cannot reach them. A directory the caller owns
+/// stays incomplete: its mode is the caller's to change.
 fn walk(
     root: &Path,
     limit: usize,
+    caller: Option<u32>,
     r: &mut LinkResult,
     each: &mut dyn FnMut(&Path, &std::fs::Metadata, &mut LinkResult),
 ) {
-    walk_skipping(root, limit, r, each, &|_| false);
+    walk_skipping(root, limit, caller, r, each, &|_| false);
 }
 
 /// [`walk`], not descending into directories below `root` that `skip`
@@ -409,6 +423,7 @@ fn walk(
 fn walk_skipping(
     root: &Path,
     limit: usize,
+    caller: Option<u32>,
     r: &mut LinkResult,
     each: &mut dyn FnMut(&Path, &std::fs::Metadata, &mut LinkResult),
     skip: &dyn Fn(&Path) -> bool,
@@ -429,7 +444,14 @@ fn walk_skipping(
             continue;
         }
         let Ok(entries) = std::fs::read_dir(&path) else {
-            r.complete = false;
+            let closed = caller.is_some_and(|uid| {
+                meta.uid() != uid
+                    && std::fs::symlink_metadata(path.join("."))
+                        .is_err_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied)
+            });
+            if !closed {
+                r.complete = false;
+            }
             continue;
         };
         for entry in entries {
@@ -488,7 +510,7 @@ impl Snapshot {
             ..LinkResult::default()
         };
         for root in trees.iter().chain(home) {
-            walk(root, limit, &mut r, &mut |path, m, _| {
+            walk(root, limit, None, &mut r, &mut |path, m, _| {
                 let t = m.file_type();
                 if t.is_symlink() {
                     if let Ok(target) = std::fs::read_link(path) {
@@ -799,10 +821,31 @@ mod tests {
         std::fs::set_permissions(d.join("t/closed"), std::fs::Permissions::from_mode(0o0)).unwrap();
         let unreadable = std::fs::read_dir(d.join("t/closed")).is_err();
         let r = links(&targets, 1000);
+        let mine = std::fs::metadata(d.join("t")).unwrap().uid();
+        let owned = links(
+            &Targets {
+                caller: Some(mine),
+                ..targets.clone()
+            },
+            1000,
+        );
+        // Seen from another user, the closed directory is someone else's.
+        let foreign = links(
+            &Targets {
+                caller: Some(mine.wrapping_add(1)),
+                ..targets.clone()
+            },
+            1000,
+        );
         std::fs::set_permissions(d.join("t/closed"), std::fs::Permissions::from_mode(0o755))
             .unwrap();
         if unreadable {
             assert!(!r.complete, "an unreadable directory is incomplete");
+            assert!(!owned.complete, "the caller can reopen its own directory");
+            assert!(
+                foreign.complete,
+                "another user's closed directory is skipped"
+            );
         }
         let _ = std::fs::remove_dir_all(&d);
     }
