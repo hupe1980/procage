@@ -140,16 +140,22 @@ fn kill_group(pgid: u32) {
 
 /// This binary as a helper in its own process group, with stdout piped.
 fn helper(role: &str, tier: &str, env: &[(&str, &str)]) -> Child {
+    let mut cmd = helper_command(role, tier, env);
+    cmd.process_group(0);
+    cmd.spawn().unwrap()
+}
+
+/// The helper command, in the caller's process group.
+fn helper_command(role: &str, tier: &str, env: &[(&str, &str)]) -> Command {
     let mut cmd = Command::new(std::env::current_exe().unwrap());
     cmd.env(ROLE, role)
         .env("PROCAGE_TIER", tier)
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .process_group(0);
+        .stdout(Stdio::piped());
     for (k, v) in env {
         cmd.env(k, v);
     }
-    cmd.spawn().unwrap()
+    cmd
 }
 
 fn lines(child: &mut Child) -> impl Iterator<Item = String> {
@@ -168,7 +174,7 @@ fn as_helper(role: &str) -> ! {
     let mut p = policy(&dir, &tier);
     let mut cmd = Command::new("/bin/sh");
     match role {
-        "shell" => {
+        "shell" | "session-shell" => {
             cmd.args(["-c", &var("SCRIPT")])
                 .env("IN", var("IN"))
                 .env("OUT", var("OUT"));
@@ -191,7 +197,11 @@ fn as_helper(role: &str) -> ! {
         options = options.with_violations();
     }
     let cage = Cage::with_options(&p, &options).unwrap_or_else(|e| panic!("{e}"));
-    let err = cage.exec(&mut cmd, &Grants::new());
+    let err = if role == "session-shell" {
+        cage.exec_session(&mut cmd, &Grants::new())
+    } else {
+        cage.exec(&mut cmd, &Grants::new())
+    };
     eprintln!("helper: {err}");
     std::process::exit(126);
 }
@@ -417,6 +427,64 @@ fn a_threaded_caller_is_refused_on_t1(tier: &str) {
     assert_unconfined();
 }
 
+/// With `exec_session` the command leads its own session: a descendant
+/// starts a process group of its own (refused by plain `exec` on Linux),
+/// never a session (Linux), and `end_session` of the helper's pid ends
+/// both, the grouped descendant included.
+fn a_session_exec_allows_groups_and_ends_by_session(tier: &str) {
+    let dir = scratch(&format!("session-{tier}"));
+    let script = "perl -e 'exit(setpgrp(0, 0) ? 0 : 1)'; echo setpgid=$?; \
+        if [ -x /usr/bin/setsid ]; then /usr/bin/setsid /bin/true 2>/dev/null; echo setsid=$?; fi; \
+        perl -e '$p = fork; if (!$p) { setpgrp(0, 0); exec \"/bin/sleep\", \"30\" } print \"sleeper=$p\\n\"'; \
+        exec sleep 30";
+    let mut h = helper_command(
+        "session-shell",
+        tier,
+        &[("IN", dir.to_str().unwrap()), ("SCRIPT", script)],
+    )
+    .spawn()
+    .unwrap();
+    let (mut setpgid, mut setsid, mut sleeper) = (None, None, None);
+    for line in lines(&mut h) {
+        if let Some(v) = line.strip_prefix("setpgid=") {
+            setpgid = Some(v.to_string());
+        } else if let Some(v) = line.strip_prefix("setsid=") {
+            setsid = Some(v.to_string());
+        } else if let Some(v) = line.strip_prefix("sleeper=") {
+            sleeper = v.parse::<u32>().ok();
+            break;
+        }
+    }
+    assert_eq!(setpgid.as_deref(), Some("0"), "{tier}: a process group");
+    if cfg!(target_os = "linux")
+        && let Some(setsid) = &setsid
+    {
+        assert_eq!(setsid, "1", "{tier}: a session");
+    }
+    let sleeper = sleeper.unwrap_or_else(|| panic!("{tier}: no grouped sleeper"));
+    assert!(alive(sleeper), "{tier}");
+    procage::native::end_session(h.id());
+    assert!(
+        gone_within(sleeper, Duration::from_secs(2)),
+        "{tier}: the grouped descendant survived"
+    );
+    h.wait().unwrap();
+}
+
+/// A helper that leads a process group but no session cannot start one:
+/// `exec_session` is refused before the process changes.
+fn a_session_exec_from_a_group_leader_is_refused(tier: &str) {
+    let dir = scratch(&format!("session-leader-{tier}"));
+    let mut h = helper(
+        "session-shell",
+        tier,
+        &[("IN", dir.to_str().unwrap()), ("SCRIPT", "echo ran")],
+    );
+    let out: Vec<String> = lines(&mut h).collect();
+    assert_eq!(h.wait().unwrap().code(), Some(126), "{tier}: {out:?}");
+    assert!(out.is_empty(), "{tier}: {out:?}");
+}
+
 type Case = (&'static str, fn(&str));
 
 fn cases() -> Vec<Case> {
@@ -428,6 +496,14 @@ fn cases() -> Vec<Case> {
         ("a_threaded_helper_execs", a_threaded_helper_execs),
         ("the_tmpdir_grant_is_refused", the_tmpdir_grant_is_refused),
         ("a_missing_program_is_refused", a_missing_program_is_refused),
+        (
+            "a_session_exec_allows_groups_and_ends_by_session",
+            a_session_exec_allows_groups_and_ends_by_session,
+        ),
+        (
+            "a_session_exec_from_a_group_leader_is_refused",
+            a_session_exec_from_a_group_leader_is_refused,
+        ),
     ];
     #[cfg(target_os = "linux")]
     cases.extend([

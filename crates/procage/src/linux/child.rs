@@ -149,8 +149,8 @@ impl Child {
             .unwrap_or_else(|| unreachable!("present until drop or detach"))
     }
 
-    /// Kills the child's process group and every descendant reachable from
-    /// the child, then waits for the child.
+    /// Kills the child, the descendants reachable from it, and the child's
+    /// session and process group, then waits for the child.
     pub fn kill_all(&mut self) -> io::Result<()> {
         self.signal()?;
         let waited = self.inner_mut().wait().map(drop);
@@ -176,27 +176,8 @@ impl Child {
         }
         // The child leads its own session unless it shares the caller's
         // terminal; under `Lifetime::Run` no descendant can leave it, though
-        // it may start process groups. Members forked meanwhile are found
-        // by the next look.
-        let mut killed = Vec::new();
-        for _ in 0..64 {
-            let members: Vec<libc::pid_t> = processes()
-                .into_iter()
-                .filter(|p| p.session == pid && !p.zombie && !killed.contains(&p.pid))
-                .map(|p| p.pid)
-                .collect();
-            if members.is_empty() {
-                break;
-            }
-            for member in members {
-                sys::kill(member);
-                killed.push(member);
-            }
-        }
-        // The group and the session outlive a reaped leader while members
-        // remain, and their id cannot be handed to another process while
-        // they exist.
-        sys::killpg(pid);
+        // it may start process groups.
+        kill_session(pid);
         self.killed |= running;
         Ok(())
     }
@@ -287,6 +268,29 @@ impl Child {
             _ => None,
         }
     }
+}
+
+/// Kills every live process of session `sid`, then process group `sid`.
+/// Members forked meanwhile are found by the next look. The session and the
+/// group outlive a reaped leader while members remain, and their id cannot
+/// be handed to another process while they exist.
+pub(super) fn kill_session(sid: libc::pid_t) {
+    let mut killed = Vec::new();
+    for _ in 0..64 {
+        let members: Vec<libc::pid_t> = processes()
+            .into_iter()
+            .filter(|p| p.session == sid && !p.zombie && !killed.contains(&p.pid))
+            .map(|p| p.pid)
+            .collect();
+        if members.is_empty() {
+            break;
+        }
+        for member in members {
+            sys::kill(member);
+            killed.push(member);
+        }
+    }
+    sys::killpg(sid);
 }
 
 /// Every process with its parent and session, from `/proc/<pid>/stat`

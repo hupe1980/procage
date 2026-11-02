@@ -409,6 +409,9 @@ pub(crate) enum Session {
     Group,
     /// Nothing: the caller's session and process group (`Cage::exec`).
     Keep,
+    /// `setsid()` unless the process leads its session already
+    /// (`Cage::exec_session`).
+    Lead,
 }
 
 /// Everything the child needs between `fork` and `execve`, prepared in the
@@ -620,6 +623,23 @@ pub(crate) fn kill(pid: libc::pid_t) {
     unsafe { libc::kill(pid, libc::SIGKILL) };
 }
 
+/// Whether this process leads its session, and whether it leads its
+/// process group.
+pub(crate) fn leads() -> (bool, bool) {
+    // SAFETY: system calls without pointers.
+    unsafe {
+        let pid = libc::getpid();
+        (libc::getsid(0) == pid, libc::getpgrp() == pid)
+    }
+}
+
+/// The session of `pid`, or `None` when it is gone.
+pub(crate) fn session_of(pid: libc::pid_t) -> Option<libc::pid_t> {
+    // SAFETY: a system call without pointers.
+    let sid = unsafe { libc::getsid(pid) };
+    (sid >= 0).then_some(sid)
+}
+
 /// Sends SIGKILL to process group `pgid`.
 pub(crate) fn killpg(pgid: libc::pid_t) {
     // SAFETY: a plain system call.
@@ -667,6 +687,11 @@ impl ChildPlan {
             Session::New => setsid().map_err(|e| fail(steps::SESSION, e))?,
             Session::Group => setpgid_self().map_err(|e| fail(steps::SESSION, e))?,
             Session::Keep => {}
+            Session::Lead => {
+                if !leads().0 {
+                    setsid().map_err(|e| fail(steps::SESSION, e))?;
+                }
+            }
         }
         for &(resource, cur, max) in &self.limits {
             setrlimit(resource, cur, max).map_err(|e| fail(steps::RLIMIT, e))?;

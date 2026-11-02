@@ -6,15 +6,25 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `Cage::exec_session` and `exec_session_with_fds`: the command leads its
+  own session; on Linux its descendants may start process groups (test
+  runners) but not sessions. `procage::{linux,macos}::end_session(pid)`
+  ends that run; macOS cannot refuse `setsid`.
+- `SpawnError::GroupLeader`: `exec_session` in a process group leader that
+  leads no session.
+
 ## [0.3.1] - 2026-11-02
 
 ### Fixed
 
-- Linux: under `Lifetime::Run`, `setpgid` failed, so cargo-nextest and
-  other programs that start process groups could not run. Only `setsid`
-  is refused now; ending a run also kills the child's session, which no
-  process of the run can leave. With `Tty::Inherit` and for `Cage::exec`
-  (the caller's session) `setpgid` stays refused.
+- Linux, `Lifetime::Run`: programs that start process groups
+  (cargo-nextest) run; only `setsid` is refused, and ending a run kills the
+  child's session. `setpgid` stays refused with `Tty::Inherit` and for
+  `Cage::exec`.
+- Linux: ending a run kills the child before its descendants, so a shell
+  child reports the caller's kill, not its own exit (137).
 
 ## [0.3.0] - 2026-11-02
 

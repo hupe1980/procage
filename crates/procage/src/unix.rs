@@ -297,8 +297,8 @@ impl Proc {
     }
 
     /// Waits for the process, blocking. A tokio child is polled (it may not
-    /// be waited for twice); only the end of a run calls this, after its
-    /// process group was killed.
+    /// be waited for twice); only the end of a run calls this, after the
+    /// run's processes were killed.
     pub(crate) fn wait(&mut self) -> io::Result<std::process::ExitStatus> {
         match self {
             Proc::Std(c) => c.wait(),

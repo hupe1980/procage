@@ -168,8 +168,9 @@ pub enum Lifetime {
     /// it ends, wherever it was reparented and also after the child exited.
     ///
     /// On Linux, `setsid` fails with `EPERM` inside the cage, so every
-    /// descendant stays in the child's session; process groups stay in it
-    /// (with `Tty::Inherit`, the caller's session, `setpgid` fails too).
+    /// descendant stays in the child's session, process groups included
+    /// (with `Tty::Inherit` or `Cage::exec`, which keep the caller's
+    /// session, `setpgid` fails too).
     /// Programs that daemonize fail there (git's automatic
     /// `gc --auto` prints `setsid failed`; set `gc.autoDetach=false` for
     /// caged git). On macOS, where

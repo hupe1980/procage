@@ -1,6 +1,6 @@
 +++
 title = "Lifetime and hygiene"
-description = "How procage ends a run (process groups, run markers, double-forked daemons), and the state it keeps from leaking into a child: file descriptors, environment variables, the terminal, temporary files and resource limits."
+description = "How procage ends a run (sessions, process groups, run markers, double-forked daemons), and the state it keeps from leaking into a child: file descriptors, environment variables, the terminal, temporary files and resource limits."
 weight = 90
 
 [extra]
@@ -13,9 +13,9 @@ A sandbox profile does not by itself stop a child from inheriting state it shoul
 
 The **run** starts at spawn and ends when the `Child` handle is dropped or `Child::kill_all` is called. A child that exits by itself does not end the run: its descendants are still killed when the handle goes.
 
-Ending the run kills the child's process group, every descendant that can still be found from the child, and, for a forking policy:
+Ending the run kills the child's session and process group, every descendant that can still be found from the child, and, for a forking policy:
 
-- **Linux, `Lifetime::Run` (default):** `setsid` fails with `EPERM` inside the cage, so every descendant stays in the child's session and dies with it, wherever it was reparented. Process groups work (test runners such as cargo-nextest start each test in one); they stay in the session. Programs that daemonize fail. With `Tty::Inherit` the child shares the caller's session, so `setpgid` fails too. Git's background `gc --auto` prints `fatal: setsid failed`: set `gc.autoDetach=false` (`GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=gc.autoDetach`, `GIT_CONFIG_VALUE_0=false`).
+- **Linux, `Lifetime::Run` (default):** `setsid` fails with `EPERM` inside the cage, so every descendant stays in the child's session and dies with it, wherever it was reparented. Process groups stay in the session, so test runners such as cargo-nextest work; programs that daemonize fail. With `Tty::Inherit` (the caller's session) `setpgid` fails too. Git's background `gc --auto` prints `fatal: setsid failed`: set `gc.autoDetach=false` (`GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=gc.autoDetach`, `GIT_CONFIG_VALUE_0=false`).
 - **Linux, `Lifetime::Tree`:** programs may start their own sessions and process groups (job-control shells). The run kills the group and the descendants found from the child; a descendant whose parent exits in a session of its own outlives the run.
 - **macOS:** the sandbox cannot filter those calls, so each run's processes carry a marker in their profile and are found by it, including descendants reparented to `launchd` and those of a child that already exited. `Lifetime::Tree` behaves like `Run`.
 

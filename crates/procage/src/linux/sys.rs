@@ -298,6 +298,9 @@ pub(crate) enum Session {
     Group,
     /// Nothing: the caller's session and process group (`Cage::exec`).
     Keep,
+    /// `setsid()` unless the process leads its session already
+    /// (`Cage::exec_session`).
+    Lead,
 }
 
 /// Everything the child needs between `fork` and `execve`, prepared in the
@@ -679,6 +682,8 @@ impl ChildPlan {
                 Session::New => libc::setsid(),
                 Session::Group => libc::setpgid(0, 0),
                 Session::Keep => 0,
+                Session::Lead if libc::getsid(0) == libc::getpid() => 0,
+                Session::Lead => libc::setsid(),
             }
         };
         check_int(rc).map_err(|e| fail(steps::SESSION, e))?;
@@ -895,6 +900,16 @@ pub(crate) fn probe_userns(flags: c_int) -> Result<(), i32> {
 pub(crate) fn kill(pid: libc::pid_t) {
     // SAFETY: a system call with integer arguments.
     unsafe { libc::kill(pid, libc::SIGKILL) };
+}
+
+/// Whether this process leads its session, and whether it leads its
+/// process group.
+pub(crate) fn leads() -> (bool, bool) {
+    // SAFETY: system calls without pointers.
+    unsafe {
+        let pid = libc::getpid();
+        (libc::getsid(0) == pid, libc::getpgrp() == pid)
+    }
 }
 
 /// `killpg(pgid, SIGKILL)`, ignoring errors.

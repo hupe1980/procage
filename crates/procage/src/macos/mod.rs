@@ -60,6 +60,41 @@ pub use crate::violation::{Coverage, DeniedBy, Violation, Violations};
 pub use child::Child;
 pub use probe::{ApplyMethod, probe};
 
+/// Ends the run of a [`Cage::exec_session`] helper: kills every live
+/// process of the user in session `pid` (the helper's pid), then its process
+/// group. Call it before reaping the helper, while the session's id cannot
+/// belong to another process. Pids 0 and 1 are ignored.
+pub fn end_session(pid: u32) {
+    let Ok(sid) = libc::pid_t::try_from(pid) else {
+        return;
+    };
+    if sid <= 1 {
+        return;
+    }
+    let mut killed = Vec::new();
+    // Members forked meanwhile are found by the next look.
+    for _ in 0..64 {
+        let members: Vec<libc::pid_t> = sys::all_pids()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|&p| {
+                p > 0
+                    && !killed.contains(&p)
+                    && sys::session_of(p) == Some(sid)
+                    && sys::live_of_user(p)
+            })
+            .collect();
+        if members.is_empty() {
+            break;
+        }
+        for member in members {
+            sys::kill(member);
+            killed.push(member);
+        }
+    }
+    sys::killpg(sid);
+}
+
 use crate::unix::TmpdirGuard;
 
 /// A step of the in-child sequence.
@@ -247,6 +282,10 @@ pub use crate::async_child::AsyncChild;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum SpawnError {
+    /// [`Cage::exec_session`] in a process that leads a process group but
+    /// no session, which cannot start one: start the helper as a plain
+    /// child, or in a session of its own.
+    GroupLeader,
     /// This release or version cannot do it.
     Unsupported(Unsupported),
     /// The calling process is already sandboxed; a second profile would fail
@@ -304,6 +343,10 @@ pub enum SpawnError {
 impl fmt::Display for SpawnError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            SpawnError::GroupLeader => f.write_str(
+                "Cage::exec_session in a process group leader that leads no session: \
+                 start the helper as a plain child, or in a session of its own",
+            ),
             SpawnError::Unsupported(u) => write!(f, "unsupported: {u}"),
             SpawnError::AlreadySandboxed => f.write_str("the calling process is already sandboxed"),
             SpawnError::Lower(e) => write!(f, "{e}"),
@@ -963,6 +1006,9 @@ impl Cage {
     /// std::process::exit(126);
     /// # }
     /// ```
+    ///
+    /// For a command whose descendants start process groups of their own
+    /// (test runners), see [`Cage::exec_session`].
     pub fn exec(&self, command: &mut Command, grants: &Grants) -> SpawnError {
         self.exec_with_fds(command, grants, &[])
     }
@@ -975,6 +1021,50 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
     ) -> SpawnError {
+        self.exec_as(command, grants, fds, sys::Session::Keep)
+    }
+
+    /// Like [`Cage::exec`], but the command leads a session of its own: the
+    /// helper starts one unless it leads one already, and the owner ends the
+    /// run with [`end_session`] of the helper's pid, before reaping it.
+    /// Seatbelt cannot refuse `setsid`, so on macOS a descendant can still
+    /// leave the session, as with [`Cage::exec`].
+    ///
+    /// A helper that leads a process group but no session (started with
+    /// `process_group(0)`) cannot start a session: that fails with
+    /// [`SpawnError::GroupLeader`], and `Tty::Inherit` with
+    /// [`Unsupported::Setting`], before the process changes. Start the
+    /// helper as a plain child, or in a session of its own.
+    pub fn exec_session(&self, command: &mut Command, grants: &Grants) -> SpawnError {
+        self.exec_session_with_fds(command, grants, &[])
+    }
+
+    /// Like [`Cage::exec_session`], and also keeps `fds` open across the
+    /// exec, at the same numbers.
+    pub fn exec_session_with_fds(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+    ) -> SpawnError {
+        if self.plan.hygiene.tty == Tty::Inherit {
+            return SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Cage::exec_session with Tty::Inherit",
+            });
+        }
+        if let (false, true) = sys::leads() {
+            return SpawnError::GroupLeader;
+        }
+        self.exec_as(command, grants, fds, sys::Session::Lead)
+    }
+
+    fn exec_as(
+        &self,
+        command: &mut Command,
+        grants: &Grants,
+        fds: &[BorrowedFd<'_>],
+        session: sys::Session,
+    ) -> SpawnError {
         use std::os::unix::process::CommandExt;
         if self.grant_slot(TMPDIR_GRANT).is_some() {
             return SpawnError::Grant(GrantError::TmpdirWithExec);
@@ -986,7 +1076,7 @@ impl Cage {
                 setting: "Cage::exec with CageOptions::with_proxy",
             });
         }
-        match self.prepare(command, grants, fds, sys::Session::Keep, &[]) {
+        match self.prepare(command, grants, fds, session, &[]) {
             // On success `exec` does not return; the run marker (forking
             // policies) is never searched: there is no handle.
             Ok(_prepared) => match self.audit.before_spawn() {
@@ -1034,7 +1124,7 @@ impl Cage {
         let tokens = spawn::tokens(lib, self, &grants)?;
         let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
             .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
-        if session == sys::Session::Keep {
+        if matches!(session, sys::Session::Keep | sys::Session::Lead) {
             crate::unix::find_program(command).map_err(SpawnError::Io)?;
         }
         let (run, bytecode) = self.run_and_bytecode(lib, overrides)?;

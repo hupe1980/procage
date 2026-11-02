@@ -92,8 +92,11 @@
 //! the default [`Lifetime::Run`](policy::Lifetime::Run), and the command
 //! dies with the helper's parent. On macOS a descendant that starts its own
 //! session is not reached by the group kill; use `Cage::spawn`, whose handle
-//! finds it, when that matters. The `examples/exec_helper.rs` program in the
-//! repository is a complete helper.
+//! finds it, when that matters. For a command whose descendants start
+//! process groups (test runners), use `Cage::exec_session`: start the
+//! helper as a plain child and end the run with `end_session(pid)` before
+//! reaping it. The `examples/exec_helper.rs` program in the repository is a
+//! complete helper.
 //!
 //! # Fitting a policy to the host
 //!

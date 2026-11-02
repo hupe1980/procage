@@ -60,8 +60,8 @@ let status = cage
 - ⚡ **Async (tokio).** With the `tokio` feature, `Cage::spawn_async`
   returns an awaitable child, and violations arrive as a stream.
 - 📦 **Frozen presets and base profiles** that let ordinary programs and
-  developer tools start, and `Cage::exec` for helpers that become the caged
-  command.
+  developer tools start, and `Cage::exec` and `Cage::exec_session` for
+  helpers that become the caged command.
 
 ## 🖥️ Platforms
 

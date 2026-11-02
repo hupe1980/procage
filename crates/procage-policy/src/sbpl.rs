@@ -150,8 +150,8 @@ pub enum DenyReason {
     /// A deny rule of the raw Seatbelt layer (or the Linux layer's
     /// `syscalls_deny`).
     Layer,
-    /// Linux `Lifetime::Run`: `setsid` and `setpgid` are refused so that
-    /// descendants stay in the run.
+    /// Linux `Lifetime::Run`: `setsid` is refused (and `setpgid` with
+    /// `Tty::Inherit` or `Cage::exec`) so that descendants stay in the run.
     Lifetime,
     /// Linux below Landlock ABI 3: truncation is refused everywhere, because
     /// Landlock cannot confine it.

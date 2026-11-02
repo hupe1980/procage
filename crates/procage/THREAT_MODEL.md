@@ -131,7 +131,7 @@ procage inside it for finer-grained policy.
   "unsupported" error if it fails. Between finding a process and killing it,
   the process could exit and its process id be reused; macOS offers no
   process handle that would close that window. On Linux, descendants stay in
-  the child's process group instead, unless the policy chooses
+  the child's session instead (process groups stay inside it), unless the policy chooses
   `Lifetime::Tree`, in which case a descendant that double-forks into a
   session of its own outlives the run.
 - **Nesting.** Inside another Seatbelt sandbox (for example an AI agent's

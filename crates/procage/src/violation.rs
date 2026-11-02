@@ -63,7 +63,8 @@ pub enum DeniedBy {
     /// A deny rule of the policy's raw layer (Seatbelt rules on macOS,
     /// `syscalls_deny` on Linux).
     Layer,
-    /// Linux `Lifetime::Run`: leaving the run's process group is refused, so
+    /// Linux `Lifetime::Run`: leaving the child's session (`setsid`) is
+    /// refused, and so is `setpgid` with `Tty::Inherit` or `Cage::exec`, so
     /// that ending the run reaches every descendant.
     Lifetime,
     /// Linux below Landlock ABI 3: truncation is refused everywhere, because
