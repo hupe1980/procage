@@ -165,7 +165,12 @@ impl Child {
             libc::pid_t::try_from(self.pid).map_err(|_| io::Error::other("pid out of range"))?;
         let running = self.inner_mut().try_wait()?.is_none();
         if running {
-            for descendant in descendants(pid) {
+            // Found before the child dies (its children are reparented when
+            // it exits); the child is killed first, so it cannot see a
+            // descendant die and exit by itself.
+            let below = descendants(pid);
+            sys::kill(pid);
+            for descendant in below {
                 sys::kill(descendant);
             }
         }
