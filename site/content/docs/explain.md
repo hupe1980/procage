@@ -24,7 +24,7 @@ if let Some(remedy) = answer.remedy {
 
 ## Proven operations
 
-`explain` models exactly the operations procage's oracle suite proves on every target. On each CI lane the suite asks every preset and a policy with every rule kind more than 1,000 questions about a generated tree, of the explainer and of the kernel (a caged child that opens each file, and caged spawns of copies of `true`), and fails on any disagreement.
+`explain` models exactly the operations the [oracle suite](@/docs/testing.md#the-explain-oracle) proves on every target, where every answer is compared with the kernel's.
 
 | Operation | macOS | Linux T1 | Linux T2 |
 |---|---|---|---|
@@ -39,7 +39,7 @@ if let Some(remedy) = answer.remedy {
 - `decision`: `Allowed`, `Denied` or `NotModelled`.
 - `by`: the deciding rule: a file rule of the policy (an allow, a protect or a hide rule), a grant, a hard-deny class, the base profile, the raw layer, a setting, or the default deny. On Linux, `Unhandled` means Landlock does not handle the right (`Exec::Any`).
 - `caveat`: set when the answer holds only for what existed at spawn: on tier T1 the class covers are mounted over the paths found then; on tier T2 the tree around a hidden path is granted entry by entry as listed then.
-- `remedy`: for a denial, the narrowest change that allows it: a literal rule for the path asked, a waiver when a hard-deny class decides, or removing the deciding protect or hide rule (up to three, in order). It is offered only after lowering the changed policy confirms it, lists any approximation the change needs accepted, and carries the change's `diff`, so it names everything else the change allows.
+- `remedy`: for a denial, the narrowest change that allows it: a literal rule for the path, a waiver when a hard-deny class decides, or removing the deciding protect or hide rule (up to three, in order). It is confirmed by lowering the changed policy, names any approximation it needs, and carries its `diff`: everything else it allows.
 
 `Cage::explain` resolves symbolic links in the path, reads the file's mode (set-user-ID files are denied on macOS), binds the grants as a spawn would, and on Linux uses the cage's homes. The grant of the private temporary directory is left out: its path exists only during a run. Without a cage, `procage::policy::explain::Explainer` takes a canonical path and a `Context` of grants and homes; a path that is not canonical (`/a/../b`, or `/etc/hosts` on macOS) is an error naming its canonical form.
 

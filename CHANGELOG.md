@@ -6,6 +6,8 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-02
+
 ### Security
 
 - With the network on, a caged child could reach the user's D-Bus bus or
@@ -29,12 +31,11 @@ All notable changes to procage are listed here. The format follows
 ### Added
 
 - Explain and diff (`procage_policy::explain`): `Cage::explain` and
-  `Explainer` say whether a path may be read, written or executed, by
-  which rule, with any spawn-time caveat and the narrowest change that
-  would allow a denial; `explain::diff` lists what one policy allows or
-  denies that another does not, per target. Every answer is checked
-  against the kernel on every CI lane by the oracle suite
-  (`tests/oracle.rs`). `SpawnError::Explain`.
+  `Explainer` name the rule that allows or denies reading, writing or
+  executing a path, and the narrowest change that would allow a denial;
+  `explain::diff` lists what one policy allows that another does not.
+  `SpawnError::Explain`. The oracle suite checks every answer against the
+  kernel on every CI lane.
 - Receipts: `Child::receipt` describes every finished run (policy digest,
   preset and base, backend and tier, OS build or kernel, approximations,
   relaxations, waivers, violation summary, exit); `Receipt::{to_json,
@@ -93,6 +94,7 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hupe1980/procage/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hupe1980/procage/releases/tag/v0.1.0
 [0.0.1]: https://crates.io/crates/procage/0.0.1

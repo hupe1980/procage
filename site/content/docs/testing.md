@@ -15,6 +15,10 @@ For every escape class in the [threat model](@/docs/threat-model.md), the escape
 
 A test gate (`crates/procage/tests/threat_model.rs`) checks the catalog itself: its format, stable ids, a canary for each platform a class applies to, and no class marked handled without passing canaries.
 
+## The explain oracle
+
+`crates/procage/tests/oracle.rs` asks every preset a target can express, and a policy with every rule kind, about 1,280 questions on each lane: once of [`Cage::explain`](@/docs/explain.md), once of the kernel, through a caged child that opens every file and caged spawns of copies of `true`. Any disagreement, or a kernel result that is neither success nor a refusal, fails the suite.
+
 ## The kernel-facts suite
 
 `crates/procage-kernel-facts` re-verifies, on the running kernel, the macOS Seatbelt and Linux Landlock, seccomp and namespace behaviour procage builds on. Each fact has an id (`KF-M…` for macOS, `KF-L…` for Linux) and a statement, for example:
@@ -60,8 +64,11 @@ spawn, measured 2026-11-02:
 On macOS the link check (R-08) is about half the cached cost; a cage reused
 across spawns compiles its profile once.
 
+The bench also times `Cage::explain`'s evaluator: 0.61 ms per question for a
+4,000-byte path under `agent_workspace` v3 on macOS.
+
 ## Where they have run
 
-The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; older Landlock ABIs are exercised through `CageOptions::with_landlock_abi`. CI runs the kernel facts and the escape suites on every push, on GitHub's macOS 26 and Ubuntu 24.04 (x86_64, tiers T1 and T2) runners.
+The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; older Landlock ABIs are exercised through `CageOptions::with_landlock_abi`. CI runs the kernel facts, the escape suites and the explain oracle on every push, on GitHub's macOS 26 and Ubuntu 24.04 (x86_64, tiers T1 and T2) runners.
 
 The measurements and security requirements behind each change are in the [design records](https://github.com/hupe1980/procage/tree/main/specs) on GitHub.

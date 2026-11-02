@@ -75,7 +75,6 @@ fn oracle_child() {
 /// The files of the generated tree.
 struct Tree {
     _dir: Scratch,
-    base: PathBuf,
     work: PathBuf,
     granted: PathBuf,
     home: PathBuf,
@@ -161,7 +160,6 @@ fn tree(name: &str) -> Tree {
     programs.push(PathBuf::from(TRUE));
     Tree {
         _dir: dir,
-        base,
         work,
         granted,
         home,
@@ -231,18 +229,21 @@ fn lanes() -> Vec<Lane> {
     }
 }
 
+/// The cage options of `lane`: on Linux its tier, and the tree's home as a
+/// home.
+#[cfg(target_os = "macos")]
+fn options(_: Lane, _: &Tree) -> CageOptions {
+    CageOptions::default()
+}
+
+/// The cage options of `lane`: on Linux its tier, and the tree's home as a
+/// home.
+#[cfg(target_os = "linux")]
 fn options(lane: Lane, tree: &Tree) -> CageOptions {
-    let options = CageOptions::default();
-    match lane {
-        Lane::MacOs => {
-            let _ = tree;
-            options
-        }
-        #[cfg(target_os = "linux")]
-        Lane::Linux(tier) => options.with_tier(tier).with_home(&tree.home),
-        #[cfg(not(target_os = "linux"))]
-        Lane::Linux(_) => unreachable!(),
-    }
+    let Lane::Linux(tier) = lane else {
+        unreachable!("Linux lanes only")
+    };
+    CageOptions::default().with_tier(tier).with_home(&tree.home)
 }
 
 /// `p` with exec of this test binary.
@@ -621,7 +622,6 @@ fn explain_agrees_with_the_kernel() {
             );
         }
     }
-    let _ = &tree.base;
     assert!(
         failures.is_empty(),
         "{} disagreements:\n{}",
