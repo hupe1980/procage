@@ -29,8 +29,9 @@ pub mod sys;
 
 /// Default per-step timeout.
 pub const TIMEOUT: Duration = Duration::from_secs(30);
-/// Timeout for steps that compile thousands of rules.
-pub const TIMEOUT_HEAVY: Duration = Duration::from_secs(120);
+/// Timeout for steps that compile thousands of rules (KF-M17 takes close
+/// to two minutes on GitHub's macOS runners).
+pub const TIMEOUT_HEAVY: Duration = Duration::from_secs(300);
 
 /// Whether `value` may appear in an observation: numbers, errno values, byte
 /// counts, flags, short fixed tokens and paths the step created. Never file

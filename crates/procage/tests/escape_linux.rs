@@ -1392,34 +1392,31 @@ fn socket_options(tier: Tier, runtime: &Path, snapshot: bool) -> CageOptions {
     options.with_lower(lower)
 }
 
-/// Beside a host's own system bus or service manager (a GitHub runner has
-/// both; a container usually has neither), a T2 cage with
-/// `service-handoff` in force and the network on cannot exist. Returns
-/// `true` when `p` is refused for that reason alone, asserting that every
-/// gap names one of the host's system paths, so the canary's T2 part, which
+/// Beside a host's own buses or service managers (a GitHub runner has the
+/// system bus, systemd's socket and the runner user's bus; a container
+/// usually has none), a T2 cage with `service-handoff` in force and the
+/// network on cannot exist. Returns `true` when `p` is refused for that
+/// reason alone, asserting that every gap is that class naming a socket
+/// outside the test's scratch directories, so the canary's T2 part, which
 /// needs such a cage, runs only on hosts without them.
 fn refused_beside_the_host_bus(p: &Policy, opts: &CageOptions, canary: &str) -> bool {
-    use procage::policy::presets::{SERVICE_SOCKET_DIRS_LINUX, SERVICE_SOCKETS_LINUX};
     let gaps = match Cage::with_options(p, opts) {
         Ok(_) => return false,
         Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
         Err(e) => panic!("{canary}: {e}"),
     };
-    let system = |subject: &str| {
-        SERVICE_SOCKETS_LINUX
-            .iter()
-            .chain(SERVICE_SOCKET_DIRS_LINUX)
-            .any(|s| subject == *s || subject.starts_with(&format!("{s}/")))
-    };
+    let scratch = std::env::temp_dir();
     for g in &gaps {
         assert!(
             g.construct == Construct::HdServiceHandoff
                 && g.kind == GapKind::Unsupported
-                && g.subject.as_deref().is_some_and(system),
-            "{canary}: refused for more than the host's bus: {gaps:?}"
+                && g.subject
+                    .as_deref()
+                    .is_some_and(|s| !Path::new(s).starts_with(&scratch)),
+            "{canary}: refused for more than the host's buses: {gaps:?}"
         );
     }
-    println!("{canary}: T2 refused beside the host's bus; its T2 part needs a host without one");
+    println!("{canary}: T2 refused beside the host's buses; its T2 part needs a host without them");
     true
 }
 
