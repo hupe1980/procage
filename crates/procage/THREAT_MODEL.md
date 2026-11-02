@@ -7,7 +7,7 @@ and in the crate documentation.
 
 ## Release status
 
-This describes procage 0.3.0. The list below states what it does not
+This describes procage 0.3.1. The list below states what it does not
 contain; the catalog states the evidence for every escape class.
 
 Seatbelt is the macOS kernel sandbox. On Linux, Landlock controls files and
