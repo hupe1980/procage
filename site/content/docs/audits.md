@@ -26,7 +26,15 @@ match cage.spawn(&mut command, &grants) {
 let options = CageOptions::default().with_link_audit(LinkAudit::Report);
 ```
 
-Names that all lie inside the protected set are not findings (GnuPG's lock files, for example). Large application data and privacy-guarded folders (browser profiles, Mail, Messages, Safari, Cookies) are not examined. A second name cannot be made during the run: Seatbelt refuses to link a file the child cannot write, and Landlock never grants linking across directories. `LinkAudit::Off` turns the check off.
+Names that all lie inside the protected set are not findings (GnuPG's lock files, for example). Large application data and privacy-guarded folders (browser profiles, Mail, Messages, Safari, Cookies) are not examined. A second name for a protected or hidden file cannot be made during the run: Seatbelt refuses to link a file the child cannot write, Landlock links across directories only between writable trees, and on Linux T1 protected and hidden targets are separate mounts. `LinkAudit::Off` turns the check off.
+
+A store whose files are written once and never rewritten in place can be exempted by name, so the check keeps refusing everywhere else. A local `git clone` hard-links every object to the source repository's, so with `.git` protected each spawn would otherwise be refused:
+
+```rust
+let options = CageOptions::default().with_link_exemption(workspace.join(".git/objects"));
+```
+
+Protected files at or below the exempt path are not examined (`Audit::links_exempt` lists the exemptions of a run); a second name for `.git/config` or a hook is still refused, and hidden files are examined everywhere. An exempt file with another name in a writable tree can be changed through it: git notices a changed object when it checks one, as `git fsck` does.
 
 ## What a run left behind (after the run, opt-in)
 

@@ -10,9 +10,14 @@
 //! with [`LinkAudit::Refuse`] (the default) refuses the spawn when one has
 //! more than one name, or a literal target has become a symbolic link.
 //! [`LinkAudit::Report`] lists them instead; [`LinkAudit::Off`] skips the
-//! check. Hard links cannot be made during a run: Seatbelt refuses to link a
-//! file the child cannot write, and Landlock never grants linking across
-//! directories.
+//! check. A subtree named with `CageOptions::with_link_exemption` is not
+//! examined for protected files (a store whose files are never rewritten in
+//! place, such as `.git/objects`, which a local clone hard-links); hidden
+//! files are examined everywhere. Hard links to a protected or hidden file
+//! cannot be made during a run: Seatbelt refuses to link a file the child
+//! cannot write, Landlock links across directories only between writable
+//! trees, and on Linux tier T1 protected and hidden targets are separate
+//! mounts.
 //!
 //! **Handoff audit (after the run, opt-in).** Trust handoff is a program
 //! outside the sandbox later running or following what the child wrote (R-07).
@@ -118,6 +123,9 @@ pub struct Audit {
     pub links_complete: bool,
     /// Entries the link check examined.
     pub links_visited: usize,
+    /// The subtrees the link check did not examine for protected files
+    /// (see `CageOptions::with_link_exemption`).
+    pub links_exempt: Vec<PathBuf>,
     /// What the run left behind, with the handoff audit.
     pub handoff: Option<Vec<HandoffFinding>>,
     /// Whether both handoff walks examined everything, and the run had
@@ -198,6 +206,8 @@ pub(crate) struct Targets {
     /// The caller's uid: a directory another user owns that the caller
     /// cannot search is skipped (see [`walk_skipping`]).
     caller: Option<u32>,
+    /// Subtrees not examined for protected files.
+    exempt: Vec<PathBuf>,
 }
 
 impl Targets {
@@ -247,6 +257,19 @@ impl Targets {
         t.trees.dedup();
         t
     }
+
+    /// These targets with `exempt` not examined for protected files.
+    pub(crate) fn exempting(mut self, mut exempt: Vec<PathBuf>) -> Targets {
+        exempt.sort();
+        exempt.dedup();
+        self.exempt = exempt;
+        self
+    }
+
+    /// Whether a protected (not hidden) name at `path` is exempt.
+    fn exempt(&self, path: &Path, hidden: bool) -> bool {
+        !hidden && self.exempt.iter().any(|e| path.starts_with(e))
+    }
 }
 
 /// The result of a link check.
@@ -275,40 +298,64 @@ pub(crate) fn links(targets: &Targets, limit: usize) -> LinkResult {
                 links: m.nlink(),
                 symbolic: true,
             }),
+            Ok(_) if targets.exempt(path, *hidden) => {}
             Ok(m) => note(&mut seen, path, &m, *hidden),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => r.complete = false,
         }
     }
     let caller = targets.caller;
+    // An exempt subtree is neither walked nor counted for protected names.
     for (root, hidden) in &targets.trees {
-        walk(root, limit, caller, &mut r, &mut |path, m, _| {
-            note(&mut seen, path, m, *hidden)
-        });
-    }
-    for (root, hidden) in &targets.classes {
+        if targets.exempt(root, *hidden) {
+            continue;
+        }
         walk_skipping(
             root,
             limit,
             caller,
             &mut r,
             &mut |path, m, _| note(&mut seen, path, m, *hidden),
-            &cache,
+            &|dir| targets.exempt(dir, *hidden),
+        );
+    }
+    for (root, hidden) in &targets.classes {
+        if targets.exempt(root, *hidden) {
+            continue;
+        }
+        walk_skipping(
+            root,
+            limit,
+            caller,
+            &mut r,
+            &mut |path, m, _| note(&mut seen, path, m, *hidden),
+            &|dir| cache(dir) || targets.exempt(dir, *hidden),
         );
     }
     for (prefix, pattern, hidden) in &targets.globs {
-        walk(prefix, limit, caller, &mut r, &mut |path, m, _| {
-            match glob_match(pattern, path) {
-                Some(true) => note(&mut seen, path, m, *hidden),
-                // Classes and alternatives are matched conservatively: the
-                // file is examined, but its name never counts as accounted
-                // for, so an over-matched alias cannot hide a finding.
-                None if may_overlap(pattern, path.as_os_str().as_encoded_bytes()) => {
-                    note_unaccounted(&mut seen, path, m)
+        let skip = |dir: &Path| targets.exempt(dir, *hidden);
+        walk_skipping(
+            prefix,
+            limit,
+            caller,
+            &mut r,
+            &mut |path, m, _| {
+                if skip(path) {
+                    return;
                 }
-                _ => {}
-            }
-        });
+                match glob_match(pattern, path) {
+                    Some(true) => note(&mut seen, path, m, *hidden),
+                    // Classes and alternatives are matched conservatively: the
+                    // file is examined, but its name never counts as accounted
+                    // for, so an over-matched alias cannot hide a finding.
+                    None if may_overlap(pattern, path.as_os_str().as_encoded_bytes()) => {
+                        note_unaccounted(&mut seen, path, m)
+                    }
+                    _ => {}
+                }
+            },
+            &skip,
+        );
     }
     for (path, links, names) in seen.into_values() {
         // Every name must be among the targets, and a hidden file's names
@@ -579,6 +626,24 @@ pub(crate) fn handoff(before: &Snapshot, after: &Snapshot) -> (Vec<HandoffFindin
     (out, before.complete && after.complete)
 }
 
+/// The link exemptions of a cage, each resolved with `resolve` where it
+/// exists; `Err` when one is relative.
+pub(crate) fn exemptions(
+    paths: &[PathBuf],
+    resolve: impl Fn(&Path) -> Option<PathBuf>,
+) -> Result<Vec<PathBuf>, &'static str> {
+    paths
+        .iter()
+        .map(|p| {
+            if p.is_absolute() {
+                Ok(resolve(p).unwrap_or_else(|| p.clone()))
+            } else {
+                Err("CageOptions::with_link_exemption with a relative path")
+            }
+        })
+        .collect()
+}
+
 /// A cage's audits: built once, run for every spawn.
 #[derive(Debug)]
 pub(crate) struct CageAudit {
@@ -659,6 +724,7 @@ impl RunAudit {
             links: self.links.findings.clone(),
             links_complete: self.links.complete,
             links_visited: self.links.visited,
+            links_exempt: self.cage.targets.exempt.clone(),
             handoff,
             handoff_complete,
             handoff_visited,
@@ -671,7 +737,8 @@ pub(crate) fn refusal(findings: &[LinkFinding]) -> String {
     let list: Vec<String> = findings.iter().map(ToString::to_string).collect();
     format!(
         "a protected, hidden or class file has another name, which path rules do not cover: {}; \
-         remove the extra name, or choose LinkAudit::Report or LinkAudit::Off by name",
+         remove the extra name, exempt a store whose files are never rewritten with \
+         CageOptions::with_link_exemption, or choose LinkAudit::Report or LinkAudit::Off by name",
         list.join(", ")
     )
 }
@@ -710,6 +777,50 @@ mod tests {
         std::fs::hard_link(d.join("secret/alone"), d.join("secret/.lock")).unwrap();
         let r = links(&targets, 100);
         assert_eq!(r.findings.len(), 1, "{:?}", r.findings);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_exempt_store_is_skipped_for_protected_files_only() {
+        // A local clone: the objects have a second name in the source
+        // repository; the config does too.
+        let d = scratch("exempt");
+        std::fs::create_dir_all(d.join("ws/.git/objects/ab")).unwrap();
+        std::fs::create_dir_all(d.join("src/.git/objects/ab")).unwrap();
+        std::fs::write(d.join("src/.git/objects/ab/cd"), "blob").unwrap();
+        std::fs::hard_link(
+            d.join("src/.git/objects/ab/cd"),
+            d.join("ws/.git/objects/ab/cd"),
+        )
+        .unwrap();
+        std::fs::write(d.join("ws/.git/config"), "[core]").unwrap();
+        std::fs::hard_link(d.join("ws/.git/config"), d.join("config")).unwrap();
+        let protect = Targets {
+            trees: vec![(d.join("ws/.git"), false)],
+            ..Targets::default()
+        };
+        let all = links(&protect, 100).findings;
+        assert_eq!(all.len(), 2, "{all:?}");
+        let exempt = protect.exempting(vec![d.join("ws/.git/objects")]);
+        let r = links(&exempt, 100);
+        assert!(r.complete);
+        assert_eq!(r.findings.len(), 1, "{:?}", r.findings);
+        assert_eq!(r.findings[0].path, d.join("ws/.git/config"));
+        // An exempt literal target and an exempt tree root are skipped too.
+        let root = Targets {
+            trees: vec![(d.join("ws/.git/objects"), false)],
+            literal: vec![(d.join("ws/.git/objects/ab/cd"), false)],
+            ..Targets::default()
+        }
+        .exempting(vec![d.join("ws/.git/objects")]);
+        assert!(links(&root, 100).findings.is_empty());
+        // A hidden file is examined inside an exempt subtree.
+        let hidden = Targets {
+            trees: vec![(d.join("ws/.git"), true)],
+            ..Targets::default()
+        }
+        .exempting(vec![d.join("ws/.git/objects")]);
+        assert_eq!(links(&hidden, 100).findings.len(), 2);
         let _ = std::fs::remove_dir_all(&d);
     }
 

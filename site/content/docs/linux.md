@@ -43,11 +43,12 @@ Both tiers accept Landlock ABI 1 (Linux 5.13) and later. What an older ABI canno
 |---|---|---|---|
 | 1 | 5.13 | Ubuntu 22.04 (5.15) | No sandbox at all |
 | 3 | 6.2 | Ubuntu 22.04 HWE, 23.10 | Landlock cannot deny truncation, so procage refuses `truncate` by path and `open` with `O_TRUNC` without write access *everywhere*, also inside writable paths (truncate through a descriptor opened for writing instead), and `openat2` fails with `ENOSYS`. Debian 12 (6.1) is at ABI 2 |
-| 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off seccomp still refuses IP sockets, but an IP socket the caller hands over can connect (tier T2) |
+| 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off seccomp still refuses IP sockets, but a TCP socket the caller hands over can connect (tier T2) |
 | 6 | 6.12 | Debian 13, RHEL 10 | No signal scope: `Signals::SelfAndChildren` is a gap. Abstract Unix sockets are not scoped |
-| 9 | | | No Unix-socket rules: `ipc.unix_sockets` is approximated on T1 and refused on T2 |
+| 9 | 7.1 | | No Unix-socket rules: `ipc.unix_sockets` is approximated on T1 and refused on T2 |
+| 10 | 7.2 | | No UDP rules: with the network off, a UDP socket the caller hands over can send |
 
-RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 8 (`procage::linux::BACKEND_MAX_ABI`), the newest verified on a kernel, so the "below 9" limits hold on every kernel.
+RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 11 (`procage::linux::BACKEND_MAX_ABI`); every step of the table, and ABI 11, was tested on a mainline kernel (see [where the tests have run](@/docs/testing.md#where-they-have-run)). ABI 11's no-new-privileges flag changes nothing: the child sets no-new-privileges itself before its seccomp filter on every kernel.
 
 ### Testing against older kernels
 
@@ -76,7 +77,7 @@ Looking for class paths under writable trees walks them; a tree with more entrie
 
 ## Unix sockets
 
-`ipc.unix_sockets` allows only `AF_UNIX` sockets when the network is otherwise off. On T1 below ABI 9, abstract sockets stay inside the cage's network namespace, and every listening socket outside the allowed paths, as listed in `/proc/net/unix` at spawn, is masked; sockets bound later stay reachable (an approximation accepted with `accept_spawn_snapshot()`). T2 below ABI 9 cannot restrict pathname sockets and refuses the setting.
+`ipc.unix_sockets` allows only `AF_UNIX` sockets when the network is otherwise off. From ABI 9 Landlock enforces it exactly on both tiers: a pathname socket outside the allowed paths cannot be connected to, abstract sockets are scoped to the run, and the D-Bus, systemd and engine sockets need no cover. With the network on, every pathname socket stays reachable, on every ABI. On T1 below ABI 9, abstract sockets stay inside the cage's network namespace, and every listening socket outside the allowed paths, as listed in `/proc/net/unix` at spawn, is masked; sockets bound later stay reachable (an approximation accepted with `accept_spawn_snapshot()`). T2 below ABI 9 cannot restrict pathname sockets and refuses the setting.
 
 The D-Bus, systemd and container-engine sockets are kept out by the [socket classes](@/docs/hard-deny.md#the-socket-classes).
 
@@ -92,8 +93,9 @@ The tests (`tests/spawn_linux.rs`, `tests/escape_linux.rs`) run in containers on
 
 - No PID namespace or private `/proc`: keeping signals within the run needs Landlock ABI 6, and reaching other processes' `/proc` entries is an [approximation](#reading-everything-except-secrets).
 - With `Lifetime::Tree`, a descendant that double-forks into a session of its own outlives the run.
-- No loopback or proxy networking: a gap on both tiers.
+- No loopback networking: a gap on both tiers. Proxy-only networking needs T1 and a [proxy of the cage's own](@/docs/proxy.md); it is a gap on T2.
 - Protect, and hide inside a writable tree, are gaps on T2; glob rules are gaps on both tiers.
+- Files move and link between directories of the writable trees (and the run's `TMPDIR`) from Landlock ABI 2 (Linux 5.19); on ABI 1 every move or link between directories fails with `EXDEV`, as a cross-device move would. Landlock refuses a move that would give a file a right it lacks where it is, and one out of a read-only tree.
 - The probe is cached per process, not per boot.
 
 ## Options
@@ -107,7 +109,7 @@ The tests (`tests/spawn_linux.rs`, `tests/escape_linux.rs`) run in containers on
 | `with_runtime_dir(path)` | One more runtime directory for the socket classes |
 | `with_walk_limit(usize)` | Entries one spawn may visit looking for class paths under writable trees |
 | `with_violations()` | [Violation reports](@/docs/violations.md) |
-| `with_link_audit(LinkAudit)`, `with_handoff_audit()` | [Audits](@/docs/audits.md) |
+| `with_link_audit(LinkAudit)`, `with_link_exemption(path)`, `with_handoff_audit()` | [Audits](@/docs/audits.md) |
 | `with_policy_in_receipt()` | The policy in each [receipt](@/docs/receipts.md) |
 
 ## Violation reports

@@ -16,13 +16,19 @@ include = ["/src", "/THREAT_MODEL.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 # Each backend is built for its own OS: render both.
 default-target = "aarch64-apple-darwin"
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
-features = ["tokio"]
+features = ["tokio", "proxy"]
 
 # Helpers run single-threaded, so the exec tests have their own `main`.
 [[test]]
 name = "exec"
 path = "tests/exec.rs"
 harness = false
+
+# The proxy a cage runs per run; needs the feature.
+[[test]]
+name = "proxy"
+path = "tests/proxy.rs"
+required-features = ["proxy"]
 
 # The async handle; needs the feature.
 [[test]]
@@ -46,10 +52,13 @@ sha2.workspace = true
 libc.workspace = true
 futures-core = { version = "0.3", default-features = false, optional = true }
 tokio = { version = "1.47", default-features = false, features = ["process", "rt", "sync"], optional = true }
+procage-proxy = { workspace = true, optional = true }
 
 [features]
 # Async spawn, wait and violation streams on a tokio runtime.
 tokio = ["dep:tokio", "dep:futures-core"]
+# An egress proxy with a domain allowlist per run (`CageOptions::with_proxy`).
+proxy = ["dep:procage-proxy"]
 
 [dev-dependencies]
 tokio = { version = "1.47", default-features = false, features = ["rt-multi-thread", "io-util", "time", "process", "sync"] }

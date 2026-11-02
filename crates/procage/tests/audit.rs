@@ -250,3 +250,86 @@ fn paths_round_trip_exactly() {
         );
     }
 }
+
+/// A local clone hard-links its objects to the source repository's: with
+/// `.git` protected the spawn is refused, until the object store is exempt
+/// by name; a second name for the config is still refused. A relative
+/// exemption fails the cage. Tier T2 cannot protect: not applicable there.
+#[test]
+fn an_exempt_object_store_keeps_the_rest_of_the_check() {
+    use procage::native::SpawnError;
+    let ws = workspace("exempt");
+    let base = ws.join("../").canonicalize().unwrap();
+    let source = base.join(format!("procage-audit-exempt-src-{}", std::process::id()));
+    let clone = base.join(format!("procage-audit-exempt-clone-{}", std::process::id()));
+    for d in [&source, &clone] {
+        let _ = std::fs::remove_dir_all(d);
+        std::fs::create_dir_all(d.join(".git/objects/ab")).unwrap();
+    }
+    std::fs::write(source.join(".git/objects/ab/cd"), "blob").unwrap();
+    std::fs::hard_link(
+        source.join(".git/objects/ab/cd"),
+        clone.join(".git/objects/ab/cd"),
+    )
+    .unwrap();
+    std::fs::write(clone.join(".git/config"), "[core]\n").unwrap();
+    let abs = |p: &Path| AbsPath::new(p.to_str().unwrap()).unwrap();
+    let mut p = policy(&ws);
+    p.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(abs(&clone))));
+    p.fs.push(FsRule::new(
+        Access::Protect,
+        FsTarget::Subpath(abs(&clone.join(".git"))),
+    ));
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&source);
+        let _ = std::fs::remove_dir_all(&clone);
+    };
+    let strict = match Cage::with_options(&p, &CageOptions::default()) {
+        Ok(cage) => cage,
+        // Only tier T2 refuses to protect.
+        Err(SpawnError::Lower(e)) if cfg!(target_os = "linux") => {
+            println!("not applicable here: {e}");
+            return cleanup();
+        }
+        Err(e) => panic!("{e}"),
+    };
+    match strict.spawn(&mut sh(&ws, "true"), &Grants::new()) {
+        Err(SpawnError::HardLinks(found)) => {
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].path, clone.join(".git/objects/ab/cd"));
+        }
+        other => panic!("not refused: {other:?}"),
+    }
+    let options = CageOptions::default().with_link_exemption(clone.join(".git/objects"));
+    let exempt = Cage::with_options(&p, &options).unwrap();
+    let mut child = exempt.spawn(&mut sh(&ws, "true"), &Grants::new()).unwrap();
+    child.wait().unwrap();
+    let audit = child.audit().unwrap();
+    assert!(audit.links.is_empty(), "{:?}", audit.links);
+    assert_eq!(audit.links_exempt, [clone.join(".git/objects")]);
+    std::fs::hard_link(
+        clone.join(".git/config"),
+        base.join(format!(
+            "procage-audit-exempt-config-{}",
+            std::process::id()
+        )),
+    )
+    .unwrap();
+    match exempt.spawn(&mut sh(&ws, "true"), &Grants::new()) {
+        Err(SpawnError::HardLinks(found)) => {
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].path, clone.join(".git/config"));
+        }
+        other => panic!("not refused: {other:?}"),
+    }
+    let _ = std::fs::remove_file(base.join(format!(
+        "procage-audit-exempt-config-{}",
+        std::process::id()
+    )));
+    let relative = CageOptions::default().with_link_exemption(".git/objects");
+    assert!(matches!(
+        Cage::with_options(&p, &relative),
+        Err(SpawnError::Unsupported(_))
+    ));
+    cleanup();
+}

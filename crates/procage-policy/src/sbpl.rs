@@ -118,6 +118,8 @@ pub enum Filter {
     OutsideSameSandbox,
     /// `(remote ip "…")`, e.g. `localhost:8080`.
     RemoteIp(String),
+    /// `(remote ip (param "…"))`: the address is bound when compiling.
+    RemoteIpParam(&'static str),
     /// `(local ip "…")`.
     LocalIp(String),
     /// `(remote unix-socket (path-literal "…"))`.
@@ -248,9 +250,9 @@ impl Rule {
             | Filter::RemoteIp(s)
             | Filter::LocalIp(s)
             | Filter::IpcPosixName(s) => Some(s.as_bytes()),
-            Filter::GlobalNameParam(name) | Filter::GlobalNamePrefixParam(name) => {
-                Some(name.as_bytes())
-            }
+            Filter::GlobalNameParam(name)
+            | Filter::GlobalNamePrefixParam(name)
+            | Filter::RemoteIpParam(name) => Some(name.as_bytes()),
             Filter::Target(_)
             | Filter::OutsideSameSandbox
             | Filter::FcntlCommand(_)
@@ -378,6 +380,7 @@ fn render_filter(filter: &Filter, params: &mut Params) -> Result<String, EscapeE
         Filter::Target(t) => format!("(target {t})"),
         Filter::OutsideSameSandbox => "(require-not (target same-sandbox))".to_string(),
         Filter::RemoteIp(s) => format!("(remote ip {})", string_value(s.as_bytes(), params)?),
+        Filter::RemoteIpParam(name) => format!("(remote ip (param {}))", quote(name.as_bytes())?),
         Filter::LocalIp(s) => format!("(local ip {})", string_value(s.as_bytes(), params)?),
         Filter::RemoteUnixSocket(v) => {
             format!(

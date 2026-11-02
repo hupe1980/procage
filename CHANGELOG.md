@@ -17,6 +17,50 @@ All notable changes to procage are listed here. The format follows
   `SpawnError::NoRuntime` when no tokio runtime runs on the calling thread.
   The escape suites run through it on every CI lane. Without the feature
   procage has no async dependency.
+- Egress through an allowlist (feature `proxy`, new crate `procage-proxy`):
+  with `Network::Proxy` and `CageOptions::with_proxy`, each run gets a
+  proxy of its own (HTTP `CONNECT`, plain HTTP, SOCKS5) that connects only
+  to the hosts an `Allowlist` names, and no other route: on macOS the
+  profile allows only the run's fresh proxy ports, on Linux tier T1 the
+  child's network namespace holds only its proxy listeners (`Network::Proxy`
+  was a gap on Linux; it stays one on T2). One canonical host parser,
+  every IPv4 notation read as an address, resolved addresses checked, no
+  DNS query for a refused name, no allow-all, opaque relay, 64 connections
+  and 10-second handshakes per run. Refusals are violations
+  (`DeniedBy::Allowlist`). New escape classes R-35 (parser differential)
+  and R-36 (direct egress around the proxy), with canaries on macOS and T1
+  and a fuzz target for the parser.
+- Kernel matrix: `just kernel` and a CI job per kernel boot Ubuntu mainline
+  kernels for each Landlock ABI step (5.15, 6.6, 6.8, 6.12, 7.0, 7.1, 7.2,
+  7.3) with virtme-ng and run the kernel facts and every Linux suite in
+  them; `PROCAGE_KF_EXPECT_ABI` fails a lane whose kernel reports another
+  ABI.
+- Landlock ABI 9 to 11 (`BACKEND_MAX_ABI` 11): from ABI 9, `ipc.unix_sockets`
+  is exact on both tiers and the service and engine socket classes need no
+  cover while the network is off; from ABI 10, a UDP socket the caller hands
+  over cannot send with the network off.
+- `CageOptions::with_link_exemption(path)`: a store whose files are never
+  rewritten in place (a local clone's `.git/objects`, hard-linked to the
+  source repository's) is not examined for protected files by the link
+  check, which keeps refusing everywhere else; hidden files are examined
+  everywhere. `Audit::links_exempt` lists a run's exemptions.
+
+### Fixed
+
+- Linux: files could not move or link between directories, even inside one
+  writable tree (`EXDEV`), so `cargo build`, package managers and atomic
+  saves failed. Write now includes Landlock's `REFER` right (ABI 2 and
+  later): moves and links between the writable trees and the run's
+  `TMPDIR` work, and Landlock still refuses any that would give a file a
+  right it lacks, or take one out of a read-only tree. Protected and hidden
+  targets stay out of reach: on T1 they are separate mounts, and on T2 none
+  lies in a writable tree without a gap (R-04, R-08, R-30).
+
+- Linux: `spawn_with_fds` did not hand over descriptors that have
+  close-on-exec set, which is how the standard library opens every file and
+  socket: they were closed at the exec. They now stay open, as on macOS.
+- Linux tier T1: a socket removed by the host after its cover was mounted
+  no longer fails the spawn.
 
 ### Changed
 

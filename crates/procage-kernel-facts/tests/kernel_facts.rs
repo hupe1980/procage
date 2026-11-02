@@ -4,7 +4,8 @@
 //! processes, and prints a three-state report (pass, fail, not applicable)
 //! headed by the OS build, architecture and date. The process fails if any
 //! fact fails, if a control run did not succeed, or if the measured Linux tier
-//! differs from `PROCAGE_KF_EXPECT_TIER`.
+//! or Landlock ABI differs from `PROCAGE_KF_EXPECT_TIER` or
+//! `PROCAGE_KF_EXPECT_ABI`.
 //!
 //! Enforcement facts must run outside any Seatbelt sandbox: when this process
 //! is already sandboxed (for example inside an agent harness), every
@@ -1010,7 +1011,7 @@ mod linux {
     pub(super) const FACTS: &[Fact] = &[
         Fact {
             id: "KF-L01",
-            statement: "the probe reports a Landlock ABI ≥ 1 and its errata",
+            statement: "the probe reports a Landlock ABI ≥ 1, and its errata from ABI 7 (the errata query came with it)",
             kind: Kind::Observation,
             tiers: ALL,
             slow: false,
@@ -1134,8 +1135,9 @@ mod linux {
         let p = probe(c);
         match (p.landlock_abi, p.landlock_errata) {
             (Some(abi), Some(errata)) if abi >= 1 => Ok(format!("abi={abi} errata={errata}")),
+            (Some(abi), None) if (1..7).contains(&abi) => Ok(format!("abi={abi} no errata query")),
             (abi, errata) => Err(Outcome::Fail {
-                expected: "abi>=1 errata reported".into(),
+                expected: "abi>=1, errata reported from abi 7".into(),
                 observed: format!("abi={abi:?} errata={errata:?}"),
             }),
         }
@@ -1301,10 +1303,18 @@ mod linux {
     }
 
     fn l13(c: &Ctx) -> Check {
-        if !probe(c).container {
-            return Err(Outcome::NotApplicable(
-                "/proc is not masked outside a container".into(),
-            ));
+        // The kernel refuses a fresh /proc while something covers part of the
+        // visible one (a container's masked paths); a host's binfmt_misc
+        // mount on an empty directory does not count.
+        let masked = std::fs::read_to_string("/proc/self/mountinfo").is_ok_and(|m| {
+            m.lines().any(|l| {
+                let point = l.split(' ').nth(4).unwrap_or("");
+                let fstype = l.split(" - ").nth(1).and_then(|r| r.split(' ').next());
+                point.starts_with("/proc/") && !matches!(fstype, Some("binfmt_misc" | "autofs"))
+            })
+        });
+        if !masked {
+            return Err(Outcome::NotApplicable("/proc is not masked here".into()));
         }
         let s = ran(c.step(&["proc-mount"]))?;
         expect(&s, &[("ok", "0")])?;
@@ -1377,6 +1387,16 @@ fn main() -> ExitCode {
                 report,
                 "TIER MISMATCH: expected {want}, measured {:?}",
                 p.tier
+            );
+            failed = true;
+        }
+        if let Ok(want) = std::env::var("PROCAGE_KF_EXPECT_ABI")
+            && p.landlock_abi.map(|v| v.to_string()) != Some(want.clone())
+        {
+            let _ = writeln!(
+                report,
+                "ABI MISMATCH: expected Landlock ABI {want}, measured {:?}",
+                p.landlock_abi
             );
             failed = true;
         }

@@ -264,6 +264,7 @@ fn read_only(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
         ChildMount::Remount {
             target,
             flags: locked | libc::MS_RDONLY,
+            optional: false,
         },
     ])
 }
@@ -292,6 +293,7 @@ fn hide(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
         ChildMount::Remount {
             target,
             flags: locked | sealed,
+            optional: false,
         },
     ])
 }
@@ -385,7 +387,11 @@ fn optional(group: Vec<ChildMount>) -> Vec<ChildMount> {
                 data,
                 optional: true,
             },
-            remount @ ChildMount::Remount { .. } => remount,
+            ChildMount::Remount { target, flags, .. } => ChildMount::Remount {
+                target,
+                flags,
+                optional: true,
+            },
         })
         .collect()
 }

@@ -1,0 +1,25 @@
+[package]
+name = "procage-proxy-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace: it needs nightly and libFuzzer, which the stable gates
+# of the main workspace do not.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+procage-proxy = { path = ".." }
+
+[[bin]]
+name = "host"
+path = "fuzz_targets/host.rs"
+test = false
+doc = false
+bench = false

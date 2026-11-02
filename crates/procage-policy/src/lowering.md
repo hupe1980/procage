@@ -46,7 +46,7 @@ changes the profile.
 | Construct | macOS | Linux T1 | Linux T2 | Note |
 |---|---|---|---|---|
 | `fs-read-subpath` | exact | exact | exact | |
-| `fs-write-subpath` | exact | exact | exact | Write includes read. Landlock's cross-directory rename right (REFER) is never granted. |
+| `fs-write-subpath` | exact | exact | exact | Write includes read. Write includes Landlock's right to move and link between directories (REFER, from ABI 2), which Landlock withholds from any move that gains rights. |
 | `fs-exec-subpath` | exact | exact | exact | Exec includes read. |
 | `fs-literal` | exact | approximated | approximated | Linux binds the rule to the file's inode at spawn; a rename-replace loses it. |
 | `fs-glob` | exact | unsupported | unsupported | macOS: one anchored, escaped regex. Linux: expanding globs at spawn is not implemented; protect or hide with a glob is unsupported too. |
@@ -55,7 +55,7 @@ changes the profile.
 | `grant` | exact | exact | exact | macOS: a sandbox extension `procage.<name>`. Linux: a Landlock rule for the path bound at spawn. |
 | `net-none` | exact | exact | exact | Linux: `socket` is denied for every family (`socketpair` stays available); T1 also gets an empty network namespace. |
 | `net-loopback` | exact | unsupported | unsupported | Linux needs a relay into the network namespace, which is not implemented. Landlock filters ports, not addresses. |
-| `net-proxy` | exact | unsupported | unsupported | macOS: outbound to the loopback proxy ports. Linux needs a bridge into the network namespace, which is not implemented. |
+| `net-proxy` | exact | exact | unsupported | macOS: outbound to the proxy ports only (profile parameters, so a spawn can bind its own). T1: the run's network namespace, whose only endpoints are the listeners the backend's proxy hands in; Landlock allows connecting to the proxy ports only (ABI 4+). T2 has no namespace, and port rules alone are no boundary. |
 | `net-all` | exact | exact | exact | |
 | `exec-any` | exact | exact | exact | |
 | `exec-never` | exact | exact | exact | |
@@ -78,7 +78,7 @@ changes the profile.
 | `hd-privilege` | exact | exact | exact | macOS: setugid writes and setuid/setgid exec denied; compiles. Linux: `no_new_privs`, which is always set. |
 | `hd-service-handoff` | exact | exact | exact | macOS: Launch Services, Apple events, pasteboard and XPC service lookups, `lsopen`, `appleevent-send`; compiles. Linux: connecting to the D-Bus buses and the systemd managers' sockets is denied: with the network off and no `ipc.unix_sockets` by the socket deny; otherwise the backend looks for the sockets at cage creation and at each spawn — T1 covers them (an approximation reported when it finds one: sockets bound later outside the class's directories are not covered), T2 reports a gap per socket found, an abstract bus is scoped from ABI 6. |
 | `hd-process-access` | exact | exact | exact | macOS: task ports, `process-info*` outside the sandbox, other processes' arguments (`kern.procargs*` sysctls and `process-info-pidinfo`, the run's own kept), signals to others; compiles. Linux: `ptrace`, `process_vm_*`, `pidfd_getfd`, `kcmp`. |
-| `hd-rename-anchors` | exact | exact | exact | macOS: unlink denied on writable roots and on ancestors of protected or hidden paths; compiles. Linux: REFER is never granted, and T1 protect or hide targets are mountpoints. |
+| `hd-rename-anchors` | exact | exact | exact | macOS: unlink denied on writable roots and on ancestors of protected or hidden paths; compiles. Linux: REFER comes only with write and Landlock refuses a move that gains rights; T1 protect or hide targets are mountpoints, and on T2 nothing protected lies in a writable tree without a gap. |
 | `hd-terminal-injection` | exact | exact | exact | macOS: the TIOCSTI ioctl is denied, and it holds (R-22, `escape_macos.rs::r22_terminal_input_injection_is_refused`). Linux: `ioctl` with TIOCSTI or TIOCLINUX. |
 | `hd-kernel-surface` | n/a | exact | exact | io_uring, `bpf`, `perf_event_open`, `userfaultfd`, keyrings. |
 | `hd-namespaces` | n/a | exact | exact | `unshare`, `setns`, namespace-creating `clone`, `clone3`, mount syscalls. |

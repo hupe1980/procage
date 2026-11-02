@@ -23,6 +23,9 @@
 
 #[path = "support/asynchronous.rs"]
 mod asynchronous;
+#[cfg(feature = "proxy")]
+#[path = "support/proxied.rs"]
+mod proxied;
 #[path = "support/scratch.rs"]
 mod scratch_support;
 use scratch_support::Scratch;
@@ -45,6 +48,7 @@ const ECONNREFUSED: i32 = 111;
 const EACCES: i32 = 13;
 const EROFS: i32 = 30;
 const EBUSY: i32 = 16;
+const EXDEV: i32 = 18;
 const ENOSYS: i32 = 38;
 
 fn abs(p: impl AsRef<Path>) -> AbsPath {
@@ -65,6 +69,11 @@ fn host_tier() -> Tier {
         assert_eq!(format!("{tier}"), expected, "TIER MISMATCH");
     }
     tier
+}
+
+/// The Landlock ABI cages use here: the kernel's, at most the backend's.
+fn abi() -> u8 {
+    probe().landlock_abi.min(procage::linux::BACKEND_MAX_ABI)
 }
 
 fn tiers() -> Vec<Tier> {
@@ -285,6 +294,18 @@ fn op(spec: &str) -> String {
             arg.parse::<u16>().unwrap(),
         ))),
         "unix" => errno_of(std::os::unix::net::UnixStream::connect(arg)),
+        // Sends on a UDP socket the parent handed over: `fd|port`.
+        "net" => {
+            let (kind, port) = arg.split_once('|').unwrap();
+            code(testing::net_errno(kind, port.parse().unwrap()))
+        }
+        "udp-fd" => {
+            let (fd, port) = arg.split_once('|').unwrap();
+            code(testing::udp_send_errno(
+                fd.parse().unwrap(),
+                port.parse().unwrap(),
+            ))
+        }
         "link" => {
             let (from, to) = arg.split_once('|').unwrap();
             errno_of(std::fs::hard_link(from, to))
@@ -301,6 +322,14 @@ fn op(spec: &str) -> String {
             },
             Err(e) => format!("bind-{}", e.raw_os_error().unwrap_or(-1)),
         },
+        // Writes a file in the run's `TMPDIR` and moves it to `arg`.
+        "tmpdir-move" => {
+            let from = Path::new(&std::env::var("TMPDIR").unwrap_or_default()).join("moved");
+            match std::fs::write(&from, "canary") {
+                Ok(()) => errno_of(std::fs::rename(&from, arg)),
+                Err(e) => format!("write-{}", e.raw_os_error().unwrap_or(-1)),
+            }
+        }
         "abstract" => {
             use std::os::linux::net::SocketAddrExt;
             let addr = std::os::unix::net::SocketAddr::from_abstract_name(arg).unwrap();
@@ -334,7 +363,13 @@ fn op(spec: &str) -> String {
                 .open(arg)
                 .and_then(|f| f.set_len(1)),
         ),
-        other => format!("unknown-op-{other}"),
+        other => {
+            #[cfg(feature = "proxy")]
+            if let Some(result) = proxied::op(other, arg) {
+                return result;
+            }
+            format!("unknown-op-{other}")
+        }
     }
 }
 
@@ -538,12 +573,14 @@ fn r02_a_rule_spelled_through_a_symlink_binds_its_target() {
 
 // ---- R-04 Ancestor rename ----
 
-/// After renaming an ancestor of a protected directory, the protected file
-/// is unwritable under every name. On T2 protect is refused.
+/// After renaming an ancestor of a protected directory, in its directory or
+/// into another, the protected file is unwritable under every name. On T2
+/// protect is refused.
 #[test]
 fn r04_a_protected_file_stays_protected_when_an_ancestor_is_renamed() {
     let w = scratch("r04");
     std::fs::create_dir_all(w.join("sub/p")).unwrap();
+    std::fs::create_dir_all(w.join("elsewhere")).unwrap();
     std::fs::write(w.join("sub/p/c"), "original").unwrap();
     let mut p = policy();
     p.fs.push(rule(Access::Write, &w));
@@ -552,16 +589,18 @@ fn r04_a_protected_file_stays_protected_when_an_ancestor_is_renamed() {
         let d = w.display();
         let got = in_child(
             &format!(
-                "write:{d}/other;rename:{d}/sub|{d}/moved;write:{d}/sub/p/c;write:{d}/moved/p/c"
+                "write:{d}/other;rename:{d}/sub|{d}/moved;rename:{d}/moved|{d}/elsewhere/moved;\
+                 write:{d}/sub/p/c;write:{d}/moved/p/c;write:{d}/elsewhere/moved/p/c"
             ),
             &p,
             Tier::T1,
         );
         let r: Vec<&str> = got.split(' ').collect();
         assert_eq!(r[0], "ok", "{got}");
-        assert!(r[2] != "ok" && r[3] != "ok", "{got}");
-        let content = std::fs::read_to_string(w.join("sub/p/c"))
-            .or_else(|_| std::fs::read_to_string(w.join("moved/p/c")))
+        assert!(r[3..].iter().all(|r| *r != "ok"), "{got}");
+        let content = ["sub", "moved", "elsewhere/moved"]
+            .iter()
+            .find_map(|a| std::fs::read_to_string(w.join(a).join("p/c")).ok())
             .unwrap();
         assert_eq!(content, "original");
     }
@@ -570,6 +609,69 @@ fn r04_a_protected_file_stays_protected_when_an_ancestor_is_renamed() {
         gaps.contains(&(Construct::FsProtect, GapKind::Unsupported)),
         "{gaps:?}"
     );
+}
+
+/// Files move and link between the directories of the writable trees and
+/// the run's temporary directory, as compilers and package managers need
+/// (Landlock ABI 2 and later; below, every move between directories is
+/// refused). A move or link out of a read-only tree is refused, and so is
+/// one that would give the file a right it lacks where it is (into an
+/// executable directory).
+#[test]
+fn r04_files_move_between_writable_directories_and_gain_no_right() {
+    let d = scratch("r04-move");
+    for sub in ["ws/a", "ws/b", "ws/bin", "ro"] {
+        std::fs::create_dir_all(d.join(sub)).unwrap();
+    }
+    std::fs::write(d.join("ro/f"), "read-only").unwrap();
+    for tier in tiers() {
+        for f in ["a/x", "a/y", "b/x", "b/t", "bin/y", "f", "g"] {
+            let _ = std::fs::remove_file(d.join("ws").join(f));
+        }
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, d.join("ro")));
+        p.fs.push(rule(Access::Write, d.join("ws")));
+        p.fs.push(rule(Access::Exec, d.join("ws/bin")));
+        p.grants.push(Grant {
+            name: GrantName::new("tmpdir").unwrap(),
+            access: Access::Write,
+        });
+        let c = cage(&for_tier(p, tier), tier);
+        let w = d.join("ws");
+        let (w, r) = (w.display(), d.join("ro"));
+        let r = r.display();
+        let got = run_in(
+            &c,
+            &format!(
+                "write:{w}/a/x;rename:{w}/a/x|{w}/b/x;link:{w}/b/x|{w}/a/y;tmpdir-move:{w}/b/t;\
+                 rename:{w}/a/y|{w}/bin/y;rename:{r}/f|{w}/f;link:{r}/f|{w}/g"
+            ),
+            &Grants::new(),
+        );
+        let parts: Vec<&str> = got.split(' ').collect();
+        let moved = if abi() >= 2 {
+            "ok".to_string()
+        } else {
+            EXDEV.to_string()
+        };
+        let moved = moved.as_str();
+        assert_eq!(parts[..4], ["ok", moved, moved, moved], "{tier}: {got}");
+        if abi() >= 2 {
+            assert_eq!(
+                parts[4],
+                EXDEV.to_string(),
+                "{tier}: a right gained ({got})"
+            );
+        }
+        assert!(
+            parts[5..].iter().all(|p| *p != "ok"),
+            "{tier}: moved out of a read-only tree ({got})"
+        );
+        assert_eq!(
+            std::fs::read_to_string(d.join("ro/f")).unwrap(),
+            "read-only"
+        );
+    }
 }
 
 // ---- R-07 Trust handoff (the part procage handles) ----
@@ -703,8 +805,9 @@ fn r08_a_hard_link_to_a_protected_file_is_refused() {
     assert_eq!(found[0].path, d.join("ws/keep/config"));
 }
 
-/// No second name can be made during the run: Landlock never grants linking
-/// across directories, and on T1 a protected path is a separate mount.
+/// No second name can be made during the run for a hidden or protected file:
+/// Landlock grants linking across directories only between writable trees,
+/// and on T1 a protected path is a separate mount.
 #[test]
 fn r08_no_hard_link_can_be_made_during_the_run() {
     let d = scratch("r08-run");
@@ -785,9 +888,10 @@ fn r09_daemons_are_unreachable_without_network_access() {
 }
 
 /// `ipc.unix_sockets` lets the child bind and connect under its paths only.
-/// On T1 a daemon socket elsewhere (masked at spawn), a host abstract socket
-/// (another network namespace) and TCP stay out, and the setting needs the
-/// snapshot accepted; T2 refuses it below Landlock ABI 9.
+/// Below Landlock ABI 9, on T1 a daemon socket elsewhere (masked at spawn),
+/// a host abstract socket (another network namespace) and TCP stay out, and
+/// the setting needs the snapshot accepted; T2 refuses it. From ABI 9
+/// Landlock keeps the daemon socket out on both tiers, exactly.
 #[test]
 fn r09_unix_sockets_reach_only_their_paths() {
     use std::os::linux::net::SocketAddrExt;
@@ -801,34 +905,80 @@ fn r09_unix_sockets_reach_only_their_paths() {
     let name = format!("procage-r09-{}", std::process::id());
     let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
     let _abstract = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
-    let attempt = format!(
-        "unix-serve:{};unix:{};abstract:{name};connect:{port}",
-        ws.join("s.sock").display(),
-        sock.display()
-    );
+    // A socket path per tier: the one a tier binds stays behind.
+    let attempt = |tier: Tier| {
+        format!(
+            "unix-serve:{};unix:{};abstract:{name};connect:{port}",
+            ws.join(format!("s-{tier}.sock")).display(),
+            sock.display()
+        )
+    };
+    let abi = abi();
     for tier in tiers() {
         let mut p = policy();
         p.fs.push(rule(Access::Read, &d));
         p.fs.push(rule(Access::Write, &ws));
         p.ipc.unix_sockets = vec![abs(&ws)];
+        if abi >= 9 {
+            let got = run_in(
+                &cage(&for_tier(p, tier), tier),
+                &attempt(tier),
+                &Grants::new(),
+            );
+            let abstract_out = if tier == Tier::T1 {
+                ECONNREFUSED
+            } else {
+                EPERM
+            };
+            assert_eq!(
+                got,
+                format!("ok {EACCES} {abstract_out} {EPERM}"),
+                "{tier} ABI {abi}"
+            );
+            continue;
+        }
         let gaps = refused(&p, &options(tier));
         assert!(
             gaps.iter().any(|g| g.0 == Construct::IpcUnixSockets),
             "{tier} {gaps:?}"
         );
-        if tier == Tier::T2 && probe().landlock_abi < 9 {
+        if tier == Tier::T2 {
             continue;
         }
         let snapshot = CageOptions::default()
             .with_tier(tier)
             .with_lower(LowerOptions::default().accept_spawn_snapshot());
         let cage = Cage::with_options(&p, &snapshot).unwrap();
-        let got = run_in(&cage, &attempt, &Grants::new());
+        let got = run_in(&cage, &attempt(tier), &Grants::new());
         assert_eq!(
             got,
             format!("ok {ECONNREFUSED} {ECONNREFUSED} {EPERM}"),
             "{tier}"
         );
+    }
+}
+
+/// With the network off, a UDP socket the caller hands over cannot send
+/// from Landlock ABI 10; below it, it can (a documented limit).
+#[test]
+fn r09_a_handed_udp_socket_cannot_send_with_the_network_off() {
+    let target = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let port = target.local_addr().unwrap().port();
+    let sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let action = format!("udp-fd:{}|{port}", sock.as_raw_fd());
+    let abi = abi();
+    for tier in tiers() {
+        let c = cage(&policy(), tier);
+        let child = c
+            .spawn_with_fds(&mut child_command(&action), &Grants::new(), &[sock.as_fd()])
+            .unwrap();
+        let got = result(&finish(child, Duration::from_secs(20)));
+        let want = if abi >= 10 {
+            EACCES.to_string()
+        } else {
+            "ok".into()
+        };
+        assert_eq!(got, want, "{tier} ABI {abi}");
     }
 }
 
@@ -884,6 +1034,18 @@ fn r21_an_inherited_descriptor_does_not_reach_the_child() {
             .unwrap();
         let control = result(&finish(child, Duration::from_secs(20)));
         assert_eq!(control, "open=true", "{tier}");
+        // A descriptor as std opens it (close-on-exec) is handed over too.
+        let fresh = std::fs::File::open(d.join("secret")).unwrap();
+        let action = format!("fd:{}", fresh.as_raw_fd());
+        let child = c
+            .spawn_with_fds(
+                &mut child_command(&action),
+                &Grants::new(),
+                &[fresh.as_fd()],
+            )
+            .unwrap();
+        let handed = result(&finish(child, Duration::from_secs(20)));
+        assert_eq!(handed, "open=true", "{tier}");
     }
 }
 
@@ -1304,11 +1466,12 @@ fn r31_files_outside_the_writable_paths_cannot_be_truncated() {
 // ---- R-30 Landlock rule loss ----
 
 /// On T1 a protected file cannot be replaced by renaming another file over
-/// it, nor written. A rule on a path that does not exist fails before any
+/// it, from its directory or another, nor written. A rule on a path that does not exist fails before any
 /// child runs. On T2 protect is refused.
 #[test]
 fn r30_a_protected_file_cannot_be_replaced() {
     let w = scratch("r30");
+    std::fs::create_dir_all(w.join("sub")).unwrap();
     std::fs::write(w.join("f"), "original").unwrap();
     let mut p = policy();
     p.fs.push(rule(Access::Write, &w));
@@ -1319,11 +1482,14 @@ fn r30_a_protected_file_cannot_be_replaced() {
     if t1("r30") {
         let d = w.display();
         let got = in_child(
-            &format!("write:{d}/tmp;rename:{d}/tmp|{d}/f;write:{d}/f"),
+            &format!(
+                "write:{d}/tmp;rename:{d}/tmp|{d}/f;write:{d}/f;write:{d}/sub/tmp;rename:{d}/sub/tmp|{d}/f"
+            ),
             &p,
             Tier::T1,
         );
-        assert_eq!(got, format!("ok {EBUSY} {EROFS}"));
+        let across = if abi() >= 2 { EBUSY } else { EXDEV };
+        assert_eq!(got, format!("ok {EBUSY} {EROFS} ok {across}"));
         assert_eq!(std::fs::read_to_string(w.join("f")).unwrap(), "original");
     }
     let gaps = refused(&for_tier(p, Tier::T2), &options(Tier::T2));
@@ -1744,4 +1910,90 @@ fn r34_an_abstract_bus_bound_later_refuses_the_spawn() {
         ),
         other => panic!("spawn: {:?}", other.map(|_| ())),
     }
+}
+
+// ---- R-35 Allowlist parser differential ----
+
+/// A T1 cage of `policy` with the proxy `entries`, run once for `action`.
+#[cfg(feature = "proxy")]
+fn via_proxy(policy: &Policy, entries: &[&str], action: &str) -> String {
+    let options = options(Tier::T1).with_proxy(proxied::proxy(entries));
+    let cage = Cage::with_options(policy, &options).unwrap_or_else(|e| panic!("cage: {e}"));
+    run_in(&cage, action, &Grants::new())
+}
+
+/// The proxy reads a host one way: what is checked is what is connected
+/// to. Case and a trailing dot reach the allowed host; a NUL, percent
+/// encoding and an address in any notation do not, nor an allowed name
+/// that resolves to loopback. Proxy-only cages need tier T1.
+#[cfg(feature = "proxy")]
+#[test]
+fn r35_a_host_is_read_one_way() {
+    if !t1("r35_a_host_is_read_one_way") {
+        return;
+    }
+    let port = proxied::echo();
+    let p = proxied::through_proxy(policy());
+    let reach = via_proxy(
+        &p,
+        &["allowed.test", "127.0.0.1"],
+        &format!("via-http:ALLOWED.TEST.:{port}"),
+    );
+    assert_eq!(reach, "ok");
+    let nul = proxied::hex(b"allowed.test\0.evil.test");
+    let got = via_proxy(
+        &p,
+        &["allowed.test"],
+        &format!(
+            "via-http:allowed.test%00.evil.test:443;via-socks:{nul}|443;via-http:2130706433:{port};\
+             via-http:0x7f.1:{port};via-http:[::ffff:127.0.0.1]:{port};via-http:allowed.test:{port}"
+        ),
+    );
+    assert_eq!(got, "400 socks-2 403 403 403 403");
+}
+
+// ---- R-36 Direct egress around the proxy ----
+
+/// A proxy-only child (tier T1) has no route but its own proxy: not TCP to
+/// a host port, IPv6 or a public address, not TCP Fast Open, MPTCP or a raw
+/// socket, not UDP (a datagram to the host's loopback does not arrive), not
+/// DNS to a public resolver. Without a proxy of the cage's own the cage is
+/// refused; tier T2 refuses it as a gap.
+#[cfg(feature = "proxy")]
+#[test]
+fn r36_a_proxy_only_child_has_no_other_route() {
+    let p = proxied::through_proxy(policy());
+    let t2 = CageOptions::default()
+        .with_tier(Tier::T2)
+        .with_proxy(proxied::proxy(&["allowed.test"]));
+    let gaps = match Cage::with_options(&p, &t2) {
+        Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
+        other => panic!("T2: expected the proxy gap, got {other:?}"),
+    };
+    assert!(
+        gaps.iter().any(|g| g.construct == Construct::NetProxy),
+        "{gaps:?}"
+    );
+    if !t1("r36_a_proxy_only_child_has_no_other_route") {
+        return;
+    }
+    assert!(Cage::with_options(&p, &options(Tier::T1)).is_err());
+    let port = proxied::echo();
+    let host_udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    host_udp
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .unwrap();
+    let udp = host_udp.local_addr().unwrap().port();
+    let attempts = format!(
+        "tcp:127.0.0.1:{port};tcp:[::1]:{port};tcp:1.1.1.1:443;udp:8.8.8.8:53;\
+         net:fastopen|{port};net:mptcp|{port};net:raw|{port};net:tcp6|{port}"
+    );
+    let entries = ["allowed.test", "127.0.0.1"];
+    let got = via_proxy(&p, &entries, &attempts);
+    assert!(got.split(' ').all(|r| r != "ok"), "{attempts}: {got}");
+    let _ = via_proxy(&p, &entries, &format!("udp:127.0.0.1:{udp}"));
+    let mut buf = [0u8; 8];
+    assert!(host_udp.recv(&mut buf).is_err(), "a datagram left the run");
+    let control = via_proxy(&p, &entries, &format!("via-http:allowed.test:{port}"));
+    assert_eq!(control, "ok");
 }

@@ -28,9 +28,9 @@ fn linux_plan(p: &Policy, target: Target) -> LinuxPlan {
 }
 
 /// Every setting that leaves the child a Unix connect hands the socket
-/// classes to the backend; with the network off and no Unix sockets seccomp
-/// refuses every socket, so the plan carries none. A waived class is never
-/// carried.
+/// classes to the backend; with the network off or through the proxy, and
+/// no Unix sockets, seccomp refuses Unix sockets, so the plan carries none.
+/// A waived class is never carried.
 #[test]
 fn the_backend_gets_the_classes_exactly_when_a_unix_connect_is_possible() {
     let networks = [
@@ -42,7 +42,7 @@ fn the_backend_gets_the_classes_exactly_when_a_unix_connect_is_possible() {
                 http: Some(Port::new(3128).unwrap()),
                 socks: None,
             },
-            true,
+            false,
         ),
     ];
     for target in TARGETS {
@@ -65,8 +65,8 @@ fn the_backend_gets_the_classes_exactly_when_a_unix_connect_is_possible() {
                         Ok(Plan::Linux(plan)) => {
                             plan.service_sockets.iter().map(|s| s.class).collect()
                         }
-                        // Loopback and proxy are refused on Linux, and Unix
-                        // sockets on T2 below ABI 9: no plan, so nothing
+                        // Loopback is refused on Linux, the proxy on T2, and
+                        // Unix sockets on T2 below ABI 9: no plan, so nothing
                         // reaches a socket.
                         Err(LowerError::Gaps(gaps)) => {
                             let t2 = matches!(target, Target::Linux { tier: Tier::T2, .. });

@@ -42,9 +42,13 @@
 //! |---|---|---|---|
 //! | 1 | 5.13 | Ubuntu 22.04 (5.15) | No sandbox below. |
 //! | 3 | 6.2 | Ubuntu 22.04 HWE, 23.10 (6.5) | Landlock cannot deny truncation: procage refuses `truncate(2)` by path and `open` with `O_TRUNC` without write access everywhere, also inside writable paths (truncate through a descriptor opened for writing instead), and `openat2` fails with `ENOSYS`. Debian 12 (6.1) is at ABI 2. |
-//! | 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off, seccomp still refuses IP sockets, but an IP socket the caller hands over can connect. |
+//! | 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off, seccomp still refuses IP sockets, but a TCP socket the caller hands over can connect. |
 //! | 6 | 6.12 | Debian 13, RHEL 10 | No signal scope: `Signals::SelfAndChildren` is a gap. A harness that needs signals may choose `Signals::SameUser` (every process of the same user) and tell its user. Abstract Unix sockets are not scoped. |
-//! | 9 | — | | Unix-socket rules on T2 (procage uses rights up to [`BACKEND_MAX_ABI`]). |
+//! | 9 | 7.1 | | No Unix-socket rules: `ipc.unix_sockets` is a gap on T2 and an approximation on T1 (below). |
+//! | 10 | 7.2 | | No UDP rules: with the network off, a UDP socket the caller hands over can send. |
+//!
+//! procage uses the rights up to ABI [`BACKEND_MAX_ABI`]; each was tested on
+//! a mainline kernel of that ABI (see the testing docs).
 //!
 //! Distributions backport Landlock (RHEL 9.6 has ABI 5), so [`probe()`] asks
 //! the kernel rather than reading its version.
@@ -66,12 +70,15 @@
 //! [`LowerOptions::accept_spawn_snapshot`](procage_policy::LowerOptions::accept_spawn_snapshot).
 //!
 //! **Unix sockets.** `ipc.unix_sockets` allows only `AF_UNIX` sockets when
-//! the network is otherwise off. On tier T1 (below Landlock ABI 9),
+//! the network is otherwise off. From Landlock ABI 9 both tiers enforce it
+//! exactly: a pathname socket outside its paths cannot be reached, and
+//! abstract sockets are scoped to the run. With the network on every
+//! pathname socket stays reachable. Below ABI 9, on tier T1
 //! abstract sockets stay inside the cage's network namespace and every
 //! listening socket outside the allowed paths, as listed in `/proc/net/unix`
 //! at spawn, is masked; sockets bound later outside them stay reachable (an
-//! approximation accepted with the same option). Tier T2 cannot restrict
-//! pathname sockets and refuses the setting.
+//! approximation accepted with the same option), and tier T2 cannot
+//! restrict pathname sockets and refuses the setting.
 //!
 //! **Service and engine sockets.** When the network is on (or
 //! `ipc.unix_sockets` is set), the `service-handoff` and `container-engines`
@@ -94,8 +101,9 @@
 //!   ABI 6;
 //! - with `Lifetime::Tree`, a descendant that double-forks and starts its
 //!   own session is reparented away from the child and outlives the run;
-//! - no loopback or proxy networking (a gap on both tiers); on T2,
-//!   Unix-socket restrictions need Landlock ABI 9, and protect, and hide
+//! - no loopback networking (a gap on both tiers); proxy-only networking
+//!   needs T1 and [`CageOptions::with_proxy`]; on T2,
+//!   Unix-socket restrictions need Landlock ABI 9; protect, and hide
 //!   inside a writable tree, are gaps; glob rules are gaps on both tiers;
 //! - the probe is cached per process, not per boot.
 
@@ -130,7 +138,7 @@ pub use probe::{Probe, probe};
 use crate::unix::TmpdirGuard;
 
 /// The newest Landlock ABI whose rights this backend uses.
-pub const BACKEND_MAX_ABI: u8 = 8;
+pub const BACKEND_MAX_ABI: u8 = 11;
 
 /// A step of the in-child sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -159,7 +167,9 @@ pub enum Step {
     Seccomp,
     /// Confirming that seccomp and `no_new_privs` hold.
     Verify,
-    /// Handing the seccomp listener to the parent (violation reporting).
+    /// Handing a listener to the parent: the seccomp listener (violation
+    /// reporting), or the proxy listeners (with a proxy of the cage's own,
+    /// after bringing up the namespace's loopback).
     Listener,
 }
 
@@ -502,9 +512,16 @@ pub struct CageOptions {
     pub policy_in_receipt: bool,
     /// What the link check does before each spawn (default: refuse).
     pub link_audit: crate::LinkAudit,
+    /// Subtrees the link check does not examine for protected files (see
+    /// [`CageOptions::with_link_exemption`]).
+    pub link_exempt: Vec<PathBuf>,
     /// Whether runs note what they leave behind (see
     /// [`CageOptions::with_handoff_audit`]).
     pub handoff_audit: bool,
+    /// The proxy each run of a `Network::Proxy` policy gets (see
+    /// [`CageOptions::with_proxy`]).
+    #[cfg(feature = "proxy")]
+    pub proxy: Option<procage_proxy::Proxy>,
 }
 
 impl Default for CageOptions {
@@ -519,7 +536,10 @@ impl Default for CageOptions {
             runtime_dirs: Vec::new(),
             policy_in_receipt: false,
             link_audit: crate::LinkAudit::Refuse,
+            link_exempt: Vec::new(),
             handoff_audit: false,
+            #[cfg(feature = "proxy")]
+            proxy: None,
         }
     }
 }
@@ -552,6 +572,21 @@ impl CageOptions {
     /// These options with the link check in `mode` (see [`crate::audit`]).
     pub fn with_link_audit(mut self, mode: crate::LinkAudit) -> Self {
         self.link_audit = mode;
+        self
+    }
+
+    /// These options with `path` exempt from the link check for protected
+    /// files: a file at or below it may have another name. Meant for a store
+    /// whose files are written once and never rewritten in place, such as a
+    /// repository's `.git/objects`, which a local `git clone` hard-links to
+    /// the source repository's. A protected file there can then be changed
+    /// through a name in a writable tree (git notices a changed object when
+    /// it checks one, as `git fsck` does); hidden files are examined
+    /// everywhere. The path must be absolute (a relative one fails the cage
+    /// with [`Unsupported::Setting`]); [`Audit`](crate::Audit) lists a run's
+    /// exemptions.
+    pub fn with_link_exemption(mut self, path: impl AsRef<Path>) -> Self {
+        self.link_exempt.push(path.as_ref().to_path_buf());
         self
     }
 
@@ -619,6 +654,23 @@ impl CageOptions {
         self.violations = true;
         self
     }
+
+    /// These options with a proxy of the cage's own (feature `proxy`), which
+    /// a `Network::Proxy` policy needs on Linux. Each spawn runs in its own
+    /// network namespace (tier T1), in which the child listens on
+    /// `127.0.0.1` at the policy's ports and hands the listeners to the
+    /// parent before it is restricted: they are the only endpoints the child
+    /// can reach, and Landlock allows connecting to those ports only (from
+    /// ABI 4). The proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`,
+    /// `ALL_PROXY`, lower-case too) name them. Refusals are in
+    /// [`Child::violations`] when the cage reports violations; the run's
+    /// connections close when the run ends. Tier T2 refuses `Network::Proxy`
+    /// (a gap), and a policy without it is refused.
+    #[cfg(feature = "proxy")]
+    pub fn with_proxy(mut self, proxy: procage_proxy::Proxy) -> Self {
+        self.proxy = Some(proxy);
+        self
+    }
 }
 
 /// Per-spawn bindings of the policy's grants to existing paths.
@@ -661,6 +713,9 @@ pub struct Cage {
     audit: Arc<crate::audit::CageAudit>,
     /// Answers [`Cage::explain`].
     explainer: Arc<crate::explain::Lazy>,
+    /// The cage's own proxy.
+    #[cfg(feature = "proxy")]
+    proxied: Option<crate::proxied::Proxied>,
 }
 
 impl Cage {
@@ -785,8 +840,28 @@ impl Cage {
             }
             plan.degradations.sort();
         }
+        #[cfg(feature = "proxy")]
+        let proxied = match &options.proxy {
+            None => None,
+            Some(proxy) => Some(crate::proxied::Proxied::new(proxy, &policy.net).ok_or(
+                SpawnError::Unsupported(Unsupported::Setting {
+                    setting: "CageOptions::with_proxy without Network::Proxy",
+                }),
+            )?),
+        };
+        #[cfg(not(feature = "proxy"))]
+        let proxied: Option<()> = None;
+        if matches!(
+            plan.network,
+            procage_policy::linux::LinuxNetwork::ProxyBridge { .. }
+        ) && proxied.is_none()
+        {
+            return Err(SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Network::Proxy on Linux without CageOptions::with_proxy",
+            }));
+        }
         let facts = Arc::new(facts(policy, options, &plan, &[]));
-        let audit = Arc::new(cage_audit(policy, options, &plan, &homes));
+        let audit = Arc::new(cage_audit(policy, options, &plan, &homes)?);
         let explainer = Arc::new(crate::explain::Lazy::new(
             policy.clone(),
             target,
@@ -803,6 +878,8 @@ impl Cage {
             facts,
             audit,
             explainer,
+            #[cfg(feature = "proxy")]
+            proxied,
         })
     }
 
@@ -921,7 +998,27 @@ impl Cage {
             }
             None => (None, None),
         };
-        let (dropped, removal, proc) = self.prepare(command, grants, fds, session, notify)?;
+        #[cfg(feature = "proxy")]
+        let (bridge_end, bridge) = match &self.proxied {
+            Some(proxied) => {
+                let (parent_end, child_end) = sys::socket_pair().map_err(SpawnError::Io)?;
+                let ports: Vec<u16> = proxied.protocols().iter().map(|&(_, p)| p).collect();
+                let addrs: Vec<_> = proxied
+                    .protocols()
+                    .iter()
+                    .map(|&(protocol, port)| {
+                        (protocol, std::net::SocketAddr::from(([127, 0, 0, 1], port)))
+                    })
+                    .collect();
+                crate::proxied::set_env(command, &addrs);
+                (Some(parent_end), Some(sys::Bridge::new(ports, child_end)))
+            }
+            None => (None, None),
+        };
+        #[cfg(not(feature = "proxy"))]
+        let bridge = None;
+        let (dropped, removal, proc) =
+            self.prepare(command, grants, fds, session, notify, bridge)?;
         // The link check is the last step before the fork.
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
         let names = grants.bindings.iter().map(|(n, _)| n.clone()).collect();
@@ -932,6 +1029,8 @@ impl Cage {
             proc,
             run_audit,
             names,
+            #[cfg(feature = "proxy")]
+            bridge_end,
         })
     }
 
@@ -944,10 +1043,30 @@ impl Cage {
             proc,
             run_audit,
             mut names,
+            #[cfg(feature = "proxy")]
+            bridge_end,
         } = launch;
         let reporting = match parent_end {
             None => child::Reporting::Off,
             Some(socket) => self.supervise(&socket),
+        };
+        #[cfg(feature = "proxy")]
+        let proxy_run = match (&self.proxied, bridge_end) {
+            (Some(proxied), Some(socket)) => {
+                // The child sent one listener per protocol before its exec.
+                let mut listeners = Vec::new();
+                for &(protocol, _) in proxied.protocols() {
+                    if let Ok(sys::HandOver::Listener(fd)) = sys::receive(&socket) {
+                        listeners.push((protocol, std::net::TcpListener::from(fd)));
+                    }
+                }
+                let record = match &reporting {
+                    child::Reporting::On { record, .. } => Some(record.clone()),
+                    _ => None,
+                };
+                proxied.serve(listeners, record)
+            }
+            _ => None,
         };
         let tmpdir = removal.disarm();
         if tmpdir.is_some() {
@@ -960,7 +1079,11 @@ impl Cage {
                 note: procage_policy::linux::PROC_OTHER_PROCESSES_NOTE.into(),
             });
         }
-        Child::new(inner, dropped, tmpdir, reporting, facts, run_audit)
+        #[cfg_attr(not(feature = "proxy"), allow(unused_mut))]
+        let mut child = Child::new(inner, dropped, tmpdir, reporting, facts, run_audit);
+        #[cfg(feature = "proxy")]
+        child.set_proxy(proxy_run);
+        child
     }
 
     /// Takes the listener the child sent and starts the run's supervisor;
@@ -1038,7 +1161,14 @@ impl Cage {
             return SpawnError::Unsupported(Unsupported::ExecThreads { threads });
         }
         // No handle and no supervisor: the kernel answers refused calls.
-        match self.prepare(command, grants, fds, sys::Session::Keep, None) {
+        #[cfg(feature = "proxy")]
+        if self.proxied.is_some() {
+            // No handle would hold the run's proxy.
+            return SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Cage::exec with CageOptions::with_proxy",
+            });
+        }
+        match self.prepare(command, grants, fds, sys::Session::Keep, None, None) {
             Ok(_) => match self.audit.before_spawn() {
                 Ok(_) => spawn::decode(command.exec()),
                 Err(found) => SpawnError::HardLinks(found),
@@ -1059,6 +1189,7 @@ impl Cage {
         fds: &[BorrowedFd<'_>],
         session: sys::Session,
         notify: Option<sys::Notify>,
+        bridge: Option<sys::Bridge>,
     ) -> Result<(Vec<String>, TmpdirGuard, bool), SpawnError> {
         let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
         if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
@@ -1133,6 +1264,7 @@ impl Cage {
             ruleset,
             filter: self.filter.to_vec(),
             notify,
+            bridge,
         }
         .install(command);
         let proc = bound.values().any(|p| proc_gap(&self.plan, p).is_some());
@@ -1341,6 +1473,9 @@ pub(crate) struct Launch {
     proc: bool,
     run_audit: crate::audit::RunAudit,
     names: Vec<String>,
+    /// The parent's end of the proxy listeners' socket pair.
+    #[cfg(feature = "proxy")]
+    bridge_end: Option<std::os::fd::OwnedFd>,
 }
 
 impl Launch {
@@ -1534,6 +1669,18 @@ pub mod testing {
         sys::tty_ioctl_errno(fd, Some(byte))
     }
 
+    /// One direct route to `127.0.0.1:port`: `fastopen`, `mptcp`, `raw` or
+    /// `tcp6` (`::1`); the errno, or 0 when it got through.
+    pub fn net_errno(kind: &str, port: u16) -> i32 {
+        sys::net_errno(kind, port)
+    }
+
+    /// Sends one byte on the UDP socket `fd` to `127.0.0.1:port`; the
+    /// errno, or 0.
+    pub fn udp_send_errno(fd: i32, port: u16) -> i32 {
+        sys::udp_send_errno(fd, port)
+    }
+
     /// Calls `umount2(path, 0)` and returns the errno (0 on success).
     pub fn umount(path: &str) -> i32 {
         let Ok(c) = std::ffi::CString::new(path) else {
@@ -1633,7 +1780,7 @@ fn cage_audit(
     options: &CageOptions,
     plan: &LinuxPlan,
     homes: &[PathBuf],
-) -> crate::audit::CageAudit {
+) -> Result<crate::audit::CageAudit, SpawnError> {
     use std::os::unix::ffi::OsStrExt;
     let to_path =
         |p: &procage_policy::AbsPath| PathBuf::from(std::ffi::OsStr::from_bytes(p.as_bytes()));
@@ -1643,7 +1790,9 @@ fn cage_audit(
         let system: Vec<PathBuf> = class.system.iter().map(to_path).collect();
         class_paths.extend(crate::audit::class_paths(homes, &rels, &system, class.hide));
     }
-    let targets = crate::audit::Targets::new(policy, class_paths, sys::ids().0);
+    let exempt = crate::audit::exemptions(&options.link_exempt, |p| std::fs::canonicalize(p).ok())
+        .map_err(|setting| SpawnError::Unsupported(Unsupported::Setting { setting }))?;
+    let targets = crate::audit::Targets::new(policy, class_paths, sys::ids().0).exempting(exempt);
     let handoff = options.handoff_audit.then(|| {
         let trees = policy
             .fs
@@ -1671,5 +1820,10 @@ fn cage_audit(
             home,
         )
     });
-    crate::audit::CageAudit::new(options.link_audit, targets, handoff, options.walk_limit)
+    Ok(crate::audit::CageAudit::new(
+        options.link_audit,
+        targets,
+        handoff,
+        options.walk_limit,
+    ))
 }

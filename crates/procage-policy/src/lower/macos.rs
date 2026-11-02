@@ -26,6 +26,8 @@ pub(crate) struct Emitted {
     pub(crate) blocks: [Vec<Tagged>; 5],
     grants: Vec<GrantSlot>,
     degradations: Vec<super::Degradation>,
+    /// The proxy addresses' parameters with the policy's ports.
+    proxy_params: Vec<(String, String)>,
 }
 
 /// Operations an access kind allows (or, for protect and hide, denies).
@@ -273,6 +275,8 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
 
     let net = |rule: Rule| (rule, Decider::Setting("network"));
     let socket = || net(Rule::new(Effect::Allow, &["system-socket"], vec![]));
+    // A proxy's addresses are profile parameters: a spawn may bind its own.
+    let mut proxy_params: Vec<(String, String)> = Vec::new();
     match &policy.net {
         Network::None => {
             ledger.outcome(Construct::NetNone, Outcome::Exact, None, "");
@@ -294,11 +298,16 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
         }
         Network::Proxy { http, socks } => {
             ledger.outcome(Construct::NetProxy, Outcome::Exact, None, "");
-            let filters = http
-                .iter()
-                .chain(socks.iter())
-                .map(|p| Filter::RemoteIp(format!("localhost:{p}")))
-                .collect();
+            let mut filters = Vec::new();
+            for (param, port) in [
+                (super::PROXY_HTTP_PARAM, http),
+                (super::PROXY_SOCKS_PARAM, socks),
+            ] {
+                if let Some(port) = port {
+                    filters.push(Filter::RemoteIpParam(param));
+                    proxy_params.push((param.to_string(), format!("localhost:{port}")));
+                }
+            }
             allow.push(net(Rule::new(
                 Effect::Allow,
                 &["network-outbound"],
@@ -538,6 +547,7 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
         blocks: [quiet, allow, within, hard, marker],
         grants,
         degradations,
+        proxy_params,
     })
 }
 
@@ -546,6 +556,7 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
         blocks: [quiet, allow, within, hard, marker],
         grants,
         degradations,
+        proxy_params,
     } = emit(policy, options)?;
     let strip = |block: Vec<Tagged>| block.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
     let marker = strip(marker);
@@ -590,9 +601,11 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
         }])
     })?;
 
+    let mut params = rendered.params;
+    params.extend(proxy_params);
     Ok(SeatbeltPlan {
         profile: rendered.text,
-        params: rendered.params,
+        params,
         grants,
         rule_count: rules.len(),
         merged,

@@ -16,7 +16,7 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-use procage_policy::linux::{Scopes, SocketPaths};
+use procage_policy::linux::{AccessFs, RuleTarget, Scopes, SocketPaths};
 use procage_policy::{
     AbsPath, CapabilityGap, Construct, Degradation, GapKind, LinuxPlan, Target, Tier,
 };
@@ -233,8 +233,20 @@ pub(crate) fn decide(
         kind,
         subject: Some(subject),
     };
+    // From Landlock ABI 9 with the network off, a pathname socket no
+    // Unix-socket rule reaches cannot be connected to; abstract ones are
+    // scoped. Only a socket under an allowed path needs a cover.
+    let resolve = plan.landlock.handled_fs.contains(AccessFs::RESOLVE_UNIX);
+    let reached = |p: &Path| {
+        plan.landlock.rules.iter().any(|r| {
+            r.access.contains(AccessFs::RESOLVE_UNIX)
+                && matches!(&r.target, RuleTarget::Path(a) | RuleTarget::PathIfExists(a) if p.starts_with(to_path(a)))
+        })
+    };
     for f in findings {
         match &f.found {
+            Found::Path(p) | Found::Dir(p, _) if resolve && !reached(p) => {}
+            Found::Unlisted if resolve => {}
             Found::Dir(_, false) if plan.tier == Tier::T2 => {}
             Found::Path(p) | Found::Dir(p, _) => match plan.tier {
                 Tier::T1 if allowed.contains(&f.construct) => {
@@ -383,6 +395,45 @@ mod tests {
         let outcome = decide(&plan, &unlisted, &BTreeSet::new());
         assert_eq!(outcome.gaps.len(), 1, "{:?}", outcome.gaps);
         assert_eq!(outcome.gaps[0].kind, GapKind::Unsupported);
+    }
+
+    /// From Landlock ABI 9 with the network off, only a socket under an
+    /// allowed Unix-socket path needs a cover; at ABI 8 every one does.
+    #[test]
+    fn landlock_keeps_other_sockets_out_from_abi_9() {
+        let mut policy = procage_policy::Policy::default();
+        policy.ipc.unix_sockets = vec![AbsPath::new("/work").unwrap()];
+        let plan = |tier, abi| match procage_policy::lower(
+            &policy,
+            Target::Linux {
+                tier,
+                landlock_abi: abi,
+            },
+            &procage_policy::LowerOptions::default().accept_spawn_snapshot(),
+        ) {
+            Ok(procage_policy::Plan::Linux(p)) => p,
+            other => panic!("{other:?}"),
+        };
+        let bus = Finding {
+            construct: Construct::HdServiceHandoff,
+            found: Found::Path(PathBuf::from("/run/dbus/system_bus_socket")),
+        };
+        let inside = Finding {
+            construct: Construct::HdContainerEngines,
+            found: Found::Path(PathBuf::from("/work/docker.sock")),
+        };
+        let unlisted = Finding {
+            construct: Construct::HdServiceHandoff,
+            found: Found::Unlisted,
+        };
+        let findings = [bus, inside, unlisted];
+        for tier in [Tier::T1, Tier::T2] {
+            let at9 = decide(&plan(tier, 9), &findings, &BTreeSet::new());
+            let subjects: Vec<_> = at9.gaps.iter().map(|g| g.subject.clone()).collect();
+            assert_eq!(subjects, [Some("/work/docker.sock".into())], "{tier}");
+        }
+        let at8 = decide(&plan(Tier::T1, 8), &findings, &BTreeSet::new());
+        assert_eq!(at8.gaps.len(), 3, "{:?}", at8.gaps);
     }
 
     #[test]

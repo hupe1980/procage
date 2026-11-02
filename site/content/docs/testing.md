@@ -42,6 +42,7 @@ just escape        # the macOS escape suite
 just linux         # the Linux backend's tests in Docker, tier T2 (Docker's defaults)
 just linux-t1      # the same with seccomp and AppArmor unconfined, tier T1
 just kf-linux      # the Linux kernel facts in Docker (T2); kf-linux-t1 for T1
+just kernel        # the Linux facts and suites on mainline kernels, one per Landlock ABI step (virtme-ng)
 just fuzz-all      # fuzz the policy crate (nightly, cargo-fuzz)
 just bench         # the spawn benchmark (indicative)
 ```
@@ -70,5 +71,7 @@ The bench also times `Cage::explain`'s evaluator: 0.61 ms per question for a
 ## Where they have run
 
 The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; older Landlock ABIs are exercised through `CageOptions::with_landlock_abi`. CI runs the kernel facts, the escape suites and the explain oracle on every push, on GitHub's macOS 26 and Ubuntu 24.04 (x86_64, tiers T1 and T2) runners.
+
+On Linux, CI also boots Ubuntu mainline kernels with virtme-ng, one job per Landlock ABI step: 5.15 (ABI 1), 6.6 (3), 6.8 (4), 6.12 (6), 7.0 (8), 7.1 (9), 7.2 (10) and 7.3 (11). Each runs the kernel facts with the expected ABI and every Linux suite. `just kernel` boots the same kernels locally under QEMU.
 
 The measurements and security requirements behind each change are in the [design records](https://github.com/hupe1980/procage/tree/main/specs) on GitHub.

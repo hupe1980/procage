@@ -1364,8 +1364,9 @@ fn signals_reach_outside_processes_only_when_the_policy_says_so() {
 
 // ---- Fitting a policy to the host ----
 
-/// A harness-shaped policy on T2: the four parts T2 cannot enforce are
-/// relaxed by name, each with what would lift it, and the rest still holds.
+/// A harness-shaped policy on T2: the parts T2 cannot enforce (four below
+/// Landlock ABI 9) are relaxed by name, each with what would lift it, and
+/// the rest still holds.
 /// Below ABI 6 the signal scope joins them; without its relaxation the cage
 /// fails with exactly that gap.
 #[test]
@@ -1406,8 +1407,11 @@ fn a_fitted_cage_gives_up_only_what_was_named() {
         Relaxation::LeaveOutProtect,
         Relaxation::LeaveOutHide,
         Relaxation::Waive(HardDenyClass::TrustHandoff),
-        Relaxation::NoUnixSockets,
     ];
+    // Landlock restricts pathname sockets from ABI 9.
+    if kernel < 9 {
+        want.push(Relaxation::NoUnixSockets);
+    }
     if kernel < 6 {
         want.push(Relaxation::SignalsSameUser);
     }
@@ -1466,6 +1470,16 @@ fn reporting(policy: Policy, tier: Tier) -> Cage {
         .unwrap_or_else(|e| panic!("cage: {e}"))
 }
 
+/// `secs` seconds, times `PROCAGE_TIME_SCALE` (an emulated kernel lane
+/// runs many times slower).
+fn patience(secs: u64) -> Duration {
+    let scale = std::env::var("PROCAGE_TIME_SCALE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+    Duration::from_secs(secs * scale)
+}
+
 /// A policy that forks under `Lifetime::Run` and has no network.
 fn refusing() -> Policy {
     let mut p = base();
@@ -1483,7 +1497,7 @@ fn reported(cage: &Cage, action: &str) -> (String, procage::Violations) {
         .unwrap();
     let start = Instant::now();
     while child.try_wait().unwrap().is_none() {
-        assert!(start.elapsed() < Duration::from_secs(20), "child hung");
+        assert!(start.elapsed() < patience(20), "child hung");
         std::thread::sleep(Duration::from_millis(5));
     }
     let mut out = String::new();

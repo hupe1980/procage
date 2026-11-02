@@ -9,10 +9,12 @@ use super::{
     subject_of,
 };
 use crate::linux::{
-    AF_NETLINK, AF_UNIX, AF_VSOCK, AccessFs, Action, ClassPaths, Condition, Landlock, LandlockRule,
-    LinuxNetwork, LinuxPlan, Mount, Namespaces, RuleTarget, Scopes, SeccompRule, Syscall,
-    TIOCLINUX, TIOCSTI, handled_fs, handled_net, may_overlap, rights, scopes,
+    AF_INET, AF_NETLINK, AF_UNIX, AF_VSOCK, AccessFs, AccessNet, Action, ClassPaths, Condition,
+    Landlock, LandlockRule, LinuxNetwork, LinuxPlan, Mount, Namespaces, NetRule, RuleTarget,
+    Scopes, SeccompRule, Syscall, TIOCLINUX, TIOCSTI, handled_fs, handled_net, may_overlap, rights,
+    scopes,
 };
+use crate::name::Port;
 use crate::path::AbsPath;
 use crate::policy::{
     Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Signals,
@@ -97,8 +99,10 @@ fn class_rules(class: HardDenyClass) -> Vec<SeccompRule> {
                 Condition::SocketFamily(vec![AF_NETLINK, AF_VSOCK]),
             )]
         }
-        // Privilege: `no_new_privs` is always set. RenameAnchors: REFER is
-        // never granted and T1 protect/hide targets are mountpoints.
+        // Privilege: `no_new_privs` is always set. RenameAnchors: REFER comes
+        // only with write, Landlock refuses a move that gains rights, T1
+        // protect/hide targets are mountpoints, and on T2 nothing protected
+        // lies in a writable tree without a gap.
         HardDenyClass::Privilege | HardDenyClass::RenameAnchors => vec![],
         // Socket classes are found and handled by the backend (see
         // `service_sockets` in `lower`).
@@ -224,6 +228,11 @@ pub(super) fn lower(
     if policy.process.exec == Exec::Any {
         handled = handled.without(AccessFs::EXECUTE);
     }
+    // With the network on every pathname socket stays reachable, as below
+    // ABI 9.
+    if policy.net == Network::All {
+        handled = handled.without(AccessFs::RESOLVE_UNIX);
+    }
     let mut landlock = Landlock {
         handled_fs: handled,
         ..Landlock::default()
@@ -337,11 +346,41 @@ pub(super) fn lower(
                 ports: ports.clone(),
             }
         }
+        // T1: the run's own network namespace, in which the backend's proxy
+        // listeners are the only endpoints; Landlock allows connecting to
+        // their ports only (from ABI 4). T2 has no namespace, and port rules
+        // alone are no boundary (TCP Fast Open, MPTCP).
         Network::Proxy { http, socks } => {
-            ledger.outcome(Construct::NetProxy, Outcome::Unsupported, None, "");
-            LinuxNetwork::ProxyBridge {
-                ports: http.iter().chain(socks.iter()).copied().collect(),
+            let ports: Vec<Port> = http.iter().chain(socks.iter()).copied().collect();
+            if t1 {
+                if ledger.outcome(Construct::NetProxy, Outcome::Exact, None, "") {
+                    let mut families = vec![AF_INET];
+                    if !policy.ipc.unix_sockets.is_empty() {
+                        families.push(AF_UNIX);
+                    }
+                    seccomp.push(deny_if(
+                        Syscall::Socket,
+                        Condition::SocketFamilyExcept(families),
+                    ));
+                    landlock.handled_net = net_handled;
+                    if net_handled.0 & AccessNet::CONNECT_TCP.0 != 0 {
+                        for &port in &ports {
+                            landlock.net_rules.push(NetRule {
+                                port,
+                                access: AccessNet::CONNECT_TCP,
+                            });
+                        }
+                    }
+                }
+            } else {
+                ledger.outcome(
+                    Construct::NetProxy,
+                    Outcome::Unsupported,
+                    None,
+                    "tier T2 has no network namespace, and port rules alone are no boundary",
+                );
             }
+            LinuxNetwork::ProxyBridge { ports }
         }
         Network::All => {
             ledger.outcome(Construct::NetAll, Outcome::Exact, None, "");
@@ -585,10 +624,11 @@ pub(super) fn lower(
 
     let mut classes = Vec::new();
     let mut service_sockets = Vec::new();
-    // With the network off and no `ipc.unix_sockets`, seccomp refuses every
-    // socket, so the socket classes hold without help; any other setting
-    // leaves Unix connects to the backend.
-    let unix_reachable = policy.net != Network::None || !policy.ipc.unix_sockets.is_empty();
+    // With the network off or through the proxy, and no `ipc.unix_sockets`,
+    // seccomp refuses Unix sockets, so the socket classes hold without help;
+    // any other setting leaves Unix connects to the backend.
+    let unix_off = matches!(policy.net, Network::None | Network::Proxy { .. });
+    let unix_reachable = !unix_off || !policy.ipc.unix_sockets.is_empty();
     for &class in HardDenyClass::ALL {
         if policy.waive.contains(&class) {
             continue;

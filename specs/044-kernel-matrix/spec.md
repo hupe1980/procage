@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Implemented (2026-11-02; CI kernel lanes after push)
 
 **Input**: procage supports Linux from Landlock ABI 1 (5.13) but CI runs one kernel (7.0, ABI 8). Older-kernel behaviour is tested by capping the ABI in-process, which proves the lowering but not the kernel. Newer ABIs (9 in 7.1: pathname Unix sockets; 10 in 7.2: UDP and quiet rules; 11 in 7.3: no-new-privileges on restrict) would make some approximations exact, but the backend stops at ABI 8.
 
@@ -28,6 +28,33 @@ the runner exposes hardware virtualisation.
   demand, results are recorded with kernel and date, and the docs say which
   kernels were tested where.
 
+### Session 2026-11-02
+
+- Q: Where do the kernels run? → A: In CI, one job per kernel on an
+  `ubuntu-24.04` runner with KVM (enabled by a udev rule), booted with
+  virtme-ng from the Ubuntu mainline builds. Locally, `just kernel <tag>`
+  boots the same builds under QEMU without KVM inside the Docker image the
+  container lanes use (arm64 on Apple silicon): slower, but the same kernel
+  and the same suites. Both print the kernel, the probe and the results.
+- Q: Which kernels exactly? → A: Mainline 5.15 (ABI 1), 6.6 (ABI 3), 6.8
+  (ABI 4), 6.12 (ABI 6), 7.0 (ABI 8), 7.1 (ABI 9), 7.2 (ABI 10) and 7.3
+  (ABI 11). The probe, not the version, decides the ABI; a kernel whose
+  probe differs from the expected ABI fails its lane. Release candidates
+  are not tested.
+- Q: Does procage set no-new-privileges through Landlock at ABI 11? → A:
+  No. The child sequence sets it with `prctl` before the seccomp filter on
+  every kernel, so the flag would only save one call. At ABI 11 nothing
+  changes; the probe records the ABI.
+- Q: What does ABI 9 change when the network is on? → A: Nothing. The
+  Unix-socket right is handled only when the network is off, so a policy
+  with the network on keeps every pathname socket reachable, as on older
+  kernels. On T2 the service and engine classes stay a gap at every ABI:
+  Landlock rules only allow, and keeping one socket out of an allowed tree
+  needs piecewise grants (not in this feature).
+- Q: How high does the backend's maximum ABI go? → A: To the highest ABI
+  whose kernel ran the full Linux suites green, as a CI lane or a recorded
+  local run; the docs list each kernel with its date and where it ran.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Each ABI step is tested on a real kernel (Priority: P1)
@@ -48,8 +75,11 @@ VM per kernel of the matrix, tiers T1 and T2.
 
 1. **Given** ABI ≥ 9 on T2, **When** a policy names Unix-socket paths, **Then**
    it is enforced exactly (not a gap), proven by the canary.
-2. **Given** ABI ≥ 11, **Then** no-new-privileges is set by Landlock as well,
-   and the probe records it.
+2. **Given** ABI ≥ 10 with the network off, **When** the child sends UDP
+   through an IP socket it was handed, **Then** Landlock refuses it.
+3. **Given** ABI ≥ 9 with the network on, **When** the child connects to a
+   pathname socket outside every rule, **Then** it connects, as on older
+   kernels.
 
 ### Edge Cases
 

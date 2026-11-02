@@ -53,6 +53,10 @@ let status = cage
   backend and tier, and everything accepted short of the policy.
 - 🔎 **Violation reports.** A cage can say what the sandbox denied and which
   rule denied it: every denial on macOS, every refused system call on Linux.
+- 🌐 **Egress through an allowlist.** With the `proxy` feature, a run
+  reaches the hosts an allowlist names through a proxy of its own, and no
+  other route (macOS, Linux T1). One canonical host parser, checked
+  resolution, no allow-all.
 - ⚡ **Async (tokio).** With the `tokio` feature, `Cage::spawn_async`
   returns an awaitable child, and violations arrive as a stream.
 - 📦 **Frozen presets and base profiles** that let ordinary programs and
@@ -71,8 +75,8 @@ procage picks the strongest tier the host allows and never runs a child
 unsandboxed.
 
 **Known limits:** no pseudo-terminals, no Linux PID namespace, no loopback
-or proxy networking on Linux, and Landlock's file and network denials are
-not reported.
+networking on Linux and no proxy-only networking on tier T2, and Landlock's
+file and network denials are not reported.
 
 ## ⏱️ Performance
 

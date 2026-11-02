@@ -202,11 +202,24 @@
 //! Before every spawn procage checks that no protected, hidden or credential
 //! file has a second name (a hard link) outside the protected set, which path
 //! rules would not cover; by default such a spawn is refused with
-//! `SpawnError::HardLinks` (choose [`LinkAudit::Report`] or
-//! [`LinkAudit::Off`] by name). With `CageOptions::with_handoff_audit`, a
+//! `SpawnError::HardLinks` (exempt a store that is never rewritten in place,
+//! such as `.git/objects`, with `CageOptions::with_link_exemption`, or choose
+//! [`LinkAudit::Report`] or [`LinkAudit::Off`] by name). With `CageOptions::with_handoff_audit`, a
 //! run also notes what it leaves behind for unsandboxed programs to trust:
 //! after the exit, `Child::audit` lists the trust-handoff files, symbolic
 //! links and repositories it created or changed. See the [`audit`] module.
+//!
+//! # Egress through an allowlist (proxy)
+//!
+//! With the `proxy` feature, a `Network::Proxy` policy and
+//! `CageOptions::with_proxy`, each run gets a proxy of its own
+//! (`procage::proxy`, the `procage-proxy` crate) that connects only to
+//! the hosts an allowlist names, and the kernel keeps the child from every
+//! other route: on macOS the profile allows only the run's proxy ports, on
+//! Linux tier T1 the child's network namespace holds only its proxy
+//! listeners. Tier T2 refuses it as a gap. The proxy reads each request's
+//! host one way, checks resolved addresses, relays bytes unchanged and
+//! never terminates TLS; refusals are in the run's violations.
 //!
 //! # Async (tokio)
 //!
@@ -262,6 +275,12 @@ pub mod audit;
 pub use audit::{Audit, HandoffFinding, HandoffKind, LinkAudit, LinkFinding};
 #[cfg(all(feature = "tokio", any(target_os = "macos", target_os = "linux")))]
 mod async_child;
+#[cfg(all(feature = "proxy", any(target_os = "macos", target_os = "linux")))]
+mod proxied;
+/// The egress proxy a cage runs per run (feature `proxy`; see
+/// `CageOptions::with_proxy`).
+#[cfg(feature = "proxy")]
+pub use procage_proxy as proxy;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod explain;
 #[cfg(any(target_os = "macos", target_os = "linux"))]

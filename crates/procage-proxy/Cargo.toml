@@ -1,0 +1,15 @@
+[package]
+name = "procage-proxy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "An egress proxy with a domain allowlist (HTTP CONNECT, SOCKS5) for sandboxed processes: one canonical host parser, checked resolution, no allow-all"
+readme = false
+keywords = ["proxy", "allowlist", "sandbox", "socks5", "egress"]
+categories = ["network-programming"]
+
+[lints]
+workspace = true

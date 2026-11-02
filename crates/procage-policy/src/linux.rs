@@ -178,7 +178,12 @@ pub fn scopes(abi: u8) -> Scopes {
 }
 
 /// The Landlock rights for an access kind, limited to what `handled` covers.
-/// `REFER` is never part of it.
+///
+/// `Write` includes `REFER`, so files move and link between directories of
+/// the writable trees. Landlock refuses a move or link that would give the
+/// file a right it lacks where it is, and one out of a tree without `REFER`
+/// (any read-only tree); on tier T1 protected and hidden targets are separate
+/// mounts, which no move or link crosses.
 pub fn rights(access: Access, handled: AccessFs) -> AccessFs {
     let read = AccessFs::READ_FILE.union(AccessFs::READ_DIR);
     let rights = match access {
@@ -193,10 +198,11 @@ pub fn rights(access: Access, handled: AccessFs) -> AccessFs {
             .union(AccessFs::MAKE_SOCK)
             .union(AccessFs::MAKE_FIFO)
             .union(AccessFs::MAKE_SYM)
-            .union(AccessFs::TRUNCATE),
+            .union(AccessFs::TRUNCATE)
+            .union(AccessFs::REFER),
         Access::Protect | Access::Hide => AccessFs::NONE,
     };
-    rights.intersect(handled).without(AccessFs::REFER)
+    rights.intersect(handled)
 }
 
 macro_rules! syscalls {
@@ -317,6 +323,8 @@ impl fmt::Display for Syscall {
 
 /// `AF_UNIX`.
 pub const AF_UNIX: u32 = 1;
+/// `AF_INET`.
+pub const AF_INET: u32 = 2;
 /// `AF_NETLINK`.
 pub const AF_NETLINK: u32 = 16;
 /// `AF_VSOCK`.
@@ -714,10 +722,12 @@ mod tests {
     }
 
     #[test]
-    fn refer_is_never_granted() {
-        for access in [Access::Read, Access::Write, Access::Exec] {
+    fn refer_comes_only_with_write() {
+        for access in [Access::Read, Access::Exec, Access::Protect, Access::Hide] {
             assert!(!rights(access, handled_fs(12)).contains(AccessFs::REFER));
         }
+        assert!(rights(Access::Write, handled_fs(2)).contains(AccessFs::REFER));
+        assert!(!rights(Access::Write, handled_fs(1)).contains(AccessFs::REFER));
         assert!(!rights(Access::Write, handled_fs(2)).contains(AccessFs::TRUNCATE));
     }
 

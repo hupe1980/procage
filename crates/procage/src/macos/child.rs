@@ -49,6 +49,9 @@ pub struct Child {
     killed: bool,
     /// The run's audits.
     audit: crate::audit::RunAudit,
+    /// The run's proxy; dropped when the run ends.
+    #[cfg(feature = "proxy")]
+    proxy: Option<procage_proxy::Run>,
 }
 
 impl Child {
@@ -72,7 +75,14 @@ impl Child {
             receipt,
             killed: false,
             audit,
+            #[cfg(feature = "proxy")]
+            proxy: None,
         }
+    }
+
+    #[cfg(feature = "proxy")]
+    pub(super) fn set_proxy(&mut self, run: Option<procage_proxy::Run>) {
+        self.proxy = run;
     }
 
     /// The run's [audits](crate::audit): `None` while the child runs. Once it
@@ -148,6 +158,9 @@ impl Child {
     /// The second half, once the child is reaped (`waited`): the marker
     /// search and the record.
     pub(crate) fn end(&mut self, waited: io::Result<()>) -> io::Result<()> {
+        // The run's connections close with it, before its record does.
+        #[cfg(feature = "proxy")]
+        drop(self.proxy.take());
         let ended = match &self.run {
             Some(run) if self.reporting.forking => lifetime::end(run),
             _ => Ok(()),

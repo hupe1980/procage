@@ -63,9 +63,9 @@ pub mod seatbelt;
 pub use glob::{Glob, GlobError};
 pub use linux::LinuxPlan;
 pub use lower::{
-    CapabilityGap, Construct, Degradation, GapKind, Lift, LowerError, LowerOptions, Outcome, Plan,
-    RUN_MARKER_PARAM, RUN_PREFIX_PARAM, Relax, Relaxation, Relaxed, SeatbeltPlan, Target,
-    TargetError, Tier, lift, lower,
+    CapabilityGap, Construct, Degradation, GapKind, Lift, LowerError, LowerOptions, Outcome,
+    PROXY_HTTP_PARAM, PROXY_SOCKS_PARAM, Plan, RUN_MARKER_PARAM, RUN_PREFIX_PARAM, Relax,
+    Relaxation, Relaxed, SeatbeltPlan, Target, TargetError, Tier, lift, lower,
 };
 pub use name::{GrantName, NameError, Port, Tag};
 pub use path::{AbsPath, PathError};

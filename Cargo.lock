@@ -122,11 +122,12 @@ dependencies = [
 
 [[package]]
 name = "procage"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures-core",
  "libc",
  "procage-policy",
+ "procage-proxy",
  "serde",
  "serde_json",
  "sha2",
@@ -135,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "procage-kernel-facts"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "procage-policy",
@@ -144,11 +145,15 @@ dependencies = [
 
 [[package]]
 name = "procage-policy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "procage-proxy"
+version = "0.3.0"
 
 [[package]]
 name = "quote"

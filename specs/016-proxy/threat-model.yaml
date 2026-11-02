@@ -118,14 +118,16 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-01T21:13:14Z'
+  generated: '2026-11-02T15:27:53Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
+  - path: plan.md
+    sha256: afb3e5c289481c44d516f93a65ae162b3085d525508e5d6ebb76f679137281bc
   - path: spec.md
-    sha256: d95fe9b14fd2a30be1efd124d68d613df9830d398741a6be78aa32c99c6e288e
+    sha256: 93e9631a6c38dc28a3fcb115896bacb637b4fed834709c522308b5b33782f733
   surfaces:
   - external-input
   - network-boundary
@@ -228,8 +230,10 @@ components:
   name: 'Proxy-only cage: Network::Proxy lowering on macOS, the network namespace on Linux T1, the capability gap
     on T2'
   type: library
-  description: '[NEEDS CLARIFICATION: how the parent provides the proxy listener inside the T1 network namespace
-    is left to the plan]'
+  description: 'macOS: the profile allows outbound connections to the run''s proxy ports only (profile parameters,
+    fresh ports per run). Linux T1: the child sequence brings up the namespace loopback, listens on the policy''s
+    ports and hands the listeners to the parent over a socket pair; Landlock CONNECT_TCP to those ports only. T2:
+    a capability gap.'
   parent:
     trustZone: tz.kernel
   attributes:
@@ -376,7 +380,7 @@ threats:
     assets:
     - asset.allowlist
     - asset.host-data
-    status: open
+    status: mitigated
     actor: actor.consumer
     constitution: I. Fail closed, never silently weaker
     elements:
@@ -400,7 +404,7 @@ threats:
     source: spec.md#Out-of-Scope
     assets:
     - asset.host-data
-    status: open
+    status: mitigated
     actor: actor.consumer
     constitution: III. The kernel is the oracle
     elements:
@@ -428,7 +432,7 @@ threats:
     assets:
     - asset.host-data
     - asset.local-services
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: III. The kernel is the oracle
     elements:
@@ -453,7 +457,7 @@ threats:
     source: spec.md#Edge-Cases
     assets:
     - asset.host-data
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.resolver
@@ -480,7 +484,7 @@ threats:
     source: spec.md#FR-004
     assets:
     - asset.local-services
-    status: open
+    status: mitigated
     actor: actor.remote
     elements:
     - component.resolver
@@ -507,7 +511,7 @@ threats:
     assets:
     - asset.allowlist
     - asset.local-services
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.parser
@@ -537,7 +541,7 @@ threats:
     assets:
     - asset.allowlist
     - asset.host-data
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: I. Fail closed, never silently weaker
     elements:
@@ -561,7 +565,7 @@ threats:
     source: spec.md#FR-007
     assets:
     - asset.payload
-    status: open
+    status: mitigated
     actor: actor.contributor
     elements:
     - component.listener
@@ -585,7 +589,7 @@ threats:
     source: spec.md#US3
     assets:
     - asset.host-data
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: I. Fail closed, never silently weaker
     elements:
@@ -610,7 +614,7 @@ threats:
     source: spec.md#Edge-Cases
     assets:
     - asset.harness
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.listener
@@ -634,7 +638,7 @@ threats:
     source: spec.md#FR-005
     assets:
     - asset.record
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.reporting
@@ -658,7 +662,7 @@ threats:
     assets:
     - asset.allowlist
     - asset.record
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
     - component.listener
@@ -679,12 +683,13 @@ threats:
     source: spec.md#Key-Entities
     assets:
     - asset.allowlist
-    status: open
+    status: retired
     actor: actor.caged-code
     disposition: needs-clarification
     elements:
     - component.listener
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: identity-spoofing
 - id: threat.t2-silent-downgrade
@@ -701,7 +706,7 @@ threats:
     source: spec.md#FR-006
     assets:
     - asset.host-data
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: I. Fail closed, never silently weaker
     elements:
@@ -716,12 +721,12 @@ mitigations:
   attributes:
     threats:
     - threat.proxy-exhaustion
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-011
     touchpoints:
-    - component.listener
+    - crates/procage-proxy/src/lib.rs
 - id: mitigation.check-resolved-connect-checked
   name: Resolve once after the name check; refuse any non-public address (including mapped and translated IPv6 forms)
     unless allowlisted; connect only to a checked address, never re-resolving
@@ -730,25 +735,28 @@ mitigations:
     threats:
     - threat.dns-rebinding
     - threat.dns-exfil
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-003
     - SR-004
     touchpoints:
-    - component.resolver
+    - crates/procage-proxy/src/lib.rs
+    - crates/procage-proxy/src/addr.rs
+    - crates/procage-proxy/src/resolve.rs
 - id: mitigation.escaped-capped-record
   name: Refused hosts are recorded escaped (no control bytes) and within the run's violation cap, the rest counted
   riskReduction: 70
   attributes:
     threats:
     - threat.record-spoof
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-012
     touchpoints:
-    - component.reporting
+    - crates/procage-proxy/src/lib.rs
+    - crates/procage/src/violation.rs
 - id: mitigation.honest-claims
   name: THREAT_MODEL gains the parser-differential escape class with the suite as evidence; docs say the allowlist
     binds host names, not content, and name shared-hosting and fronting residue
@@ -757,12 +765,13 @@ mitigations:
     threats:
     - threat.allowlist-overclaim
     - threat.parser-differential
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-013
     touchpoints:
-    - component.docs
+    - crates/procage/THREAT_MODEL.md
+    - site/content/docs/proxy.md
 - id: mitigation.kernel-boundary
   name: macOS allows outbound to the proxy ports only; Linux T1 runs the child in a network namespace whose only
     endpoint is the proxy listener; Landlock is never the sole boundary; direct-egress canaries on every proxy tier
@@ -771,14 +780,16 @@ mitigations:
     threats:
     - threat.direct-egress
     - threat.proxy-down-fallback
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-006
     - SR-007
     touchpoints:
-    - component.cage-net
-    - flow.direct
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/src/macos/mod.rs
 - id: mitigation.literal-as-address
   name: Every IP literal notation parses to one address; literals are refused unless an allowlisted range contains
     that address
@@ -786,13 +797,13 @@ mitigations:
   attributes:
     threats:
     - threat.ip-literal-bypass
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-002
     touchpoints:
-    - component.parser
-    - component.allowlist
+    - crates/procage-proxy/src/host.rs
+    - crates/procage-proxy/src/allow.rs
 - id: mitigation.no-allow-all
   name: Construction fails on an empty allowlist, a bare wildcard or a single-label wildcard suffix; no allow-all
     mode exists
@@ -800,12 +811,12 @@ mitigations:
   attributes:
     threats:
     - threat.allowlist-fail-open
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-005
     touchpoints:
-    - component.allowlist
+    - crates/procage-proxy/src/allow.rs
 - id: mitigation.one-canonical-host
   name: One parser yields a canonical host (lower case, trailing dot stripped, IDNA to A-labels) and refuses NUL
     and control bytes, percent-encoding, userinfo and invalid labels; the same value is checked and connected; a
@@ -814,13 +825,14 @@ mitigations:
   attributes:
     threats:
     - threat.parser-differential
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-001
     touchpoints:
-    - component.parser
-    - component.listener
+    - crates/procage-proxy/src/host.rs
+    - crates/procage-proxy/src/http.rs
+    - crates/procage-proxy/src/socks.rs
 - id: mitigation.opaque-relay
   name: After CONNECT or the SOCKS5 reply the proxy relays bytes unchanged in both directions; no TLS code in the
     crate
@@ -828,12 +840,12 @@ mitigations:
   attributes:
     threats:
     - threat.payload-tampering
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-010
     touchpoints:
-    - component.listener
+    - crates/procage-proxy/src/lib.rs
 - id: mitigation.run-bound-listener
   name: Each connection belongs to exactly one run, whose allowlist decides it and whose violations record its refusals;
     a child cannot reach another run's listener
@@ -841,26 +853,26 @@ mitigations:
   attributes:
     threats:
     - threat.run-confusion
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-009
     touchpoints:
-    - component.listener
-    - component.cage-net
-    - component.reporting
+    - crates/procage/src/proxied.rs
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
 - id: mitigation.t2-gap
   name: Proxy-only on T2 is a CapabilityGap at build time
   riskReduction: 95
   attributes:
     threats:
     - threat.t2-silent-downgrade
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-008
     touchpoints:
-    - component.cage-net
+    - crates/procage-policy/src/lower/linux.rs
 requirements:
 - id: SR-001
   statement: The proxy MUST derive one canonical host per request and use that same value for the allowlist check
@@ -1028,5 +1040,561 @@ requirements:
       as residual risk
     when: they are reviewed
   tasks: []
-verification: []
+verification:
+- id: verification.sr-001.2026-11-02
+  requirement: SR-001
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: A SOCKS5 request for allowed.test\0.evil.test is refused (reply 2) with no query and no connection;
+    ALLOWED.TEST. connects as allowed.test (an_allowed_host_is_reached_unchanged_over_both_protocols); the escape
+    canaries r35_a_host_is_read_one_way refuse percent encoding and NUL through the real cage on macOS and T1; the
+    host fuzz target (18.4 million inputs) found no host that is not a fixed point or that a resolver would read
+    as an address.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-001.2026-11-02-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: A SOCKS5 request for allowed.test\0.evil.test is refused (reply 2) with no query and no connection;
+    ALLOWED.TEST. connects as allowed.test (an_allowed_host_is_reached_unchanged_over_both_protocols); the escape
+    canaries r35_a_host_is_read_one_way refuse percent encoding and NUL through the real cage on macOS and T1; the
+    host fuzz target (18.4 million inputs) found no host that is not a fixed point or that a resolver would read
+    as an address.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-001.2026-11-02-3
+  requirement: SR-001
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: A SOCKS5 request for allowed.test\0.evil.test is refused (reply 2) with no query and no connection;
+    ALLOWED.TEST. connects as allowed.test (an_allowed_host_is_reached_unchanged_over_both_protocols); the escape
+    canaries r35_a_host_is_read_one_way refuse percent encoding and NUL through the real cage on macOS and T1; the
+    host fuzz target (18.4 million inputs) found no host that is not a fixed point or that a resolver would read
+    as an address.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-001.2026-11-02-4
+  requirement: SR-001
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: A SOCKS5 request for allowed.test\0.evil.test is refused (reply 2) with no query and no connection;
+    ALLOWED.TEST. connects as allowed.test (an_allowed_host_is_reached_unchanged_over_both_protocols); the escape
+    canaries r35_a_host_is_read_one_way refuse percent encoding and NUL through the real cage on macOS and T1; the
+    host fuzz target (18.4 million inputs) found no host that is not a fixed point or that a resolver would read
+    as an address.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-002.2026-11-02
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::literals_are_refused_unless_a_range_holds_them
+  result: pass
+  verdict: verified
+  justification: With a domain-only list 2130706433, 0x7f.1, 017700000001, [::ffff:127.0.0.1], 127.1 and 127.0.0.1
+    are refused; with a range holding the address the decimal and dotted forms connect to the same echo host; no
+    query is made.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-002.2026-11-02-2
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::literals_are_refused_unless_a_range_holds_them
+  result: pass
+  verdict: verified
+  justification: With a domain-only list 2130706433, 0x7f.1, 017700000001, [::ffff:127.0.0.1], 127.1 and 127.0.0.1
+    are refused; with a range holding the address the decimal and dotted forms connect to the same echo host; no
+    query is made.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-002.2026-11-02-3
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::literals_are_refused_unless_a_range_holds_them
+  result: pass
+  verdict: verified
+  justification: With a domain-only list 2130706433, 0x7f.1, 017700000001, [::ffff:127.0.0.1], 127.1 and 127.0.0.1
+    are refused; with a range holding the address the decimal and dotted forms connect to the same echo host; no
+    query is made.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-002.2026-11-02-4
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::literals_are_refused_unless_a_range_holds_them
+  result: pass
+  verdict: verified
+  justification: With a domain-only list 2130706433, 0x7f.1, 017700000001, [::ffff:127.0.0.1], 127.1 and 127.0.0.1
+    are refused; with a range holding the address the decimal and dotted forms connect to the same echo host; no
+    query is made.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-003.2026-11-02
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_name_that_resolves_inward_is_refused
+  result: pass
+  verdict: verified
+  justification: Allowed names resolving to 127.0.0.1, 169.254.169.254 and ::ffff:10.0.0.1 are refused with Reason::Address
+    naming the address; the_checked_address_is_the_one_connected_to shows one query and a connect to the first checked
+    address.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-003.2026-11-02-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_name_that_resolves_inward_is_refused
+  result: pass
+  verdict: verified
+  justification: Allowed names resolving to 127.0.0.1, 169.254.169.254 and ::ffff:10.0.0.1 are refused with Reason::Address
+    naming the address; the_checked_address_is_the_one_connected_to shows one query and a connect to the first checked
+    address.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-003.2026-11-02-3
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_name_that_resolves_inward_is_refused
+  result: pass
+  verdict: verified
+  justification: Allowed names resolving to 127.0.0.1, 169.254.169.254 and ::ffff:10.0.0.1 are refused with Reason::Address
+    naming the address; the_checked_address_is_the_one_connected_to shows one query and a connect to the first checked
+    address.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-003.2026-11-02-4
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_name_that_resolves_inward_is_refused
+  result: pass
+  verdict: verified
+  justification: Allowed names resolving to 127.0.0.1, 169.254.169.254 and ::ffff:10.0.0.1 are refused with Reason::Address
+    naming the address; the_checked_address_is_the_one_connected_to shows one query and a connect to the first checked
+    address.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-004.2026-11-02
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: Three refused requests leave the counting resolver at zero queries.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-004.2026-11-02-2
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: Three refused requests leave the counting resolver at zero queries.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-004.2026-11-02-3
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: Three refused requests leave the counting resolver at zero queries.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-004.2026-11-02-4
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_host_not_on_the_list_is_refused_without_a_query
+  result: pass
+  verdict: verified
+  justification: Three refused requests leave the counting resolver at zero queries.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-005.2026-11-02
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-proxy/src/allow.rs::tests::construction_fails_closed
+  result: pass
+  verdict: verified
+  justification: An empty list returns AllowlistError::Empty; *, *.com, *.com:443, 0.0.0.0/0 and [::]/0 return TooWide;
+    there is no constructor without entries.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-005.2026-11-02-2
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-proxy/src/allow.rs::tests::construction_fails_closed
+  result: pass
+  verdict: verified
+  justification: An empty list returns AllowlistError::Empty; *, *.com, *.com:443, 0.0.0.0/0 and [::]/0 return TooWide;
+    there is no constructor without entries.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-005.2026-11-02-3
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-proxy/src/allow.rs::tests::construction_fails_closed
+  result: pass
+  verdict: verified
+  justification: An empty list returns AllowlistError::Empty; *, *.com, *.com:443, 0.0.0.0/0 and [::]/0 return TooWide;
+    there is no constructor without entries.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-005.2026-11-02-4
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-proxy/src/allow.rs::tests::construction_fails_closed
+  result: pass
+  verdict: verified
+  justification: An empty list returns AllowlistError::Empty; *, *.com, *.com:443, 0.0.0.0/0 and [::]/0 return TooWide;
+    there is no constructor without entries.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-006.2026-11-02
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On macOS a proxy-only child with no proxy listening fails both through the proxy and directly;
+    on Linux a proxy-only cage without the proxy is refused, and with it the T1 namespace has no route but the listeners
+    (r36 on escape_linux.rs); no code path connects directly.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-006.2026-11-02-2
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On macOS a proxy-only child with no proxy listening fails both through the proxy and directly;
+    on Linux a proxy-only cage without the proxy is refused, and with it the T1 namespace has no route but the listeners
+    (r36 on escape_linux.rs); no code path connects directly.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-006.2026-11-02-3
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On macOS a proxy-only child with no proxy listening fails both through the proxy and directly;
+    on Linux a proxy-only cage without the proxy is refused, and with it the T1 namespace has no route but the listeners
+    (r36 on escape_linux.rs); no code path connects directly.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-006.2026-11-02-4
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On macOS a proxy-only child with no proxy listening fails both through the proxy and directly;
+    on Linux a proxy-only cage without the proxy is refused, and with it the T1 namespace has no route but the listeners
+    (r36 on escape_linux.rs); no code path connects directly.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-007.2026-11-02
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On T1 direct TCP to a host port, ::1, a public address, UDP to a public resolver, TCP Fast Open,
+    MPTCP, a raw socket and IPv6 all fail, and a datagram to the host loopback does not arrive; the macOS canary
+    covers TCP, IPv6, UDP and DNS; the control through the proxy succeeds. Landlock is a second layer only.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-007.2026-11-02-2
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On T1 direct TCP to a host port, ::1, a public address, UDP to a public resolver, TCP Fast Open,
+    MPTCP, a raw socket and IPv6 all fail, and a datagram to the host loopback does not arrive; the macOS canary
+    covers TCP, IPv6, UDP and DNS; the control through the proxy succeeds. Landlock is a second layer only.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-007.2026-11-02-3
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On T1 direct TCP to a host port, ::1, a public address, UDP to a public resolver, TCP Fast Open,
+    MPTCP, a raw socket and IPv6 all fail, and a datagram to the host loopback does not arrive; the macOS canary
+    covers TCP, IPv6, UDP and DNS; the control through the proxy succeeds. Landlock is a second layer only.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-007.2026-11-02-4
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r36_a_proxy_only_child_has_no_other_route
+  result: pass
+  verdict: verified
+  justification: On T1 direct TCP to a host port, ::1, a public address, UDP to a public resolver, TCP Fast Open,
+    MPTCP, a raw socket and IPv6 all fail, and a datagram to the host loopback does not arrive; the macOS canary
+    covers TCP, IPv6, UDP and DNS; the control through the proxy succeeds. Landlock is a second layer only.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-008.2026-11-02
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/proxy.rs::tier_t2_refuses_a_proxy_only_cage
+  result: pass
+  verdict: verified
+  justification: Cage::with_options on T2 returns LowerError::Gaps with Construct::NetProxy; r36 on escape_linux.rs
+    checks the same.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-008.2026-11-02-2
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/proxy.rs::tier_t2_refuses_a_proxy_only_cage
+  result: pass
+  verdict: verified
+  justification: Cage::with_options on T2 returns LowerError::Gaps with Construct::NetProxy; r36 on escape_linux.rs
+    checks the same.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-008.2026-11-02-3
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/proxy.rs::tier_t2_refuses_a_proxy_only_cage
+  result: pass
+  verdict: verified
+  justification: Cage::with_options on T2 returns LowerError::Gaps with Construct::NetProxy; r36 on escape_linux.rs
+    checks the same.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-008.2026-11-02-4
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/proxy.rs::tier_t2_refuses_a_proxy_only_cage
+  result: pass
+  verdict: verified
+  justification: Cage::with_options on T2 returns LowerError::Gaps with Construct::NetProxy; r36 on escape_linux.rs
+    checks the same.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-009.2026-11-02
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/proxy.rs::a_run_reaches_only_its_own_listener
+  result: pass
+  verdict: verified
+  justification: A run with a narrow list cannot use a concurrent wide run's listener (macOS refuses the connect;
+    on T1 the address is the narrow run's own listener), its request is refused, the refusal is in the narrow run's
+    record and the wide run's record holds none.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-009.2026-11-02-2
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/proxy.rs::a_run_reaches_only_its_own_listener
+  result: pass
+  verdict: verified
+  justification: A run with a narrow list cannot use a concurrent wide run's listener (macOS refuses the connect;
+    on T1 the address is the narrow run's own listener), its request is refused, the refusal is in the narrow run's
+    record and the wide run's record holds none.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-009.2026-11-02-3
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/proxy.rs::a_run_reaches_only_its_own_listener
+  result: pass
+  verdict: verified
+  justification: A run with a narrow list cannot use a concurrent wide run's listener (macOS refuses the connect;
+    on T1 the address is the narrow run's own listener), its request is refused, the refusal is in the narrow run's
+    record and the wide run's record holds none.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-009.2026-11-02-4
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/proxy.rs::a_run_reaches_only_its_own_listener
+  result: pass
+  verdict: verified
+  justification: A run with a narrow list cannot use a concurrent wide run's listener (macOS refuses the connect;
+    on T1 the address is the narrow run's own listener), its request is refused, the refusal is in the narrow run's
+    record and the wide run's record holds none.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-010.2026-11-02
+  requirement: SR-010
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_host_is_reached_unchanged_over_both_protocols
+  result: pass
+  verdict: verified
+  justification: 64 KiB of pseudo-random bytes come back unchanged through CONNECT and SOCKS5; plain HTTP is forwarded
+    byte for byte (plain_http_is_forwarded_only_for_the_host_it_names); the crate has no TLS code.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-010.2026-11-02-2
+  requirement: SR-010
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_host_is_reached_unchanged_over_both_protocols
+  result: pass
+  verdict: verified
+  justification: 64 KiB of pseudo-random bytes come back unchanged through CONNECT and SOCKS5; plain HTTP is forwarded
+    byte for byte (plain_http_is_forwarded_only_for_the_host_it_names); the crate has no TLS code.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-010.2026-11-02-3
+  requirement: SR-010
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_host_is_reached_unchanged_over_both_protocols
+  result: pass
+  verdict: verified
+  justification: 64 KiB of pseudo-random bytes come back unchanged through CONNECT and SOCKS5; plain HTTP is forwarded
+    byte for byte (plain_http_is_forwarded_only_for_the_host_it_names); the crate has no TLS code.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-010.2026-11-02-4
+  requirement: SR-010
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::an_allowed_host_is_reached_unchanged_over_both_protocols
+  result: pass
+  verdict: verified
+  justification: 64 KiB of pseudo-random bytes come back unchanged through CONNECT and SOCKS5; plain HTTP is forwarded
+    byte for byte (plain_http_is_forwarded_only_for_the_host_it_names); the crate has no TLS code.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-011.2026-11-02
+  requirement: SR-011
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_run_is_bounded_and_ends_its_connections
+  result: pass
+  verdict: verified
+  justification: A stalled handshake is closed after the timeout, a connection beyond the limit is closed at once
+    with Reason::Busy, and dropping the run closes an open relay.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-011.2026-11-02-2
+  requirement: SR-011
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_run_is_bounded_and_ends_its_connections
+  result: pass
+  verdict: verified
+  justification: A stalled handshake is closed after the timeout, a connection beyond the limit is closed at once
+    with Reason::Busy, and dropping the run closes an open relay.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-011.2026-11-02-3
+  requirement: SR-011
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_run_is_bounded_and_ends_its_connections
+  result: pass
+  verdict: verified
+  justification: A stalled handshake is closed after the timeout, a connection beyond the limit is closed at once
+    with Reason::Busy, and dropping the run closes an open relay.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-011.2026-11-02-4
+  requirement: SR-011
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_run_is_bounded_and_ends_its_connections
+  result: pass
+  verdict: verified
+  justification: A stalled handshake is closed after the timeout, a connection beyond the limit is closed at once
+    with Reason::Busy, and dropping the run closes an open relay.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-012.2026-11-02
+  requirement: SR-012
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_refused_host_is_recorded_escaped
+  result: pass
+  verdict: verified
+  justification: A host with an escape sequence and a newline is recorded without control bytes; refusals enter
+    the run's record through Record::push, which merges repeats and counts what exceeds the cap (crates/procage/src/violation.rs
+    tests).
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-012.2026-11-02-2
+  requirement: SR-012
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_refused_host_is_recorded_escaped
+  result: pass
+  verdict: verified
+  justification: A host with an escape sequence and a newline is recorded without control bytes; refusals enter
+    the run's record through Record::push, which merges repeats and counts what exceeds the cap (crates/procage/src/violation.rs
+    tests).
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-012.2026-11-02-3
+  requirement: SR-012
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_refused_host_is_recorded_escaped
+  result: pass
+  verdict: verified
+  justification: A host with an escape sequence and a newline is recorded without control bytes; refusals enter
+    the run's record through Record::push, which merges repeats and counts what exceeds the cap (crates/procage/src/violation.rs
+    tests).
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-012.2026-11-02-4
+  requirement: SR-012
+  method: test
+  evidence: crates/procage-proxy/tests/proxy.rs::a_refused_host_is_recorded_escaped
+  result: pass
+  verdict: verified
+  justification: A host with an escape sequence and a newline is recorded without control bytes; refusals enter
+    the run's record through Record::push, which merges repeats and counts what exceeds the cap (crates/procage/src/violation.rs
+    tests).
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
+- id: verification.sr-013.2026-11-02
+  requirement: SR-013
+  method: review
+  evidence: crates/procage/THREAT_MODEL.md:213
+  result: pass
+  verdict: verified
+  justification: THREAT_MODEL lists R-35 (parser differential) and R-36 (direct egress) with canaries on both suites,
+    the release status names shared hosting and fronting as residue, and site/content/docs/proxy.md says the allowlist
+    binds host names, not content.
+  verified_at: '2026-11-02T15:23:36Z'
+  commit: 9348ab0
+- id: verification.sr-013.2026-11-02-2
+  requirement: SR-013
+  method: review
+  evidence: crates/procage/THREAT_MODEL.md:219
+  result: pass
+  verdict: verified
+  justification: THREAT_MODEL lists R-35 (parser differential) and R-36 (direct egress) with canaries on both suites,
+    the release status names shared hosting and fronting as residue, and site/content/docs/proxy.md says the allowlist
+    binds host names, not content.
+  verified_at: '2026-11-02T15:23:47Z'
+  commit: 9348ab0
+- id: verification.sr-013.2026-11-02-3
+  requirement: SR-013
+  method: review
+  evidence: crates/procage/THREAT_MODEL.md:219
+  result: pass
+  verdict: verified
+  justification: THREAT_MODEL lists R-35 (parser differential) and R-36 (direct egress) with canaries on both suites,
+    the release status names shared hosting and fronting as residue, and site/content/docs/proxy.md says the allowlist
+    binds host names, not content.
+  verified_at: '2026-11-02T15:27:54Z'
+  commit: 9348ab0
+- id: verification.sr-013.2026-11-02-4
+  requirement: SR-013
+  method: review
+  evidence: crates/procage/THREAT_MODEL.md:219
+  result: pass
+  verdict: verified
+  justification: THREAT_MODEL lists R-35 (parser differential) and R-36 (direct egress) with canaries on both suites,
+    the release status names shared hosting and fronting as residue, and site/content/docs/proxy.md says the allowlist
+    binds host names, not content.
+  verified_at: '2026-11-02T17:37:46Z'
+  commit: 9348ab0
 decisions: []

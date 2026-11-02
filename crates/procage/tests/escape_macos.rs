@@ -21,6 +21,9 @@
 
 #[path = "support/asynchronous.rs"]
 mod asynchronous;
+#[cfg(feature = "proxy")]
+#[path = "support/proxied.rs"]
+mod proxied;
 #[path = "support/scratch.rs"]
 mod scratch_support;
 use scratch_support::Scratch;
@@ -307,7 +310,13 @@ fn op(spec: &str) -> String {
                 Err(e) => format!("spawn-{}", e.raw_os_error().unwrap_or(-1)),
             }
         }
-        other => format!("unknown-op-{other}"),
+        other => {
+            #[cfg(feature = "proxy")]
+            if let Some(result) = proxied::op(other, arg) {
+                return result;
+            }
+            format!("unknown-op-{other}")
+        }
     }
 }
 
@@ -1105,4 +1114,81 @@ fn r34_container_engines_are_unreachable() {
         got.split(' ').all(|r| r != "ok"),
         "service handoff stays denied: {got}"
     );
+}
+
+// ---- R-35 Allowlist parser differential ----
+
+/// A cage of `policy` with the proxy `entries`, run once for `action`.
+#[cfg(feature = "proxy")]
+fn via_proxy(policy: &Policy, entries: &[&str], action: &str) -> String {
+    let options = CageOptions::default().with_proxy(proxied::proxy(entries));
+    let cage = Cage::with_options(policy, &options).unwrap_or_else(|e| panic!("cage: {e}"));
+    let child = cage
+        .spawn(&mut child_command(action), &Grants::new())
+        .unwrap_or_else(|e| panic!("spawn: {e}"));
+    result(&finish(child, Duration::from_secs(20)))
+}
+
+/// The proxy reads a host one way: what is checked is what is connected
+/// to. Case and a trailing dot reach the allowed host; a NUL, percent
+/// encoding and an address in any notation do not, nor an allowed name
+/// that resolves to loopback.
+#[cfg(feature = "proxy")]
+#[test]
+fn r35_a_host_is_read_one_way() {
+    let port = proxied::echo();
+    let p = proxied::through_proxy(policy());
+    let reach = via_proxy(
+        &p,
+        &["allowed.test", "127.0.0.1"],
+        &format!("via-http:ALLOWED.TEST.:{port}"),
+    );
+    assert_eq!(reach, "ok");
+    let nul = proxied::hex(b"allowed.test\0.evil.test");
+    let got = via_proxy(
+        &p,
+        &["allowed.test"],
+        &format!(
+            "via-http:allowed.test%00.evil.test:443;via-socks:{nul}|443;via-http:2130706433:{port};\
+             via-http:0x7f.1:{port};via-http:[::ffff:127.0.0.1]:{port};via-http:allowed.test:{port}"
+        ),
+    );
+    assert_eq!(got, "400 socks-2 403 403 403 403");
+}
+
+// ---- R-36 Direct egress around the proxy ----
+
+/// A proxy-only child has no route but its own proxy: not TCP to a host
+/// port, IPv6 or a public address, not UDP (a datagram to the host's
+/// loopback does not arrive), not DNS to a public resolver; with no proxy
+/// listening, nothing at all.
+#[cfg(feature = "proxy")]
+#[test]
+fn r36_a_proxy_only_child_has_no_other_route() {
+    let port = proxied::echo();
+    let host_udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    host_udp
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .unwrap();
+    let udp = host_udp.local_addr().unwrap().port();
+    let p = proxied::through_proxy(policy());
+    let attempts = format!(
+        "tcp:127.0.0.1:{port};tcp:[::1]:{port};tcp:1.1.1.1:443;udp:8.8.8.8:53;udp:127.0.0.1:{udp}"
+    );
+    let got = via_proxy(&p, &["allowed.test", "127.0.0.1"], &attempts);
+    assert!(got.split(' ').all(|r| r != "ok"), "{attempts}: {got}");
+    let mut buf = [0u8; 8];
+    assert!(host_udp.recv(&mut buf).is_err(), "a datagram left the run");
+    let control = via_proxy(
+        &p,
+        &["allowed.test", "127.0.0.1"],
+        &format!("via-http:allowed.test:{port}"),
+    );
+    assert_eq!(control, "ok");
+    // No proxy of the cage's own and none at the policy's ports.
+    let got = in_child(
+        &format!("via-http:allowed.test:{port};tcp:127.0.0.1:{port}"),
+        &p,
+    );
+    assert!(got.split(' ').all(|r| r != "ok"), "{got}");
 }

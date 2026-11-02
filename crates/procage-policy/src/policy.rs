@@ -169,7 +169,9 @@ pub enum Lifetime {
     ///
     /// On Linux, `setsid` and `setpgid` fail with `EPERM` inside the cage,
     /// so every descendant stays in the child's process group. Programs that
-    /// daemonize or create job-control groups fail there. On macOS, where
+    /// daemonize or create job-control groups fail there (git's automatic
+    /// `gc --auto` prints `setsid failed`; set `gc.autoDetach=false` for
+    /// caged git). On macOS, where
     /// the sandbox cannot filter those calls, the run's processes carry a
     /// marker in their sandbox profile and are found by it.
     #[default]

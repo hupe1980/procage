@@ -69,6 +69,9 @@ pub enum DeniedBy {
     /// Linux below Landlock ABI 3: truncation is refused everywhere, because
     /// Landlock cannot confine it on this kernel.
     OlderKernel,
+    /// The run's proxy refused the host (feature `proxy`): it is not on the
+    /// allowlist, or resolves only to addresses that are not public.
+    Allowlist,
     /// A code this version does not know, kept as reported.
     Unknown(String),
 }
@@ -113,7 +116,25 @@ impl fmt::Display for DeniedBy {
             DeniedBy::OlderKernel => f.write_str(
                 "refused because this kernel's Landlock cannot confine truncation (below ABI 3)",
             ),
+            DeniedBy::Allowlist => f.write_str("refused by the proxy's allowlist"),
             DeniedBy::Unknown(code) => write!(f, "denied ({code})"),
+        }
+    }
+}
+
+#[cfg(feature = "proxy")]
+impl Violation {
+    /// A request the run's proxy refused: process `proxy` (pid 0), operation
+    /// `network-outbound`, the target `host:port (why)`.
+    pub(crate) fn refused(r: &procage_proxy::Refusal) -> Violation {
+        Violation {
+            pid: 0,
+            process: "proxy".into(),
+            operation: "network-outbound".into(),
+            target: Some(format!("{}:{} ({})", r.host, r.port, r.reason)),
+            denied_by: DeniedBy::Allowlist,
+            received: SystemTime::now(),
+            repeats: 1,
         }
     }
 }

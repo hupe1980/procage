@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Implemented (2026-11-02)
 
 **Input**: Agents need the network for package registries and APIs, but "network on" also means exfiltration to anywhere. Every leading agent sandbox now offers egress through a proxy with a domain allowlist. procage 0.1.0 can confine a macOS child to loopback ports (`Network::Proxy`) but ships no proxy, and on Linux loopback and proxy networking are capability gaps on both tiers.
 
@@ -42,6 +42,38 @@ bypassing a domain list.
 - Q: IP literals? → A: Refused unless an address range is allowlisted
   explicitly; private, loopback, link-local and metadata addresses are
   refused after resolution unless allowlisted explicitly.
+
+### Session 2026-11-02
+
+- Q: How does the proxy tell which run a connection came from? → A: A
+  listener per run and protocol, opened at spawn and closed when the run
+  ends. Its allowlist decides every connection it accepts, and its refusals
+  go into that run's violations. On macOS the run's profile allows outbound
+  connections only to its own listener ports (passed as profile parameters
+  at spawn, so each run gets fresh ports); on Linux T1 the listener lives in
+  the run's own network namespace. A child cannot reach another run's
+  listener.
+- Q: How does the parent provide the listener inside the T1 network
+  namespace? → A: The child sequence, after entering its network namespace
+  and before Landlock and seccomp, brings up loopback, binds the listener on
+  `127.0.0.1` at the policy's port, hands it to the parent over a socket
+  pair and closes its own copy; the parent accepts on it. No relay process,
+  no virtual interface, no privilege.
+- Q: What do the policy's proxy ports mean with a proxy procage runs? → A:
+  Which protocols are served (`http`, `socks`). On T1 they are the ports
+  inside the namespace; on macOS the run's ports are chosen at spawn. The
+  proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and lower-case)
+  always name the real address. Without a proxy procage runs, macOS keeps
+  today's meaning (the harness's own proxy at those ports) and Linux stays
+  a gap.
+- Q: Threads or async? → A: Threads, std only: the proxy works without the
+  `tokio` feature. Each run is bounded to 64 concurrent connections and a
+  10-second handshake and connect timeout.
+- Q: Unicode host names? → A: Refused; clients send A-labels (punycode).
+  This keeps one ASCII parser with no IDNA table in the decision path.
+- Q: When are refusals recorded? → A: In the run's record when the cage
+  reports violations (`with_violations`); the child always gets the refusal
+  (`403` for HTTP, reply code 2 for SOCKS5).
 
 ## User Scenarios & Testing *(mandatory)*
 

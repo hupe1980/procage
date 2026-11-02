@@ -426,6 +426,23 @@ fn unix_sockets_by_tier_and_abi() {
     p.net = Network::All;
     let plan = linux_plan(&p, target(Tier::T2, 8)).unwrap();
     assert!(!plan.mask_unix_sockets);
+    // From ABI 9 too: the right is not handled, so every pathname socket
+    // stays reachable.
+    for tier in [Tier::T1, Tier::T2] {
+        let plan = linux_plan(&p, target(tier, 9)).unwrap();
+        assert!(
+            !plan
+                .landlock
+                .handled_fs
+                .contains(linux::AccessFs::RESOLVE_UNIX)
+        );
+        let plan = linux_plan(&Policy::default(), target(tier, 9)).unwrap();
+        assert!(
+            plan.landlock
+                .handled_fs
+                .contains(linux::AccessFs::RESOLVE_UNIX)
+        );
+    }
     // Without the setting, no socket at all.
     let plan = linux_plan(&Policy::default(), target(Tier::T1, 8)).unwrap();
     assert!(plan.seccomp.iter().any(|r| r.syscall == linux::Syscall::Socket

@@ -515,6 +515,14 @@ pub const RUN_PREFIX_PARAM: &str = "procage-run-prefix";
 /// allowing it marks the process as one of the run's.
 pub const RUN_MARKER_PARAM: &str = "procage-run-marker";
 
+/// The parameter for the address a `Network::Proxy` profile allows for HTTP
+/// (`localhost:<port>`). The plan's `params` give the policy's port; a spawn
+/// with a proxy of its own binds the run's.
+pub const PROXY_HTTP_PARAM: &str = "procage-proxy-http";
+
+/// The parameter for the SOCKS5 address, as [`PROXY_HTTP_PARAM`].
+pub const PROXY_SOCKS_PARAM: &str = "procage-proxy-socks";
+
 /// The result of lowering.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {

@@ -259,7 +259,14 @@ pub(crate) enum ChildMount {
         optional: bool,
     },
     /// `mount(NULL, target, NULL, MS_BIND|MS_REMOUNT|flags)`.
-    Remount { target: CString, flags: c_ulong },
+    Remount {
+        target: CString,
+        flags: c_ulong,
+        /// Skipped when the target no longer exists: the host removed the
+        /// file after the bind, which detaches the bind in this namespace,
+        /// so nothing is left to cover (see [`ChildMount::Tmpfs`]).
+        optional: bool,
+    },
     /// `mount("tmpfs", target, "tmpfs", flags, data)`.
     Tmpfs {
         target: CString,
@@ -309,6 +316,97 @@ pub(crate) struct ChildPlan {
     pub(crate) filter: Vec<Insn>,
     /// With violation reporting: the listener hand-over.
     pub(crate) notify: Option<Notify>,
+    /// With a proxy of the cage's own (T1): the listeners to open in the
+    /// child's network namespace and hand to the parent.
+    pub(crate) bridge: Option<Bridge>,
+}
+
+/// The child's side of the proxy listeners: their ports, its end of the
+/// socket pair, and a control buffer, all allocated in the parent.
+pub(crate) struct Bridge {
+    pub(crate) ports: Vec<u16>,
+    pub(crate) socket: OwnedFd,
+    pub(crate) control: Vec<u8>,
+}
+
+impl Bridge {
+    /// The hand-over of listeners on `ports`, with the child's end `socket`.
+    pub(crate) fn new(ports: Vec<u16>, socket: OwnedFd) -> Bridge {
+        // SAFETY: CMSG_SPACE only computes a size.
+        let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as u32) } as usize;
+        Bridge {
+            ports,
+            socket,
+            control: vec![0; space],
+        }
+    }
+
+    /// In the child's new network namespace: brings `lo` up, then listens on
+    /// `127.0.0.1` at each port and sends each listener to the parent.
+    fn open(&mut self) -> Result<(), i32> {
+        let datagram = libc::SOCK_DGRAM | libc::SOCK_CLOEXEC;
+        // SAFETY: socket with integer arguments.
+        let control = unsafe { libc::socket(libc::AF_INET, datagram, 0) };
+        if control < 0 {
+            return Err(errno());
+        }
+        // SAFETY: an all-zero ifreq is valid; the name fits.
+        let mut ifr: libc::ifreq = unsafe { std::mem::zeroed() };
+        for (dst, src) in ifr.ifr_name.iter_mut().zip(b"lo") {
+            *dst = *src as libc::c_char;
+        }
+        // SAFETY: SIOCGIFFLAGS and SIOCSIFFLAGS read and write the ifreq on
+        // our stack; the flags field is the union member they use.
+        let up = unsafe {
+            let got = libc::ioctl(control, libc::SIOCGIFFLAGS as _, &raw mut ifr);
+            if got == 0 {
+                ifr.ifr_ifru.ifru_flags |= libc::IFF_UP as libc::c_short;
+                libc::ioctl(control, libc::SIOCSIFFLAGS as _, &raw const ifr)
+            } else {
+                got
+            }
+        };
+        let up = if up == 0 { Ok(()) } else { Err(errno()) };
+        // SAFETY: closing the socket this function created.
+        unsafe { libc::close(control) };
+        up?;
+        for &port in &self.ports {
+            let stream = libc::SOCK_STREAM | libc::SOCK_CLOEXEC;
+            // SAFETY: socket with integer arguments.
+            let l = unsafe { libc::socket(libc::AF_INET, stream, 0) };
+            if l < 0 {
+                return Err(errno());
+            }
+            let addr = libc::sockaddr_in {
+                sin_family: libc::AF_INET as libc::sa_family_t,
+                sin_port: port.to_be(),
+                sin_addr: libc::in_addr {
+                    s_addr: u32::from(std::net::Ipv4Addr::LOCALHOST).to_be(),
+                },
+                sin_zero: [0; 8],
+            };
+            // SAFETY: bind with an IPv4 address of its size, listen with an
+            // integer backlog, on the socket just created.
+            let rc = unsafe {
+                let rc = libc::bind(
+                    l,
+                    (&raw const addr).cast(),
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                );
+                if rc == 0 { libc::listen(l, 128) } else { rc }
+            };
+            let sent = if rc == 0 {
+                send(self.socket.as_raw_fd(), &[1], Some(l), &mut self.control)
+            } else {
+                Err(errno())
+            };
+            // SAFETY: closing the listener this function created; the parent
+            // has its own copy.
+            unsafe { libc::close(l) };
+            sent?;
+        }
+        Ok(())
+    }
 }
 
 /// The child's side of violation reporting: the notifying filter, its end
@@ -510,10 +608,21 @@ fn close_range(first: u32, last: u32, flags: u32) -> c_long {
     unsafe { libc::syscall(libc::SYS_close_range, first, last, flags) }
 }
 
-/// Marks every descriptor >= 3 close-on-exec except `keep` (sorted), with
+/// Marks every descriptor >= 3 close-on-exec except `keep` (sorted), and
+/// clears the flag on `keep`, so they stay open across the exec.
+fn mark_fds(keep: &[c_int]) -> Result<(), i32> {
+    mark_others(keep)?;
+    for &fd in keep {
+        // SAFETY: fcntl on an integer descriptor.
+        check_int(unsafe { libc::fcntl(fd, libc::F_SETFD, 0) })?;
+    }
+    Ok(())
+}
+
+/// Marks every descriptor >= 3 close-on-exec except `keep`, with
 /// `close_range`; where the kernel lacks it, with `fcntl` up to the
 /// open-files limit.
-fn mark_fds(keep: &[c_int]) -> Result<(), i32> {
+fn mark_others(keep: &[c_int]) -> Result<(), i32> {
     const CLOSE_RANGE_CLOEXEC: u32 = 1 << 2;
     let mut first: u32 = 3;
     let mut ranges_ok = true;
@@ -611,7 +720,11 @@ impl ChildPlan {
                         let r = mount(Some(source), target, None, libc::MS_BIND | rec, None);
                         (r, *optional, target.as_c_str())
                     }
-                    ChildMount::Remount { target, flags } => {
+                    ChildMount::Remount {
+                        target,
+                        flags,
+                        optional,
+                    } => {
                         if skipped == Some(target.as_c_str()) {
                             continue;
                         }
@@ -622,7 +735,7 @@ impl ChildPlan {
                             libc::MS_BIND | libc::MS_REMOUNT | flags,
                             None,
                         );
-                        (r, false, target.as_c_str())
+                        (r, *optional, target.as_c_str())
                     }
                     ChildMount::Tmpfs {
                         target,
@@ -640,6 +753,11 @@ impl ChildPlan {
                     r => r.map_err(|e| fail(steps::MOUNTS, e))?,
                 }
             }
+        }
+        // The proxy listeners, while the namespace's capabilities allow
+        // bringing up its loopback.
+        if let Some(bridge) = &mut self.bridge {
+            bridge.open().map_err(|e| fail(steps::LISTENER, e))?;
         }
         drop_capabilities(t1).map_err(|e| fail(steps::CAPABILITIES, e))?;
         // A new user namespace grants capabilities, which clears the death
@@ -709,7 +827,8 @@ impl ChildPlan {
         use std::os::unix::process::CommandExt;
         let mut plan = self;
         // SAFETY: `run` issues only system calls (setsid or setpgid, prctl,
-        // getppid, unshare, open/write/close on /proc/self, mount,
+        // getppid, unshare, open/write/close on /proc/self, mount, with a
+        // proxy socket/ioctl/bind/listen/sendmsg/close,
         // capset, setrlimit, close_range or fcntl, getrlimit,
         // landlock_restrict_self, seccomp, and with reporting sendmsg and
         // close). Everything it reads was
@@ -899,6 +1018,99 @@ pub(crate) fn tty_ioctl_errno(fd: c_int, byte: Option<u8>) -> i32 {
         }
     };
     if rc == -1 { errno() } else { 0 }
+}
+
+/// Sends one byte on the UDP socket `fd` to `127.0.0.1:port`; the errno,
+/// or 0 (for procage's tests).
+pub(crate) fn udp_send_errno(fd: c_int, port: u16) -> i32 {
+    let addr = libc::sockaddr_in {
+        sin_family: libc::AF_INET as libc::sa_family_t,
+        sin_port: port.to_be(),
+        sin_addr: libc::in_addr {
+            s_addr: u32::from(std::net::Ipv4Addr::LOCALHOST).to_be(),
+        },
+        sin_zero: [0; 8],
+    };
+    // SAFETY: one byte from a local, and a valid IPv4 address of its size.
+    let rc = unsafe {
+        libc::sendto(
+            fd,
+            b"x".as_ptr().cast(),
+            1,
+            0,
+            (&raw const addr).cast(),
+            std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+        )
+    };
+    if rc == -1 { errno() } else { 0 }
+}
+
+/// One direct route to `127.0.0.1:port` (for procage's tests): `fastopen`
+/// (TCP Fast Open data in `sendto`), `mptcp`, `raw` (an ICMP socket) or
+/// `tcp6` (`::1`); the errno, or 0 when it got through.
+pub(crate) fn net_errno(kind: &str, port: u16) -> i32 {
+    let v4 = libc::sockaddr_in {
+        sin_family: libc::AF_INET as libc::sa_family_t,
+        sin_port: port.to_be(),
+        sin_addr: libc::in_addr {
+            s_addr: u32::from(std::net::Ipv4Addr::LOCALHOST).to_be(),
+        },
+        sin_zero: [0; 8],
+    };
+    // SAFETY: an all-zero sockaddr_in6 is valid; the fields are set below.
+    let mut v6: libc::sockaddr_in6 = unsafe { std::mem::zeroed() };
+    v6.sin6_family = libc::AF_INET6 as libc::sa_family_t;
+    v6.sin6_port = port.to_be();
+    v6.sin6_addr.s6_addr = std::net::Ipv6Addr::LOCALHOST.octets();
+    let (family, kind_, protocol) = match kind {
+        "fastopen" => (libc::AF_INET, libc::SOCK_STREAM, 0),
+        "mptcp" => (libc::AF_INET, libc::SOCK_STREAM, libc::IPPROTO_MPTCP),
+        "raw" => (libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP),
+        "tcp6" => (libc::AF_INET6, libc::SOCK_STREAM, 0),
+        _ => return libc::EINVAL,
+    };
+    // SAFETY: socket with integer arguments.
+    let fd = unsafe { libc::socket(family, kind_ | libc::SOCK_CLOEXEC, protocol) };
+    if fd < 0 {
+        return errno();
+    }
+    let len = |size: usize| size as libc::socklen_t;
+    // SAFETY: each call gets an address of the size it is told, and one
+    // byte from a local.
+    let rc = unsafe {
+        match kind {
+            "fastopen" => libc::sendto(
+                fd,
+                b"x".as_ptr().cast(),
+                1,
+                libc::MSG_FASTOPEN,
+                (&raw const v4).cast(),
+                len(std::mem::size_of::<libc::sockaddr_in>()),
+            ) as c_int,
+            "raw" => libc::sendto(
+                fd,
+                [8u8, 0, 0xf7, 0xff, 0, 0, 0, 0].as_ptr().cast(),
+                8,
+                0,
+                (&raw const v4).cast(),
+                len(std::mem::size_of::<libc::sockaddr_in>()),
+            ) as c_int,
+            "tcp6" => libc::connect(
+                fd,
+                (&raw const v6).cast(),
+                len(std::mem::size_of::<libc::sockaddr_in6>()),
+            ),
+            _ => libc::connect(
+                fd,
+                (&raw const v4).cast(),
+                len(std::mem::size_of::<libc::sockaddr_in>()),
+            ),
+        }
+    };
+    let result = if rc < 0 { errno() } else { 0 };
+    // SAFETY: closing the socket this function created.
+    unsafe { libc::close(fd) };
+    result
 }
 
 // ------------------------------------------------------------------ listener

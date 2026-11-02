@@ -383,11 +383,18 @@ pub struct CageOptions {
     pub policy_in_receipt: bool,
     /// What the link check does before each spawn (default: refuse).
     pub link_audit: crate::LinkAudit,
+    /// Subtrees the link check does not examine for protected files (see
+    /// [`CageOptions::with_link_exemption`]).
+    pub link_exempt: Vec<PathBuf>,
     /// Whether runs note what they leave behind (see
     /// [`CageOptions::with_handoff_audit`]).
     pub handoff_audit: bool,
     /// The most entries one audit walk visits (default 200,000).
     pub walk_limit: usize,
+    /// The proxy each run of a `Network::Proxy` policy gets (see
+    /// [`CageOptions::with_proxy`]).
+    #[cfg(feature = "proxy")]
+    pub proxy: Option<procage_proxy::Proxy>,
 }
 
 impl Default for CageOptions {
@@ -398,8 +405,11 @@ impl Default for CageOptions {
             violations: false,
             policy_in_receipt: false,
             link_audit: crate::LinkAudit::Refuse,
+            link_exempt: Vec::new(),
             handoff_audit: false,
             walk_limit: 200_000,
+            #[cfg(feature = "proxy")]
+            proxy: None,
         }
     }
 }
@@ -420,6 +430,21 @@ impl CageOptions {
     /// These options with the link check in `mode` (see [`crate::audit`]).
     pub fn with_link_audit(mut self, mode: crate::LinkAudit) -> Self {
         self.link_audit = mode;
+        self
+    }
+
+    /// These options with `path` exempt from the link check for protected
+    /// files: a file at or below it may have another name. Meant for a store
+    /// whose files are written once and never rewritten in place, such as a
+    /// repository's `.git/objects`, which a local `git clone` hard-links to
+    /// the source repository's. A protected file there can then be changed
+    /// through a name in a writable tree (git notices a changed object when
+    /// it checks one, as `git fsck` does); hidden files are examined
+    /// everywhere. The path must be absolute (a relative one fails the cage
+    /// with [`Unsupported::Setting`]); [`Audit`](crate::Audit) lists a run's
+    /// exemptions.
+    pub fn with_link_exemption(mut self, path: impl AsRef<Path>) -> Self {
+        self.link_exempt.push(path.as_ref().to_path_buf());
         self
     }
 
@@ -458,6 +483,21 @@ impl CageOptions {
         self.violations = true;
         self
     }
+
+    /// These options with a proxy of the cage's own (feature `proxy`): each
+    /// spawn of a `Network::Proxy` policy gets fresh loopback listeners for
+    /// the protocols the policy names, the profile allows outbound
+    /// connections to those ports only, and the proxy variables
+    /// (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, lower-case too) name them.
+    /// The policy's port numbers are not used. Refusals are in
+    /// [`Child::violations`] when the cage reports violations; the run's
+    /// connections close when the run ends. A policy without
+    /// `Network::Proxy` is refused.
+    #[cfg(feature = "proxy")]
+    pub fn with_proxy(mut self, proxy: procage_proxy::Proxy) -> Self {
+        self.proxy = Some(proxy);
+        self
+    }
 }
 
 /// Per-spawn bindings of the policy's grants to existing paths.
@@ -493,9 +533,16 @@ fn compiled(
     lib: &sys::Libsandbox,
     plan: &SeatbeltPlan,
     marker: &[(String, String)],
+    overrides: &[(String, String)],
 ) -> Result<(Arc<[u8]>, bool), SpawnError> {
     let mut params = plan.params.clone();
     params.extend_from_slice(marker);
+    for (name, value) in overrides {
+        match params.iter_mut().find(|(n, _)| n == name) {
+            Some(param) => param.1.clone_from(value),
+            None => params.push((name.clone(), value.clone())),
+        }
+    }
     let key = (plan.profile.clone(), params);
     let cached = cache()
         .lock()
@@ -547,6 +594,9 @@ pub struct Cage {
     audit: Arc<crate::audit::CageAudit>,
     /// Answers [`Cage::explain`].
     explainer: Arc<crate::explain::Lazy>,
+    /// The cage's own proxy.
+    #[cfg(feature = "proxy")]
+    proxied: Option<crate::proxied::Proxied>,
 }
 
 impl Cage {
@@ -611,6 +661,15 @@ impl Cage {
         if lib.is_sandboxed() {
             return Err(SpawnError::AlreadySandboxed);
         }
+        #[cfg(feature = "proxy")]
+        let proxied = match &options.proxy {
+            None => None,
+            Some(proxy) => Some(crate::proxied::Proxied::new(proxy, &policy.net).ok_or(
+                SpawnError::Unsupported(Unsupported::Setting {
+                    setting: "CageOptions::with_proxy without Network::Proxy",
+                }),
+            )?),
+        };
         let (resolved, rewrites) = canon::resolve_policy(policy)?;
         let violations = options.violations || options.lower.violations;
         let mut lower_options = options.lower.clone();
@@ -633,9 +692,9 @@ impl Cage {
         } else {
             Vec::new()
         };
-        let (bytecode, compiled) = compiled(lib, &plan, &marker)?;
+        let (bytecode, compiled) = compiled(lib, &plan, &marker, &[])?;
         let facts = Arc::new(facts(policy, options, &plan, &[]));
-        let audit = Arc::new(cage_audit(&resolved, options));
+        let audit = Arc::new(cage_audit(&resolved, options)?);
         let explainer = Arc::new(crate::explain::Lazy::new(
             resolved,
             Target::MacOs,
@@ -650,6 +709,8 @@ impl Cage {
             facts,
             audit,
             explainer,
+            #[cfg(feature = "proxy")]
+            proxied,
         })
     }
 
@@ -767,7 +828,11 @@ impl Cage {
         } else {
             sys::Session::New
         };
-        let prepared = self.prepare(command, grants, fds, session)?;
+        #[cfg(feature = "proxy")]
+        let (listeners, overrides) = self.proxy_listeners(command)?;
+        #[cfg(not(feature = "proxy"))]
+        let overrides = Vec::new();
+        let prepared = self.prepare(command, grants, fds, session, &overrides)?;
         // The link check is the last step before the fork.
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
         // The record is registered before the fork, so no early denial is
@@ -782,7 +847,42 @@ impl Cage {
             run_audit,
             report,
             names,
+            #[cfg(feature = "proxy")]
+            listeners,
         })
+    }
+
+    /// The run's proxy listeners, the profile parameters for their ports,
+    /// and the proxy variables set on `command`.
+    #[cfg(feature = "proxy")]
+    #[allow(clippy::type_complexity)]
+    fn proxy_listeners(
+        &self,
+        command: &mut Command,
+    ) -> Result<
+        (
+            Vec<(procage_proxy::Protocol, std::net::TcpListener)>,
+            Vec<(String, String)>,
+        ),
+        SpawnError,
+    > {
+        let Some(proxied) = &self.proxied else {
+            return Ok((Vec::new(), Vec::new()));
+        };
+        let listeners = proxied.bind().map_err(SpawnError::Io)?;
+        let mut addrs = Vec::new();
+        let mut overrides = Vec::new();
+        for (protocol, listener) in &listeners {
+            let addr = listener.local_addr().map_err(SpawnError::Io)?;
+            let param = match protocol {
+                procage_proxy::Protocol::Http => procage_policy::PROXY_HTTP_PARAM,
+                procage_proxy::Protocol::Socks5 => procage_policy::PROXY_SOCKS_PARAM,
+            };
+            overrides.push((param.to_string(), format!("localhost:{}", addr.port())));
+            addrs.push((*protocol, addr));
+        }
+        crate::proxied::set_env(command, &addrs);
+        Ok((listeners, overrides))
     }
 
     /// The handle of the process `launch` was spawned as.
@@ -792,12 +892,20 @@ impl Cage {
             run_audit,
             report,
             mut names,
+            #[cfg(feature = "proxy")]
+            listeners,
         } = launch;
         let tmpdir = prepared.tmpdir.disarm();
         if tmpdir.is_some() {
             names.push(TMPDIR_GRANT.into());
         }
-        Child::new(
+        #[cfg(feature = "proxy")]
+        let proxy_run = self
+            .proxied
+            .as_ref()
+            .and_then(|p| p.serve(listeners, report.clone()));
+        #[cfg_attr(not(feature = "proxy"), allow(unused_mut))]
+        let mut child = Child::new(
             inner,
             prepared.dropped,
             tmpdir,
@@ -808,7 +916,10 @@ impl Cage {
             },
             crate::receipt::RunFacts::new(self.facts.clone(), names),
             run_audit,
-        )
+        );
+        #[cfg(feature = "proxy")]
+        child.set_proxy(proxy_run);
+        child
     }
 
     /// Turns the calling process into `command`, running in this cage: like
@@ -868,7 +979,14 @@ impl Cage {
         if self.grant_slot(TMPDIR_GRANT).is_some() {
             return SpawnError::Grant(GrantError::TmpdirWithExec);
         }
-        match self.prepare(command, grants, fds, sys::Session::Keep) {
+        #[cfg(feature = "proxy")]
+        if self.proxied.is_some() {
+            // No handle would hold the run's proxy.
+            return SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Cage::exec with CageOptions::with_proxy",
+            });
+        }
+        match self.prepare(command, grants, fds, sys::Session::Keep, &[]) {
             // On success `exec` does not return; the run marker (forking
             // policies) is never searched: there is no handle.
             Ok(_prepared) => match self.audit.before_spawn() {
@@ -888,6 +1006,7 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
         session: sys::Session,
+        overrides: &[(String, String)],
     ) -> Result<Prepared, SpawnError> {
         let lib = libsandbox()?;
         if lib.is_sandboxed() {
@@ -918,7 +1037,7 @@ impl Cage {
         if session == sys::Session::Keep {
             crate::unix::find_program(command).map_err(SpawnError::Io)?;
         }
-        let (run, bytecode) = self.run_and_bytecode(lib)?;
+        let (run, bytecode) = self.run_and_bytecode(lib, overrides)?;
         sys::ChildPlan {
             ops: lib.child_ops(),
             bytecode,
@@ -941,18 +1060,22 @@ impl Cage {
     fn run_and_bytecode(
         &self,
         lib: &sys::Libsandbox,
+        overrides: &[(String, String)],
     ) -> Result<(Option<lifetime::Run>, Arc<[u8]>), SpawnError> {
         if !self.plan.run_marker && !self.violations {
-            return Ok((None, self.bytecode.clone()));
+            if overrides.is_empty() {
+                return Ok((None, self.bytecode.clone()));
+            }
+            return Ok((None, compiled(lib, &self.plan, &[], overrides)?.0));
         }
         if self.plan.run_marker {
             lifetime::probe(lib)?;
         }
         let run = lifetime::Run::take();
-        if run.is_first() {
+        if run.is_first() && overrides.is_empty() {
             return Ok((Some(run), self.bytecode.clone()));
         }
-        match compiled(lib, &self.plan, &run.params()) {
+        match compiled(lib, &self.plan, &run.params(), overrides) {
             Ok((bytecode, _)) => Ok((Some(run), bytecode)),
             Err(e) => {
                 run.free();
@@ -968,6 +1091,8 @@ pub(crate) struct Launch {
     run_audit: crate::audit::RunAudit,
     report: Option<violations::Sink>,
     names: Vec<String>,
+    #[cfg(feature = "proxy")]
+    listeners: Vec<(procage_proxy::Protocol, std::net::TcpListener)>,
 }
 
 impl Launch {
@@ -1168,7 +1293,10 @@ fn facts(
 /// The audits of a cage for `policy` (resolved): the link check's targets,
 /// with the class paths of every home under `/Users`, and the handoff
 /// audit's trees.
-fn cage_audit(policy: &Policy, options: &CageOptions) -> crate::audit::CageAudit {
+fn cage_audit(
+    policy: &Policy,
+    options: &CageOptions,
+) -> Result<crate::audit::CageAudit, SpawnError> {
     use procage_policy::{HardDenyClass, presets};
     use std::os::unix::ffi::OsStrExt;
     let homes: Vec<PathBuf> = std::fs::read_dir("/Users")
@@ -1208,7 +1336,13 @@ fn cage_audit(policy: &Policy, options: &CageOptions) -> crate::audit::CageAudit
             false,
         ));
     }
-    let targets = crate::audit::Targets::new(policy, class_paths, sys::uid());
+    let exempt = crate::audit::exemptions(&options.link_exempt, |p| {
+        canon::resolve_existing(p)
+            .ok()
+            .map(|a| PathBuf::from(std::ffi::OsStr::from_bytes(a.as_bytes())))
+    })
+    .map_err(|setting| SpawnError::Unsupported(Unsupported::Setting { setting }))?;
+    let targets = crate::audit::Targets::new(policy, class_paths, sys::uid()).exempting(exempt);
     let handoff = options.handoff_audit.then(|| {
         let trees = policy
             .fs
@@ -1234,5 +1368,10 @@ fn cage_audit(policy: &Policy, options: &CageOptions) -> crate::audit::CageAudit
             home,
         )
     });
-    crate::audit::CageAudit::new(options.link_audit, targets, handoff, options.walk_limit)
+    Ok(crate::audit::CageAudit::new(
+        options.link_audit,
+        targets,
+        handoff,
+        options.walk_limit,
+    ))
 }
