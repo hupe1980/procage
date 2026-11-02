@@ -48,9 +48,8 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          # A crate's first version needs an API token (Trusted Publishing
-          # is configured per existing crate): publish procage-proxy once by
-          # hand before the first release that contains it.
+          # A new crate's first version needs an API token: Trusted
+          # Publishing is configured per existing crate.
           for crate in procage-policy procage-proxy procage; do
             version=$(cargo pkgid -p "$crate" | sed 's/.*[#@]//')
             status=$(curl -s -o /dev/null -w '%{http_code}' -A 'procage-release (github.com/hupe1980/procage)' \

@@ -6,6 +6,8 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-02
+
 ### Added
 
 - `Cage::exec_session` and `exec_session_with_fds`: the command leads its
@@ -14,6 +16,11 @@ All notable changes to procage are listed here. The format follows
   ends that run; macOS cannot refuse `setsid`.
 - `SpawnError::GroupLeader`: `exec_session` in a process group leader that
   leads no session.
+
+### Changed
+
+- Every crate takes the workspace version: `procage-proxy` 0.3.2 (no code
+  change since 0.3.0).
 
 ## [0.3.1] - 2026-11-02
 
@@ -161,7 +168,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/hupe1980/procage/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/hupe1980/procage/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/hupe1980/procage/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hupe1980/procage/compare/v0.1.0...v0.2.0
