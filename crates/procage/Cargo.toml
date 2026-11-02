@@ -23,6 +23,11 @@ name = "exec"
 path = "tests/exec.rs"
 harness = false
 
+# Spawn timings next to a plain spawn and the tools others shell out to.
+[[bench]]
+name = "spawn"
+harness = false
+
 [dependencies]
 # The serialised policy is what a receipt's digest is taken over.
 procage-policy = { workspace = true, features = ["serde"] }
@@ -32,7 +37,6 @@ sha2.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 libc.workspace = true
-
 
 # The workspace set, except that unsafe code is denied rather than forbidden so
 # that `macos::sys` and `linux::sys` alone can allow it.

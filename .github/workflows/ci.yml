@@ -80,6 +80,8 @@ jobs:
           PROCAGE_ESCAPE_VIOLATIONS: "1"
       - name: Lowered profiles compile (well-formedness only)
         run: cargo test --locked -p procage-kernel-facts --test policy_compiles
+      - name: Spawn benchmark (indicative; never fails on timing)
+        run: cargo bench --locked -p procage --bench spawn -- --quick
 
   linux:
     name: facts ${{ matrix.os }} ${{ matrix.config }}
@@ -117,6 +119,8 @@ jobs:
         run: cargo test --locked -p procage --test escape_linux
         env:
           PROCAGE_ESCAPE_VIOLATIONS: "1"
+      - name: Spawn benchmark (indicative; never fails on timing)
+        run: cargo bench --locked -p procage --bench spawn -- --quick
 
   fuzz:
     name: fuzz (policy crate, 60 s per target)

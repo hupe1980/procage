@@ -39,7 +39,26 @@ just linux         # the Linux backend's tests in Docker, tier T2 (Docker's defa
 just linux-t1      # the same with seccomp and AppArmor unconfined, tier T1
 just kf-linux      # the Linux kernel facts in Docker (T2); kf-linux-t1 for T1
 just fuzz-all      # fuzz the policy crate (nightly, cargo-fuzz)
+just bench         # the spawn benchmark (indicative)
 ```
+
+## Benchmarks
+
+`just bench` spawns a no-op program 300 times per case and prints median,
+p90 and p99 (`-- --quick` for 30; CI runs that and never fails on timing).
+It refuses to run inside another sandbox. Median overhead over a plain
+spawn, measured 2026-11-02:
+
+| Case | macOS 26.6.2, M4 Pro | Linux 7.0 T1 (Docker) | Linux 7.0 T2 (Docker) |
+|---|---|---|---|
+| cached cage | 1.03 ms | 0.99 ms | 0.27 ms |
+| cached cage, link check off | 0.58 ms | 0.95 ms | 0.25 ms |
+| new policy per spawn | 11.6 ms (profile compiled) | 1.17 ms | 0.50 ms |
+| with violation reporting | 1.81 ms | 0.98 ms | 0.26 ms |
+| `sandbox-exec -p` / `bwrap --unshare-all` | 10.9 ms | 1.45 ms | — |
+
+On macOS the link check (R-08) is about half the cached cost; a cage reused
+across spawns compiles its profile once.
 
 ## Where they have run
 

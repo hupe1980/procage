@@ -37,6 +37,10 @@ test:
     cargo test --workspace
     cargo test -p procage-policy --all-features
 
+# Spawn latency against a plain spawn and sandbox-exec or bwrap; run outside any sandbox.
+bench *ARGS:
+    cargo bench -p procage --bench spawn -- {{ARGS}}
+
 # The kernel facts only; pass an id prefix to filter, e.g. `just facts KF-M1`.
 facts *FILTER:
     cargo test -p procage-kernel-facts --test kernel_facts -- {{FILTER}}

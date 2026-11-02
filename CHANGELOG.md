@@ -43,6 +43,7 @@ All notable changes to procage are listed here. The format follows
 - `Construct::ProcOtherProcesses`,
   `procage_policy::linux::reaches_other_processes`; Seatbelt filters
   `SysctlName` and `SysctlNamePrefix`.
+- A spawn benchmark (`just bench`).
 
 ### Changed
 

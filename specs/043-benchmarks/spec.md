@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Implemented (2026-11-02)
 
 **Input**: procage positions itself as the low-latency sandbox tier (sub-millisecond to milliseconds, against 100 ms and more for microVMs) and states targets: at most 0.3 ms median overhead over a plain fork and exec on macOS, at most 1 ms on Linux tier T1. 0.1.0 has no benchmark; two ignored latency probes print numbers that nothing records.
 
@@ -29,6 +29,11 @@ on named hardware and OS builds. The interesting comparisons are:
   are too noisy to gate on.
 - Q: What if a target is missed? → A: The docs state the measured number; the
   target is revised or the regression fixed, never left unstated.
+
+- Q: A benchmarking framework? → A: No. A small bench program
+  (`cargo bench`, no framework) reports median, p90 and p99 of many
+  iterations per case; a statistics framework would add a large dependency
+  tree to a security library for numbers a few hundred samples give.
 
 ## User Scenarios & Testing *(mandatory)*
 
