@@ -2,21 +2,20 @@
 
 This document defines what procage is meant to defend against, what it
 trusts and where it stops. It also lists every known escape class with its
-status in the current release. The same text is published in the repository
+status. The same text is published in the repository
 and in the crate documentation.
 
 ## Release status
 
-This is procage 0.2.0, in development after 0.1.0. The list below states
-what it does not contain; the catalog states the evidence for every escape
-class.
+This describes procage 0.2.0. The list below states what it does not
+contain; the catalog states the evidence for every escape class.
 
 Seatbelt is the macOS kernel sandbox. On Linux, Landlock controls files and
 network ports and seccomp filters system calls; tier T1 adds user namespaces
 and mounts, tier T2 (where user namespaces are unavailable) has Landlock and
 seccomp only. Both tiers need Landlock ABI 1 or later.
 
-This release cages a child on both systems, applying the sandbox in the
+procage cages a child on both systems, applying the sandbox in the
 child with system calls only; if any step fails, the target never runs. A
 construct the host cannot enforce is an error unless the caller accepts it
 by name, as an approximation or through `Cage::fit`. On both systems procage
@@ -29,9 +28,6 @@ started the helper.
 
 It does **not**:
 
-- keep a caged child on macOS from reading the arguments and environment of
-  other processes of the same user (R-25), so do not pass secrets to the
-  calling program through its arguments or environment;
 - protect a helper program from replacement (R-26): procage installs none,
   and a `Cage::exec` helper is the caller's own binary, to be kept outside
   every writable path;
@@ -49,8 +45,8 @@ It does **not**:
   Unix-socket rules on tier T2 below Landlock ABI 9 (tier T1 masks the
   listening sockets outside the allowed paths at spawn).
 
-The escape-class catalog below states, per class, whether this release has
-escape-suite evidence and which variants remain open.
+The escape-class catalog below states, per class, the escape-suite
+evidence and which variants remain open.
 
 ## Adversary
 
@@ -205,7 +201,7 @@ why the numbering has gaps.
 | R-22 | Terminal input injection | A child that shares the caller's terminal pushes keystrokes into its input queue, which the shell then runs outside the sandbox. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r22_terminal_input_injection_is_refused, tests/escape_linux.rs::r22_terminal_input_injection_is_refused | KF-M26 |
 | R-23 | Outliving the run | Descendants keep running after the run ends, or register launch agents, cron jobs or login items that later run unsandboxed. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r23_descendants_die_with_the_run, tests/escape_macos.rs::r23_a_double_forked_descendant_dies_with_the_run, tests/escape_macos.rs::r23_descendants_of_an_exited_child_die_with_the_run, tests/escape_macos.rs::r23_concurrent_runs_are_separate, tests/escape_macos.rs::r23_a_launch_agent_cannot_be_planted, tests/escape_linux.rs::r23_descendants_die_with_the_run, tests/escape_linux.rs::r23_a_double_forked_descendant_dies_with_the_run, tests/escape_linux.rs::r23_descendants_of_an_exited_child_die_with_the_run, tests/escape_linux.rs::r23_sessions_are_locked, tests/escape_linux.rs::r23_a_user_unit_cannot_be_planted | — |
 | R-24 | Secrets in the environment | Inherited environment variables carry tokens, keys or agent sockets into the child. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r24_secret_variables_do_not_reach_the_child, tests/escape_linux.rs::r24_secret_variables_do_not_reach_the_child | — |
-| R-25 | Process introspection | The child reads other processes' arguments and environment through same-user process information. | macOS, Linux | mitigate | partial | tests/escape_macos.rs::r25_other_processes_cannot_be_signalled, tests/escape_linux.rs::r25_other_processes_are_opaque | — |
+| R-25 | Process introspection | The child reads other processes' arguments and environment through same-user process information. The process-access class of the hard-deny tier refuses it on macOS on every base (the argument sysctls and other processes' information are denied; the run's own processes stay readable); on Linux the base grants no `/proc`, and a rule that reaches other processes there is an approximation the caller accepts by name (`proc-other-processes`), which exposes their arguments but not their environment. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r25_other_processes_cannot_be_signalled, tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable, tests/escape_linux.rs::r25_other_processes_are_opaque, tests/escape_linux.rs::r25_proc_through_a_link_or_a_grant_is_an_approximation | — |
 | R-26 | Helper replacement | A helper program that procage runs is overwritten from inside the sandbox and runs uncaged at the next start. | macOS, Linux | mitigate | planned | — | — |
 | R-28 | Filter-bypassing kernel interfaces | io_uring, VM sockets or netlink perform I/O that socket and file filters do not see. | Linux | mitigate | mitigated | tests/escape_linux.rs::r28_filter_bypassing_interfaces_are_refused | — |
 | R-29 | Nested user namespaces | A user namespace created inside the sandbox is used to remount, unmount or remap and so undo the sandbox's mounts. | Linux | mitigate | mitigated | tests/escape_linux.rs::r29_nested_user_namespaces_and_mount_changes_are_refused | KF-L09, KF-L10 |
@@ -216,7 +212,7 @@ why the numbering has gaps.
 
 ### Harness responsibilities
 
-- **R-07** On macOS, this release denies writes to the known
+- **R-07** On macOS, procage denies writes to the known
   trust-handoff locations in every policy, last and waivable only by name:
   version-control hooks and config, shell startup files, common tool
   configuration, editor and agent directories, user program directories and
@@ -229,13 +225,6 @@ why the numbering has gaps.
 
 ### Open variants
 
-- **R-25** On macOS any process of the same user can read another's
-  arguments and environment through the `KERN_PROCARGS2` query, which the
-  sandbox does not mediate (observed on macOS 26.6.2). Signals to other
-  processes and task ports are refused. On Linux the base profile does not
-  grant `/proc`; a policy that grants it exposes other processes'
-  arguments, because Linux children have no PID namespace, while their
-  environment stays out of reach.
 - **R-26** procage installs no helper program of its own; the class applies
   only to one it would install.
 

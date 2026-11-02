@@ -13,8 +13,12 @@ fn t2(abi: u8) -> Target {
     }
 }
 
+/// A harness that reads everything accepts the spawn snapshot and, on
+/// Linux, that other processes' command lines are readable under `/proc`.
 fn options() -> LowerOptions {
-    LowerOptions::default().accept_spawn_snapshot()
+    LowerOptions::default()
+        .accept_spawn_snapshot()
+        .allow(Construct::ProcOtherProcesses)
 }
 
 /// The shape of an agent harness's policy: read everything, write a

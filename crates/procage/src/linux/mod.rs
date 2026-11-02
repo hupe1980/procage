@@ -749,6 +749,7 @@ impl Cage {
         let homes = classes::homes(&options.homes);
         let rules = spawn::rule_paths(&plan);
         classes::home_gaps(&mut plan, &rules, &homes, &options.lower, target)?;
+        proc_links(&mut plan, &rules, &options.lower.allow_degrade, target)?;
         let runtime = services::runtime_dirs(&options.runtime_dirs);
         if !plan.service_sockets.is_empty() {
             let found = services::find(&plan.service_sockets, &runtime, abstract_visible(&plan));
@@ -854,7 +855,7 @@ impl Cage {
             }
             None => (None, None),
         };
-        let (dropped, removal) = self.prepare(command, grants, fds, session, notify)?;
+        let (dropped, removal, proc) = self.prepare(command, grants, fds, session, notify)?;
         // The link check is the last step before the fork.
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
         let inner = command.spawn().map_err(spawn::decode)?;
@@ -867,13 +868,15 @@ impl Cage {
         if tmpdir.is_some() {
             names.push(TMPDIR_GRANT.into());
         }
+        let mut facts = crate::receipt::RunFacts::new(self.facts.clone(), names);
+        if proc {
+            facts = facts.with_approximation(crate::receipt::ReceiptApproximation {
+                construct: Construct::ProcOtherProcesses,
+                note: procage_policy::linux::PROC_OTHER_PROCESSES_NOTE.into(),
+            });
+        }
         Ok(Child::new(
-            inner,
-            dropped,
-            tmpdir,
-            reporting,
-            crate::receipt::RunFacts::new(self.facts.clone(), names),
-            run_audit,
+            inner, dropped, tmpdir, reporting, facts, run_audit,
         ))
     }
 
@@ -963,7 +966,9 @@ impl Cage {
 
     /// Everything before the fork (or the exec), without changing the
     /// calling process: checks, grant rules, the namespace plan, the
-    /// environment and the child sequence installed on `command`.
+    /// environment and the child sequence installed on `command`. Returns
+    /// what was dropped from the environment, the temporary directory's
+    /// removal, and whether a grant reaches other processes' `/proc` entries.
     fn prepare(
         &self,
         command: &mut Command,
@@ -971,7 +976,7 @@ impl Cage {
         fds: &[BorrowedFd<'_>],
         session: sys::Session,
         notify: Option<sys::Notify>,
-    ) -> Result<(Vec<String>, TmpdirGuard), SpawnError> {
+    ) -> Result<(Vec<String>, TmpdirGuard, bool), SpawnError> {
         let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
         if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
             return Err(SpawnError::Grant(GrantError::Reserved {
@@ -1047,11 +1052,10 @@ impl Cage {
             notify,
         }
         .install(command);
-        Ok((dropped, removal))
+        let proc = bound.values().any(|p| proc_gap(&self.plan, p).is_some());
+        Ok((dropped, removal, proc))
     }
 
-    /// Resolves each binding: declared, existing, and on T2 not reaching a
-    /// hard-deny class.
     /// The paths kept out piecewise on tier T2: hidden rules, and the
     /// existing paths of the hidden classes in force.
     fn hidden_piecewise(&self) -> Vec<PathBuf> {
@@ -1136,6 +1140,9 @@ impl Cage {
             .collect())
     }
 
+    /// Resolves each binding: declared, existing, reaching other processes'
+    /// `/proc` entries only with `proc-other-processes` accepted, and on T2
+    /// not reaching a hard-deny class.
     fn bind(
         &self,
         grants: &Grants,
@@ -1155,6 +1162,11 @@ impl Cage {
                     error,
                 })
             })?;
+            if !self.allowed.contains(&Construct::ProcOtherProcesses)
+                && let Some(gap) = proc_gap(&self.plan, &resolved)
+            {
+                return Err(SpawnError::Lower(LowerError::Gaps(vec![gap])));
+            }
             if self.plan.tier == Tier::T2 {
                 let writes = self.plan.landlock.rules.iter().any(|r| {
                     matches!(&r.target, RuleTarget::Grant(g) if g.as_str() == name)
@@ -1175,6 +1187,66 @@ impl Cage {
         }
         Ok(out)
     }
+}
+
+/// The gap of a rule or grant whose resolved `path` reaches other processes'
+/// entries under `/proc`.
+fn proc_gap(plan: &LinuxPlan, path: &Path) -> Option<procage_policy::CapabilityGap> {
+    use std::os::unix::ffi::OsStrExt;
+    procage_policy::linux::reaches_other_processes(path.as_os_str().as_bytes()).then(|| {
+        procage_policy::CapabilityGap {
+            construct: Construct::ProcOtherProcesses,
+            target: Target::Linux {
+                tier: plan.tier,
+                landlock_abi: plan.landlock_abi,
+            },
+            kind: procage_policy::GapKind::Approximation,
+            subject: Some(path.display().to_string()),
+        }
+    })
+}
+
+/// Rules that reach other processes' `/proc` entries only once resolved (a
+/// symbolic link to `/proc` or `/`) are the same approximation as a rule on
+/// `/proc`: refused unless accepted, then listed in the plan. The lowering
+/// already counted rules spelled that way.
+fn proc_links(
+    plan: &mut LinuxPlan,
+    rules: &[(PathBuf, bool)],
+    allowed: &BTreeSet<Construct>,
+    target: Target,
+) -> Result<(), SpawnError> {
+    use std::os::unix::ffi::OsStrExt;
+    let gaps: Vec<_> = rules
+        .iter()
+        .filter(|(p, _)| !procage_policy::linux::reaches_other_processes(p.as_os_str().as_bytes()))
+        .filter_map(|(p, _)| {
+            let resolved = std::fs::canonicalize(p).ok()?;
+            proc_gap(plan, &resolved).map(|mut gap| {
+                gap.subject = Some(p.display().to_string());
+                gap
+            })
+        })
+        .collect();
+    if gaps.is_empty() {
+        return Ok(());
+    }
+    if !allowed.contains(&Construct::ProcOtherProcesses) {
+        return Err(SpawnError::Lower(LowerError::Gaps(gaps)));
+    }
+    if !plan
+        .degradations
+        .iter()
+        .any(|d| d.construct == Construct::ProcOtherProcesses)
+    {
+        plan.degradations.push(procage_policy::Degradation {
+            construct: Construct::ProcOtherProcesses,
+            target,
+            note: procage_policy::linux::PROC_OTHER_PROCESSES_NOTE,
+        });
+        plan.degradations.sort();
+    }
+    Ok(())
 }
 
 /// The descriptors to hand over: those above the standard three, each of

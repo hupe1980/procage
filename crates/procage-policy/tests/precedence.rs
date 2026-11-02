@@ -67,9 +67,12 @@ fn rule_order_never_changes_the_plan() {
 
 #[test]
 fn blocks_are_in_fixed_order_and_the_tier_is_last() {
+    // The tier's own denies; a class may also add an early deny and an allow
+    // elsewhere (process access), which are not part of the tier.
     let hard: BTreeSet<String> = HardDenyClass::ALL
         .iter()
         .flat_map(|&c| class_lines(c, &hard_deny_base()))
+        .filter(|l| l.starts_with("(deny") && !l.ends_with(" (with no-report))"))
         .collect();
     for (name, policy) in reference_policies() {
         let Ok(Plan::Seatbelt(plan)) = lower(&policy, Target::MacOs, &allow_all()) else {
@@ -258,7 +261,13 @@ fn every_allow_has_a_source() {
             .map(String::from)
             .collect()
     };
-    assert!(allows(&Policy::default()).is_empty());
+    // The process-access class's allow of the run's own process information
+    // is the only allow without a rule of the policy.
+    let class_allow = "(allow process-info-pidinfo (target same-sandbox))".to_string();
+    assert_eq!(
+        allows(&Policy::default()),
+        BTreeSet::from([class_allow.clone()])
+    );
     for composite in [agent_workspace(), build(), read_only()] {
         let mut union = BTreeSet::new();
         let mut parts = Vec::new();

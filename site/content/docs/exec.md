@@ -8,9 +8,7 @@ group = "Guides"
 nav = "Running helpers"
 +++
 
-Sometimes other code starts the process: an MCP client, a terminal emulator, `tokio::process::Command` with `kill_on_drop`. That code holds the process id, the pipes and the exit status, and it kills the process when it is done. `Cage::spawn` does not fit, because it would make procage the parent.
-
-Give that code a small **helper** program instead of the command. The helper builds the cage and calls `Cage::exec`, which confines the helper itself and executes the command in its place, like `std::os::unix::process::CommandExt::exec`: it does not fork and returns only on failure.
+When other code starts and owns the process (an MCP client, a terminal emulator, `tokio::process::Command` with `kill_on_drop`), `Cage::spawn` does not fit: it would make procage the parent. Give that code a small **helper** program instead of the command. The helper builds the cage and calls `Cage::exec`, which confines the helper itself and executes the command in its place, like `CommandExt::exec`: it does not fork and returns only on failure.
 
 ## The helper
 
@@ -31,7 +29,7 @@ fn main() {
 }
 ```
 
-After `exec`, the helper's pid, standard streams, process group and exit status are the command's, so whatever waits for or kills the helper does so for the command. The repository's `crates/procage/examples/exec_helper.rs` is a complete helper that confines a program to a writable workspace.
+After `exec`, the helper's pid, standard streams, process group and exit status are the command's. `crates/procage/examples/exec_helper.rs` in the repository is a complete helper that confines a program to a writable workspace.
 
 ## The caller
 
@@ -50,11 +48,11 @@ let helper = std::process::Command::new("my-helper")
 
 ## Rules and differences from spawn
 
-The confinement is the one `Cage::spawn` gives, except that the session and process group stay the caller's and there is no `Child` handle. So:
+The confinement is the one `Cage::spawn` gives, except that the session and process group stay the caller's and there is no `Child` handle, so no receipt, violation record or handoff audit (the hard-link check still runs):
 
 - **Lifetime belongs to the caller.** Under the default `Lifetime::Run` on Linux, descendants cannot leave the process group (`setsid` and `setpgid` fail), so the group kill reaches all of them, and the command receives `SIGKILL` when the helper's parent exits. On macOS a descendant that starts its own session is not reached by the group kill; use `Cage::spawn`, whose handle finds it, when that matters.
 - **Single-threaded on Linux tier T1.** User namespaces refuse a multi-threaded process: call `exec` early in `main`, before starting threads, or choose tier T2 with `CageOptions::with_tier`. Otherwise you get `Unsupported::ExecThreads`.
 - **No `tmpdir` grant.** Nothing would remove the directory, so a policy that declares it is refused (`GrantError::TmpdirWithExec`).
-- **Checks first.** Everything that can be checked is checked before the process changes: grant bindings, the `tmpdir` grant, threads, the environment, a program that cannot be found. A failure after that (`SpawnError::Apply`, or `SpawnError::Io` from `execvp`) leaves the process partly confined: exit.
+- **Checks first.** Grant bindings, the `tmpdir` grant, threads, the environment and a missing program are checked before the process changes. A failure after that (`SpawnError::Apply`, or `SpawnError::Io` from `execvp`) leaves the process partly confined: exit.
 
 `Cage::exec_with_fds` also keeps chosen descriptors open across the exec, at the same numbers; every other descriptor numbered 3 or higher is closed.

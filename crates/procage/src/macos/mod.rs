@@ -29,10 +29,7 @@
 //!   [`Base::V1`](procage_policy::Base::V1) does not run Xcode's tool shims
 //!   (`/usr/bin/git`, `/usr/bin/python3`): use
 //!   [`Base::V3`](procage_policy::Base::V3), see `procage_policy::base`;
-//! - procage installs no helper program of its own (so R-26 does not apply);
-//! - the `KERN_PROCARGS2` query gives a caged child the arguments and
-//!   environment of any process of the same user: the sandbox does not
-//!   mediate it, even under `(deny sysctl-read)` (macOS 26.6.2).
+//! - procage installs no helper program of its own (so R-26 does not apply).
 //!
 //! With `Tty::Inherit` the child runs in its own process group, so its reads
 //! from the shared terminal stop with SIGTTIN, like a background job.
@@ -1006,6 +1003,17 @@ pub mod testing {
     /// (`KERN_PROCARGS2`); the errno, or 0.
     pub fn procargs_errno(pid: u32) -> i32 {
         libc::pid_t::try_from(pid).map_or(libc::EINVAL, sys::procargs_errno)
+    }
+
+    /// Reads another process's arguments through the older `KERN_PROCARGS`
+    /// query; the errno, or 0.
+    pub fn procargs1_errno(pid: u32) -> i32 {
+        libc::pid_t::try_from(pid).map_or(libc::EINVAL, sys::procargs1_errno)
+    }
+
+    /// Reads a process's information (`proc_pidinfo`); the errno, or 0.
+    pub fn pidinfo_errno(pid: u32) -> i32 {
+        libc::pid_t::try_from(pid).map_or(libc::EINVAL, sys::pidinfo_errno)
     }
 
     /// `kill(pid, sig)`; the errno, or 0.

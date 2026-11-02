@@ -141,7 +141,19 @@ fn the_empty_policy_denies_everything_on_every_target() {
         match plan {
             Plan::Seatbelt(s) => {
                 assert!(s.profile.starts_with("(version 1)\n(deny default)\n"));
-                assert!(!s.profile.contains("(allow"), "{}", s.profile);
+                // The only allow: the run's own process information, which
+                // the process-access class's early deny would take away.
+                let allows: Vec<&str> = s
+                    .profile
+                    .lines()
+                    .filter(|l| l.starts_with("(allow"))
+                    .collect();
+                assert_eq!(
+                    allows,
+                    ["(allow process-info-pidinfo (target same-sandbox))"],
+                    "{}",
+                    s.profile
+                );
                 assert!(s.profile.contains("(deny system-fcntl"));
             }
             Plan::Linux(l) => {
@@ -283,13 +295,24 @@ fn reading_everything_needs_exactly_the_spawn_snapshot() {
             secrets.to_string().contains("accept_spawn_snapshot"),
             "{secrets}"
         );
+        // Without a PID namespace reading `/` also reads other processes'
+        // command lines, which needs its own name.
+        assert!(
+            gaps.iter()
+                .any(|g| g.construct == Construct::ProcOtherProcesses)
+        );
+        let options = options.clone().allow(Construct::ProcOtherProcesses);
         let plan = lower(&p, target, &options).unwrap();
         let degraded: Vec<Construct> = plan.degradations().iter().map(|d| d.construct).collect();
         assert!(
             degraded.contains(&Construct::HdSecrets),
             "{tier}: {degraded:?}"
         );
-        assert!(degraded.iter().all(|c| snapshot.contains(c)));
+        assert!(
+            degraded
+                .iter()
+                .all(|c| snapshot.contains(c) || *c == Construct::ProcOtherProcesses)
+        );
     }
     // Any other approximation is still refused.
     p.fs.push(FsRule::new(
@@ -300,7 +323,10 @@ fn reading_everything_needs_exactly_the_spawn_snapshot() {
 }
 
 fn linux_plan(p: &Policy, target: Target) -> Result<LinuxPlan, LowerError> {
-    match lower(p, target, &LowerOptions::default().accept_spawn_snapshot())? {
+    let options = LowerOptions::default()
+        .accept_spawn_snapshot()
+        .allow(Construct::ProcOtherProcesses);
+    match lower(p, target, &options)? {
         Plan::Linux(plan) => Ok(plan),
         Plan::Seatbelt(_) => unreachable!(),
     }

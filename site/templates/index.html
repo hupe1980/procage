@@ -33,7 +33,7 @@
         <a class="btn btn-ghost" href="{{ get_url(path='@/docs/threat-model.md') }}">Read the threat model</a>
         <a class="btn btn-ghost" href="{{ config.extra.repo }}" rel="noopener">GitHub</a>
       </div>
-      <p class="status-note"><strong>Status:</strong> 0.1, pre-1.0: the API may change between minor versions.</p>
+      <p class="status-note"><strong>Status:</strong> pre-1.0: the API may change between minor versions.</p>
     </div>
     <div class="hero-code" aria-label="Example">
       {{ section.content | safe }}
@@ -72,6 +72,11 @@
         <a href="{{ get_url(path='@/docs/lifetime-and-hygiene.md') }}">Lifetime and hygiene</a>
       </article>
       <article class="card">
+        <h3>Receipts</h3>
+        <p>Every finished run says how it was caged: the policy digest, backend and tier, the OS build, and everything accepted short of the policy.</p>
+        <a href="{{ get_url(path='@/docs/receipts.md') }}">Receipts</a>
+      </article>
+      <article class="card">
         <h3>Escape classes with canaries</h3>
         <p>Every known escape class has a stable id and a status in the threat model. A class is marked handled only when caged canaries on a real kernel show the refusal.</p>
         <a href="{{ get_url(path='@/docs/threat-model.md') }}">Threat model</a>
@@ -94,7 +99,7 @@
         <caption class="visually-hidden">What procage uses on each platform</caption>
         <thead><tr><th scope="col">Platform</th><th scope="col">Mechanism</th><th scope="col">Needs</th><th scope="col">Notable limits today</th></tr></thead>
         <tbody>
-          <tr><th scope="row">macOS</th><td>Seatbelt profile compiled and applied through libsandbox’s private interface, resolved at run time</td><td>A process that is not itself sandboxed</td><td>Caged children can read other same-user processes’ arguments and environment; no pseudo-terminals; base profiles curated on macOS 26.6.2</td></tr>
+          <tr><th scope="row">macOS</th><td>Seatbelt profile compiled and applied through libsandbox’s private interface, resolved at run time</td><td>A process that is not itself sandboxed</td><td>No pseudo-terminals; base profiles curated on macOS 26.6.2</td></tr>
           <tr><th scope="row">Linux tier T1</th><td>User, mount, IPC, UTS and network namespaces, mounts, Landlock, seccomp</td><td>Unprivileged user namespaces, Landlock ABI 1 (Linux 5.13) or later</td><td>No PID namespace; no loopback or proxy networking; glob rules are gaps</td></tr>
           <tr><th scope="row">Linux tier T2</th><td>Landlock and seccomp only</td><td>Landlock ABI 1 or later (for example Docker’s default settings)</td><td>As T1, and cannot protect or hide a path inside a writable tree</td></tr>
         </tbody>
@@ -109,7 +114,7 @@
     <div>
       <h2 id="honest-title" class="section-title">What it is not</h2>
       <p>An OS sandbox <em>reduces</em> the risk from adaptive same-user code; it does not remove it. The kernel and OS services stay reachable, and a bug in them is an escape. When that is unacceptable, use a microVM, or a microVM with procage inside it for finer-grained policy.</p>
-      <p>Open today: a hard link made before the run is not reported (R-08), and on macOS a caged child can read your other processes’ arguments and environment (R-25). The <a href="{{ config.extra.threat_model }}" rel="noopener">threat model</a> lists every class and its status.</p>
+      <p>The <a href="{{ config.extra.threat_model }}" rel="noopener">threat model</a> lists every escape class and its status, and what the calling harness must handle itself.</p>
     </div>
     <div>
       <h2 class="section-title">Links</h2>

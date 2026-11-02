@@ -13,7 +13,7 @@
 //!   need the class waived.
 //! - [`HardDenyClass::Persistence`] denies writing [`PERSISTENCE_HOME`] in
 //!   every home and [`PERSISTENCE_SYSTEM`].
-//! - [`HardDenyClass::ContainerEngines`] (version 1, 0.2.0) denies
+//! - [`HardDenyClass::ContainerEngines`] denies
 //!   connecting to [`ENGINE_HOME`] in every home and [`ENGINE_SYSTEM`]. The
 //!   rule matches the socket a path resolves to, so links such as
 //!   `/var/run/docker.sock` are covered by the home entry they point to.
@@ -29,7 +29,7 @@
 //! - `persistence`: [`PERSISTENCE_HOME_LINUX`] in every home and
 //!   [`PERSISTENCE_SYSTEM_LINUX`].
 //!
-//! **Linux sockets** (version 1, 0.2.0; see [`linux_socket_paths`]):
+//! **Linux sockets** (version 1; see [`linux_socket_paths`]):
 //!
 //! - `service-handoff`: the D-Bus buses and the systemd managers —
 //!   [`SERVICE_SOCKETS_LINUX`], [`SERVICE_SOCKET_DIRS_LINUX`], and in every

@@ -7,9 +7,7 @@ weight = 20
 group = "Policies"
 +++
 
-A `Policy` (from the `procage-policy` crate, re-exported as `procage::policy`) says what a child may do. It is written once and lowered for each backend. Its default effect is **deny**: `Policy::default()` grants no files, no network, no process creation, no signals, an empty environment and no terminal.
-
-`Policy` is `#[non_exhaustive]`: start from `Policy::default()` (or a [preset](@/docs/presets.md)) and set fields.
+A `Policy` (`procage::policy`, from the `procage-policy` crate) says what a child may do. It is written once and lowered for each backend. Its default effect is **deny**: `Policy::default()` grants no files, no network, no process creation, no signals, an empty environment and no terminal. `Policy` is `#[non_exhaustive]`: start from `Policy::default()` or a [preset](@/docs/presets.md) and set fields.
 
 ## The fields
 
@@ -56,7 +54,7 @@ policy.fs.push(FsRule::new(Access::Read, FsTarget::Glob(Glob::new("/data/**/*.cs
 | `Literal(AbsPath)` | Exactly this path |
 | `Glob(Glob)` | Paths matching an absolute glob (exact on macOS only; a gap on Linux) |
 
-Rules can be listed in any order; the order never changes the result. `AbsPath` is an absolute path held as bytes; procage resolves it to the spelling the kernel matches before applying it, so a rule written through `/tmp` or a symbolic link still holds (escape class R-02).
+The order of rules never changes the result. `AbsPath` is an absolute path held as bytes; procage resolves it to the spelling the kernel matches, so a rule written through `/tmp` or a symbolic link still holds (R-02).
 
 ## Network
 
@@ -73,36 +71,36 @@ Rules can be listed in any order; the order never changes the result. `AbsPath` 
 
 - `exec`: `Exec::Granted` (default; only where an `Exec` rule or grant allows), `Exec::Any` (anywhere the child can read) or `Exec::Never`.
 - `fork`: whether the child may create processes (default `false`).
-- `signals`: `Signals::None` (default), `SelfAndChildren`, or `SameUser`, which lets signals reach every process the OS allows (on Linux, every process of the same user). `SameUser` exists for Linux hosts below Landlock ABI 6 that cannot keep signals within the run; procage never picks it on its own.
+- `signals`: `Signals::None` (default), `SelfAndChildren`, or `SameUser`: every process the OS allows (on Linux, every process of the same user). `SameUser` is for Linux below Landlock ABI 6, which cannot keep signals within the run; procage never picks it on its own.
 - `lifetime`: `Lifetime::Run` (default) or `Lifetime::Tree`. See [Lifetime and hygiene](@/docs/lifetime-and-hygiene.md#lifetime).
 
 ## IPC
 
-`Ipc` has `posix_shm` and `sysv` switches and `unix_sockets`, a list of paths at or under which the child may create, bind, listen on and connect to Unix-domain sockets, whatever `net` says. Binding also needs write access to the directory. Keep these paths short: socket addresses are limited to 104 bytes on macOS and 108 on Linux. On Linux below Landlock ABI 9 this is approximated on tier T1 and refused on tier T2 (see [Linux](@/docs/linux.md#unix-sockets)).
+`Ipc` has `posix_shm` and `sysv` switches and `unix_sockets`: paths at or under which the child may create, bind, listen on and connect to Unix-domain sockets, whatever `net` says. Binding also needs write access to the directory. Socket addresses are limited to 104 bytes on macOS and 108 on Linux. On Linux below Landlock ABI 9, `unix_sockets` is approximated on tier T1 and refused on T2 (see [Linux](@/docs/linux.md#unix-sockets)); on T2, `posix_shm` and `sysv` share the host's (an approximation).
 
 ## Environment, limits, terminal
 
-- `EnvPolicy::Allowlist(names)` (default, empty) passes only the named variables of the caller. `EnvPolicy::Passthrough { deny }` passes everything except `deny` and a built-in denylist of secret-looking names. Variables set explicitly on the `Command` always win. Details in [hygiene](@/docs/lifetime-and-hygiene.md#environment).
+- `EnvPolicy::Allowlist(names)` (default, empty) passes only the named variables of the caller; `EnvPolicy::Passthrough { deny }` passes everything except `deny` and a built-in denylist of secret-looking names. See [Environment](@/docs/lifetime-and-hygiene.md#environment).
 - `Rlimits` sets `nproc`, `cpu_seconds`, `fsize_bytes`, `nofile` and `core_bytes` (0 by default: no core dumps).
-- `Tty::None` (default) gives no controlling terminal; the child leads its own session. `Tty::Inherit` shares the caller's terminal, with keystroke injection denied. `Tty::NewPty` is refused: procage has no pseudo-terminals.
+- `Tty::None` (default), `Tty::Inherit` or `Tty::NewPty` (refused: no pseudo-terminals). See [The terminal](@/docs/lifetime-and-hygiene.md#the-terminal).
 
 ## Base profiles
 
-Most programs cannot even start under a pure deny-everything policy: the dynamic loader, locale data and the system's user database are all files. A **base profile** is a curated, frozen set of rules that lets ordinary programs start, and nothing the user cares about. A policy has none unless it opts in:
+Under a pure deny-everything policy most programs cannot start. A **base profile** is a curated, frozen set of rules that lets ordinary programs start, and grants nothing the user cares about. A policy has none unless it opts in:
 
 - `Base::V1`: system code and libraries, `/etc` files, locale and time-zone data, standard devices, the sysctls the Rust runtime and `uname` read, and a few system services (user names, notifications, certificate trust). Nothing under `/Users`, the temporary directories or `/Volumes`; no network; no writes beyond standard devices.
 - `Base::V2`: V1 plus what developer tools need. On macOS, measured with Apple's tool shims, Xcode, the Command Line Tools and Homebrew: the developer directories, `xcode-select`'s link, the Xcode license state, Homebrew's code directories (not its `etc` or `var`) and OpenSSL configuration. Homebrew's `git` also reads `/opt/homebrew/etc/gitconfig` when it exists: grant it read access. On Linux V2 is the same as V1.
-- `Base::V3` (recommended): V2, with the probes every program makes refused **quietly**: the logging services (`logd`, `diagnosticd`), `dirhelper`, group membership lookups, the dyld DTrace helper's ioctl and `/dev/tty`. None is needed, so V3 allows exactly what V2 allows; it only keeps these probes out of [violation records](@/docs/violations.md), which then show what matters. On Linux V3 is the same as V2.
+- `Base::V3` (recommended): V2, with the probes every program makes refused **quietly**: the logging services (`logd`, `diagnosticd`), `dirhelper`, group membership lookups, the dyld DTrace helper's ioctl and `/dev/tty`. V3 allows exactly what V2 allows; it keeps these probes out of [violation records](@/docs/violations.md). On Linux V3 is the same as V2.
 
-Each version is frozen: a loosening needs a new version. The macOS content was measured on macOS 26.6.2; with `Base::V1`, Xcode shims such as `/usr/bin/git` do not run, so use V3 (or V2) for developer tools.
+Each version is frozen: a loosening needs a new version. The macOS content was measured on macOS 26.6.2. Under `Base::V1`, Xcode shims such as `/usr/bin/git` do not run: use V3 for developer tools.
 
 ## Grants
 
-A `Grant { name, access }` declares a named slot for a path chosen per spawn with `Grants::bind`. On macOS it becomes a sandbox extension, on Linux a Landlock rule for the bound path. The name `tmpdir` is reserved for a private per-run temporary directory. See [Getting started](@/docs/getting-started.md#bind-a-path-per-spawn).
+A `Grant { name, access }` declares a named slot for a path chosen per spawn with `Grants::bind` (see [Getting started](@/docs/getting-started.md#bind-a-path-per-spawn)). On macOS it becomes a sandbox extension, on Linux a Landlock rule for the bound path. The name `tmpdir` is reserved.
 
 ## Backend layers
 
-`policy.seatbelt` (a `seatbelt::Layer`) and `policy.linux` (a `linux::Layer`) add typed raw rules for one backend. A layer for the other backend is an approximation: it is ignored only when you allow it by name.
+`policy.seatbelt` (a `seatbelt::Layer`) and `policy.linux` (a `linux::Layer`) add typed raw rules for one backend. On the other backend a layer is an approximation: ignored only when you allow it by name.
 
 ## Lowering
 
@@ -113,7 +111,7 @@ A `Grant { name, access }` declares a named slot for a path chosen per spawn wit
 - **unsupported**: always a gap; no option turns it into a weaker rule;
 - **n/a**: meaningless on the target (for example a macOS-only hard-deny class on Linux).
 
-The cage does this for you, but the policy crate can be used alone, for example to check a policy against every target in a test:
+The cage does this for you; the policy crate can also be used alone, for example to check a policy against every target in a test:
 
 ```rust
 use procage_policy::{
@@ -133,7 +131,7 @@ let t2 = Target::Linux { tier: Tier::T2, landlock_abi: 6 };
 assert!(lower(&policy, t2, &options).is_err());
 ```
 
-`LowerOptions::accept_spawn_snapshot()` accepts, together, every approximation that depends on the file system as procage reads it at spawn (masks of the data-driven hard-deny paths on tier T1, piecewise hiding on tier T2, masked Unix sockets on T1). It is what reading the whole file system except secrets needs on Linux.
+`LowerOptions::allow(construct)` accepts one approximation. `LowerOptions::accept_spawn_snapshot()` accepts every approximation that depends on the file system as procage reads it at spawn: masks of the data-driven hard-deny paths and of the service and engine sockets on tier T1, masked Unix sockets on T1 below ABI 9, piecewise hiding on T2. Reading the whole file system except secrets on Linux needs it together with `Construct::ProcOtherProcesses` (`proc-other-processes`), because a rule on `/` reaches other processes' `/proc` entries (see [Linux](@/docs/linux.md#reading-everything-except-secrets)).
 
 The full lowering table, one row per construct with the macOS, Linux T1 and Linux T2 outcome, is in the rustdoc of `procage_policy::lower`.
 
@@ -141,4 +139,4 @@ A Seatbelt profile is written in fixed blocks: `(deny default)`, every allow, ev
 
 ## A data format
 
-With the `serde` feature, `procage-policy` reads and writes a versioned document (`"version": 1`; any other version is refused). Every map refuses unknown fields, because an unknown field may be a restriction written by a newer writer, and every value is read through its constructor.
+With the `serde` feature, `procage-policy` reads and writes a versioned document (`"version": 1`; any other version is refused). Unknown fields are refused, since one may be a restriction written by a newer writer, and every value is read through its constructor.

@@ -8,7 +8,7 @@ group = "Guides"
 nav = "Receipts"
 +++
 
-A harness that runs commands for an agent needs to show, afterwards, that a command ran caged and in which cage. When a run has exited, `Child::receipt()` returns a `Receipt` (it is `None` while the run is alive):
+A receipt records that a command ran caged, and in which cage. Once the child has exited, `Child::receipt()` returns a `Receipt` (`None` before). Reading it ends the run, as `kill_all` does, so its audit summary covers a finished run.
 
 ```rust
 use procage::native::{Cage, Grants};
@@ -32,17 +32,19 @@ std::fs::write("/var/log/my-harness/run-42.receipt.json", receipt.to_json())?;
 | `enforced_as_written` | `true` only when all three lists are empty |
 | `violations` | The record's coverage (`off`, `observed`, `system-calls`, `unavailable`), whether it was complete, and the count (absent when nothing was observed) |
 | `exit` | The exit code or signal, and whether the caller ended the run (`kill_all`) |
+| `audit` | The [audits](@/docs/audits.md)' mode, finding counts and completeness; their paths only with the policy included |
 | `grants`, `procage` | The grant names bound for this run, and the procage version |
+| `policy` | The policy itself, only with `CageOptions::with_policy_in_receipt()` |
 
 ## What a receipt is not
 
-- **Not an attestation.** It is the caller's own record, unsigned, built in the calling process. Anyone who can write where it is kept can change it: keep it outside every path a later run may write.
-- **Not proof that nothing was denied.** On macOS violation reports are best effort: a complete record with no violations proves nothing. With reporting off the receipt says `off`, never "none".
-- **Not anonymous.** The backend names the OS release and build or the kernel release of the machine the run was on.
-- **Not for `Cage::exec`.** There, the calling process becomes the command, and there is no handle left to give a receipt.
+- **Not an attestation.** It is the caller's own unsigned record, built in the calling process. Keep it outside every path a later run may write.
+- **Not proof that nothing was denied.** macOS violation reports are best effort, so a complete, empty record proves nothing. With reporting off the receipt says `off`, never "none".
+- **Not anonymous.** It names the OS release and build or the kernel release of the machine.
+- **Not for `Cage::exec`**, which leaves no handle.
 
 ## Privacy and format
 
-A receipt holds no environment value, command argument, file content or process name. Paths appear only when the cage was built with `CageOptions::with_policy_in_receipt()`, which adds the whole policy, every path in it, and the subjects of relaxations to each receipt.
+A receipt holds no environment value, command argument, file content or process name. Paths appear only with `CageOptions::with_policy_in_receipt()`, which adds the whole policy, the subjects of relaxations and the audits' paths.
 
-`Receipt::to_json` writes a versioned form (`"version": 1`); `Receipt::from_json` refuses another version and any field it does not know, at any depth, rather than show a receipt it understood only in part.
+`Receipt::to_json` writes a versioned form (`"version": 1`); `Receipt::from_json` refuses another version and any unknown field, at any depth, rather than show a receipt it understood only in part.

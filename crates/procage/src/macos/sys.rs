@@ -811,7 +811,38 @@ pub(crate) fn fcntl_errno(fd: c_int, cmd: c_int) -> i32 {
 
 /// Reads `KERN_PROCARGS2` (argv and environment) of `pid`; the errno, or 0.
 pub(crate) fn procargs_errno(pid: libc::pid_t) -> i32 {
-    let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
+    procargs_query_errno(libc::KERN_PROCARGS2, pid)
+}
+
+/// Reads `KERN_PROCARGS` (the older argument query) of `pid`; the errno, or 0.
+pub(crate) fn procargs1_errno(pid: libc::pid_t) -> i32 {
+    procargs_query_errno(libc::KERN_PROCARGS, pid)
+}
+
+/// `proc_pidinfo(pid, PROC_PIDTBSDINFO)`: 0 when it gives the process's
+/// information, else the errno (EPERM when the sandbox refuses).
+pub(crate) fn pidinfo_errno(pid: libc::pid_t) -> i32 {
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::uninit();
+    let size = c_int::try_from(std::mem::size_of::<libc::proc_bsdinfo>()).unwrap_or(c_int::MAX);
+    // SAFETY: `info` is a buffer of `size` bytes for the result.
+    let n = unsafe {
+        libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if n == size {
+        0
+    } else {
+        errno().max(libc::EPERM)
+    }
+}
+
+fn procargs_query_errno(query: c_int, pid: libc::pid_t) -> i32 {
+    let mut mib = [libc::CTL_KERN, query, pid];
     let mut buf = vec![0u8; 1 << 20];
     let mut len = buf.len();
     // SAFETY: `mib` has three entries; `buf` is `len` bytes long.

@@ -9,49 +9,53 @@ All notable changes to procage are listed here. The format follows
 ### Security
 
 - With the network on, a caged child could reach the user's D-Bus bus or
-  the systemd service manager on Linux (`systemd-run --user` runs outside
-  the sandbox) and container engines' sockets on both systems (a container
-  can mount your home directory) — escape class R-34. Every policy, frozen
-  presets included, now denies them: the `service-handoff` class covers the
-  Linux buses and service managers, and the new `container-engines` class
-  the engines. The preset profiles gain exactly one deny rule each.
-  **Migration**: builds that need a container engine waive
-  `HardDenyClass::ContainerEngines`. On Linux tier T1, a host with such a
-  socket needs the spawn-snapshot approximation accepted
-  (`LowerOptions::accept_spawn_snapshot()` or by name); on tier T2 the cage
-  is refused while one exists unless the class is waived (`Cage::fit` can do
-  it by name). Evidence: the escape-suite canaries `r34_*` on macOS and on
-  Linux tiers T1 and T2.
-
-- A pre-existing hard link to a protected, hidden or credential file now
-  refuses the spawn by default (escape class R-08): `SpawnError::HardLinks`.
-  **Migration**: a caller with benign second names chooses
-  `LinkAudit::Report` or `LinkAudit::Off` by name.
+  systemd service manager (Linux) and container engines' sockets (both
+  systems), which run code outside the sandbox (R-34). Every policy now
+  denies them: `service-handoff` covers the Linux buses and service
+  managers, the new `container-engines` class the engines; each preset
+  profile gains one rule. **Migration**: builds that need a container engine
+  waive `HardDenyClass::ContainerEngines`. On Linux T1 a host with such a
+  socket needs `LowerOptions::accept_spawn_snapshot()`; on T2 the cage is
+  refused unless the class is waived.
+- A hard link made before the run to a protected, hidden or credential file
+  now refuses the spawn (R-08): `SpawnError::HardLinks`. **Migration**:
+  benign second names: `LinkAudit::Report` or `LinkAudit::Off`.
+- macOS: a caged child could read any same-user process's arguments and
+  environment (`KERN_PROCARGS2`, R-25). The `process-access` class now
+  refuses it in every policy; the run's own processes stay readable. Each
+  preset profile gains three rules. **Migration**: a process monitor waives
+  `HardDenyClass::ProcessAccess`.
 
 ### Added
 
-- `HardDenyClass::ContainerEngines` and `Construct::HdContainerEngines`;
-  the socket lists in `procage_policy::presets` and
-  `procage_policy::linux::SocketPaths`.
-- `linux::CageOptions::with_runtime_dir`.
+- Receipts: `Child::receipt` describes every finished run (policy digest,
+  preset and base, backend and tier, OS build or kernel, approximations,
+  relaxations, waivers, violation summary, exit); `Receipt::{to_json,
+  from_json}` (version 1); `policy_digest`;
+  `CageOptions::with_policy_in_receipt`.
 - Audits (`procage::audit`): the link check before every spawn
   (`CageOptions::with_link_audit`), the opt-in handoff audit
   (`CageOptions::with_handoff_audit`, `Child::audit`); macOS
-  `CageOptions::with_walk_limit`; the receipt's `audit` summary.
-- Receipts: `Child::receipt` on both systems gives a `Receipt` for every
-  finished run (policy digest, preset and base, backend and tier, OS build or
-  kernel, approximations, relaxations, waivers, `enforced_as_written`,
-  violation summary, exit); `Receipt::{to_json, from_json}` (version 1,
-  unknown fields refused); `policy_digest`;
-  `CageOptions::with_policy_in_receipt`. procage now depends on `serde`,
-  `serde_json` and `sha2`.
+  `CageOptions::with_walk_limit`.
+- `HardDenyClass::ContainerEngines`, `Construct::HdContainerEngines`; the
+  socket lists in `procage_policy::presets` and
+  `procage_policy::linux::SocketPaths`; `linux::CageOptions::with_runtime_dir`.
+- `Construct::ProcOtherProcesses`,
+  `procage_policy::linux::reaches_other_processes`; Seatbelt filters
+  `SysctlName` and `SysctlNamePrefix`.
 
 ### Changed
 
+- Linux: a rule or grant that reaches other processes under `/proc` (`/`,
+  `/proc`, or a symbolic link to them) is an approximation accepted by
+  name, `proc-other-processes`: without a PID namespace, other processes'
+  arguments become readable (not their environment). **Migration**: a
+  policy that reads `/` adds
+  `LowerOptions::allow(Construct::ProcOtherProcesses)`.
 - `SpawnError` is `#[non_exhaustive]` on both systems.
-- `LinuxPlan` gains `service_sockets`; `linux::CageOptions` gains
-  `runtime_dirs`. `Construct::SPAWN_SNAPSHOT` includes the two socket
-  classes.
+- `LinuxPlan` gains `service_sockets`; `Construct::SPAWN_SNAPSHOT` includes
+  the two socket classes.
+- procage depends on `serde`, `serde_json` and `sha2`.
 
 ## [0.1.0] - 2026-11-01
 

@@ -244,6 +244,25 @@ fn op(spec: &str) -> String {
             Err(e) => format!("open-{}", e.raw_os_error().unwrap_or(-1)),
         },
         "mach" => code(testing::mach_lookup(arg)),
+        "procargs" if arg == "child" => {
+            let mut sleeper = Command::new("/bin/sleep").arg("5").spawn().unwrap();
+            let got = code(testing::procargs_errno(sleeper.id()));
+            let _ = sleeper.kill();
+            let _ = sleeper.wait();
+            got
+        }
+        "procargs1" => code(testing::procargs1_errno(std::os::unix::process::parent_id())),
+        "pidinfo" if arg == "child" => {
+            let mut sleeper = Command::new("/bin/sleep").arg("5").spawn().unwrap();
+            let got = code(testing::pidinfo_errno(sleeper.id()));
+            let _ = sleeper.kill();
+            let _ = sleeper.wait();
+            got
+        }
+        "pidinfo" => code(testing::pidinfo_errno(match arg {
+            "parent" => std::os::unix::process::parent_id(),
+            _ => std::process::id(),
+        })),
         "procargs" => {
             let pid = match arg {
                 "parent" => std::os::unix::process::parent_id(),
@@ -956,14 +975,23 @@ fn r25_other_processes_cannot_be_signalled() {
     );
 }
 
-/// The child cannot read the caller's arguments and environment; it can
-/// read its own. The sandbox does not mediate `KERN_PROCARGS2`, even under
-/// `(deny sysctl-read)` (macOS 26.6.2).
+/// The child cannot read the caller's arguments and environment, nor its
+/// process information, by any query; it can read its own and its child's.
+/// Only explicit, unfiltered rules hold the `KERN_PROCARGS2` query, so the
+/// process-access class denies process information outside the sandbox
+/// unfiltered and the argument sysctls by prefix (measured on macOS 26.6.2).
 #[test]
-#[ignore = "open: R-25 KERN_PROCARGS2 gives any same-user process's arguments and environment on macOS"]
 fn r25_other_processes_arguments_are_unreadable() {
-    let got = in_child("procargs:parent;procargs:self", &policy());
-    assert_eq!(got, format!("{EPERM} ok"));
+    let mut p = policy();
+    p.process.fork = true;
+    let attempt = "procargs:parent;procargs1:parent;pidinfo:parent;procargs:self;procargs:child;pidinfo:self;pidinfo:child";
+    assert_eq!(
+        in_child(attempt, &p),
+        format!("{EPERM} {EPERM} {EPERM} ok ok ok ok")
+    );
+    // With the class waived the caller is readable again (the control).
+    let open = waived(p, HardDenyClass::ProcessAccess);
+    assert_eq!(in_child("procargs:parent", &open), "ok");
 }
 
 // ---- R-26 Helper replacement ----

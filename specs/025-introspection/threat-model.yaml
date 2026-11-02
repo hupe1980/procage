@@ -8,10 +8,11 @@ threatspec:
     name: Arbitrary code in the caged child
     trust: untrusted
   - id: actor.consumer
-    name: Developer of a harness that picks a base and grants paths
+    name: Developer of a harness that picks a base or preset, waives classes, accepts approximations and grants
+      paths
     trust: trusted
   - id: actor.contributor
-    name: procage contributor who edits the base profiles, the Linux spawn path or the docs
+    name: procage contributor who edits the hard-deny classes, the Seatbelt filters, the Linux lowering or the docs
     trust: semi-trusted
   dispositions:
   - disposition: not-applicable
@@ -21,19 +22,22 @@ threatspec:
     reason: no authentication or network boundary
     technique: identity-spoofing
   - disposition: not-applicable
-    reason: no data in transit; the feature changes rules, a namespace and a mount
+    reason: no data in transit; the feature changes profile rules of a hard-deny class and a Linux lowering check
     technique: data-tampering-in-transit
   - disposition: no-threat-detected
-    reason: 'checked the stored profiles: V1 to V3 stay frozen and byte-identical (SR-002); changes to V4 are threat.allowlist-widening'
+    reason: 'checked the stored profiles and presets: presets v1 to v3 change only by the process-access class''s
+      three rules, pinned by the fixtures (SR-002); weakening those rules is threat.rule-weakened'
     technique: data-tampering-at-rest
   - disposition: not-applicable
     reason: no external-input surface; the feature parses no data the child provides
     technique: injection
   - disposition: not-applicable
-    reason: no external-input surface; orphan reaping inside the namespace is part of threat.pidns-lifetime
+    reason: no external-input surface and no new process or namespace; the run's lifetime handling is unchanged
+      (no PID namespace in this change)
     technique: resource-exhaustion
   - disposition: not-applicable
-    reason: single user; other users' processes are already refused by the kernel (out of scope)
+    reason: single user; other users' processes are already refused by the kernel (out of scope); the kern.proc
+      process list (pids, names) stays readable and carries no arguments or environment
     technique: cross-tenant-leak
   - disposition: not-applicable
     reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
@@ -125,14 +129,16 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-01T21:15:30Z'
+  generated: '2026-11-02T00:56:52Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
+  - path: plan.md
+    sha256: 2e63a616387f4b304251cd562529bae4da503fba55ac419c78e7f0e0ee6b28a1
   - path: spec.md
-    sha256: e928f3de45adde8ea2233814bc0a3c1a258d01bf24f1fb556a302b98c41d4e19
+    sha256: 2142d2e83e5d7e8e5b2123f111bec476ce27d8d2a394d935008e4c40600891b4
   surfaces:
   - authorization
   - persistent-store
@@ -148,7 +154,7 @@ trustZones:
   risk:
     trustRating: 90
 - id: tz.os
-  name: The kernel (Seatbelt and sysctl on macOS; PID namespaces and /proc on Linux)
+  name: The kernel (Seatbelt and sysctl on macOS; /proc and Landlock on Linux)
   risk:
     trustRating: 95
 - id: tz.others
@@ -157,7 +163,8 @@ trustZones:
     trustRating: 70
 assets:
 - id: asset.base
-  name: The frozen macOS base profiles (V1 to V3 and the new V4) and the V4 sysctl allowlist
+  name: The process-access hard-deny class and the frozen macOS base profiles (V1 to V3) and presets (v1 to v3)
+    it applies to, with their fixtures
   risk:
     availability: 50
     confidentiality: 0
@@ -166,8 +173,19 @@ assets:
     type: capability
     source: spec.md#Key-Entities
     classification: internal
+- id: asset.compat
+  name: 'Existing policies: Linux rules or grants on / or /proc, macOS runs that read other processes, and the programs
+    of the base program set'
+  risk:
+    availability: 70
+    confidentiality: 0
+    integrity: 30
+  attributes:
+    type: capability
+    source: plan.md#Summary
+    classification: internal
 - id: asset.lifetime
-  name: 'The run-lifetime guarantee: no process of the run outlives it'
+  name: 'The run-lifetime guarantee: no process of the run outlives it (unchanged; no PID namespace in this change)'
   risk:
     availability: 50
     confidentiality: 0
@@ -187,63 +205,107 @@ assets:
     source: spec.md#Input
     classification: secret
 components:
-- id: component.base-v4
-  name: macOS base V4 (sysctl-read denied, named sysctl allows, process information only for the process itself)
-  type: library
+- id: component.canaries
+  name: R-25 canaries on the default policy in every just escape variant and on Linux T1/T2, and the base program
+    set
+  type: test
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-001
+    source: plan.md#Summary
+    files:
+    - crates/procage/tests/escape_macos.rs
+    - crates/procage/tests/escape_linux.rs
+    - crates/procage/tests/spawn_macos.rs
 - id: component.docs
-  name: THREAT_MODEL, crate docs and site on R-25
+  name: THREAT_MODEL, crate docs, site and CHANGELOG on R-25
   type: document
   parent:
     trustZone: tz.harness
   attributes:
     source: spec.md#FR-005
+    files:
+    - crates/procage/THREAT_MODEL.md
+    - site/content/docs/macos.md
+    - site/content/docs/linux.md
+    - site/content/docs/threat-model.md
+    - CHANGELOG.md
 - id: component.lifetime
-  name: Run-lifetime enforcement (the whole run is killed when it ends)
+  name: Run-lifetime enforcement (the whole run is killed when it ends); unchanged by this change
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Clarifications
+- id: component.preset-fixtures
+  name: Frozen preset fixtures v1 to v3 (each three lines longer) and the policy tests that pin the class's rules
+  type: test
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Key-Entities
+    files:
+    - crates/procage-policy/tests/fixtures/presets
+    - crates/procage-policy/tests/presets.rs
+    - crates/procage-policy/tests/base.rs
+    - crates/procage-policy/tests/precedence.rs
+    - crates/procage-policy/tests/gaps.rs
+- id: component.proc-reach
+  name: 'Linux proc-other-processes approximation on T1 and T2: the shared predicate reaches_other_processes, the
+    lowering''s proc_reach (file rules, raw Landlock rules, globs), proc_links at cage creation (rules that resolve
+    to /proc) and the grant check in bind at spawn'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
     source: spec.md#FR-003
-- id: component.pidns
-  name: Linux T1 PID namespace and fresh /proc for spawned runs
+    files:
+    - crates/procage-policy/src/linux.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/src/lower/mod.rs
+    - crates/procage/src/linux/mod.rs
+- id: component.process-access-class
+  name: 'macOS process-access hard-deny class: (deny sysctl-read (sysctl-name-prefix "kern.procargs")), a quiet
+    early unfiltered (deny process-info-pidinfo) and (allow process-info-pidinfo (target same-sandbox)), in every
+    policy on every base, lifted only by waiving the class'
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-003
-- id: component.t2-gate
-  name: Linux T2 capability check for rules that reach /proc
+    source: spec.md#Clarifications
+    files:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/sbpl.rs
+- id: component.receipt
+  name: Cage plan (degradations) and run receipt (RunFacts::with_approximation) that list accepted approximations
   type: library
   parent:
     trustZone: tz.harness
   attributes:
-    source: spec.md#FR-004
+    source: spec.md#User-Story-2
+    files:
+    - crates/procage/src/receipt.rs
 dataflows:
+- id: flow.approximation
+  name: An accepted proc-other-processes approximation is listed in the plan and the receipt
+  source: component.proc-reach
+  destination: component.receipt
+  assets:
+  - asset.process-secrets
+  attributes:
+    crosses: []
 - id: flow.claims
-  name: The docs tell the consumer which base and tier close R-25
+  name: The docs tell the consumer that the class closes R-25 on macOS unless waived, the Linux default, and what
+    the approximation leaves open
   source: component.docs
   destination: actor.consumer
   assets:
   - asset.process-secrets
   attributes:
     crosses: []
-- id: flow.confine-ns
-  name: The PID namespace and fresh /proc confine the child on T1
-  source: component.pidns
-  destination: tz.cage
-  assets:
-  - asset.process-secrets
-  attributes:
-    crosses:
-    - tz.harness
-    - tz.cage
-- id: flow.confine-v4
-  name: The V4 base confines the child on macOS
-  source: component.base-v4
+- id: flow.confine
+  name: The process-access class confines the child on macOS on every base and preset
+  source: component.process-access-class
   destination: tz.cage
   assets:
   - asset.base
@@ -272,6 +334,33 @@ dataflows:
     crosses:
     - tz.harness
     - tz.cage
+- id: flow.measure
+  name: The canaries and the program set measure the class's rule and the Linux refusal on each lane
+  source: component.canaries
+  destination: component.process-access-class
+  assets:
+  - asset.base
+  - asset.compat
+  attributes:
+    crosses: []
+- id: flow.policy-in
+  name: The consumer's Linux policy (file rules, raw Landlock rules, grants) and accepted approximations enter the
+    lowering
+  source: actor.consumer
+  destination: component.proc-reach
+  assets:
+  - asset.process-secrets
+  - asset.compat
+  attributes:
+    crosses: []
+- id: flow.presets
+  name: The preset fixtures pin the class's rules in every preset version
+  source: component.preset-fixtures
+  destination: component.process-access-class
+  assets:
+  - asset.base
+  attributes:
+    crosses: []
 - id: flow.procfs
   name: The child lists /proc and reads cmdline and environ of other processes
   source: tz.cage
@@ -283,37 +372,67 @@ dataflows:
     - tz.cage
     - tz.os
 - id: flow.sysctl
-  name: The child queries sysctls and process information of other processes (KERN_PROCARGS2, pidinfo)
+  name: The child queries sysctls by name or numeric MIB and process information of other processes (KERN_PROCARGS2,
+    pidinfo)
   source: tz.cage
   destination: tz.os
   assets:
   - asset.process-secrets
+  - asset.compat
   attributes:
     crosses:
     - tz.cage
     - tz.os
 threats:
 - id: threat.allowlist-widening
-  name: A sysctl allow added by prefix or regular expression (or a broad process-info allow) to make a program work
-    re-admits KERN_PROCARGS2 on V4
+  name: A contributor widens the V4 allowlist to make a program work (a kern. or kern.proc prefix without the dot,
+    a regular expression, an unjustified entry, or a broad process-info allow), re-admitting KERN_PROCARGS or KERN_PROCARGS2
   categories:
   - Elevation of Privilege
   - Information Disclosure
   risk:
-    comment: program-set failures push towards wildcards; one widened rule reopens the class
+    comment: prefixes are allowed now, and one short prefix (kern.) was measured to reopen the read
     impact: 90
     likelihood: 30
   attributes:
-    source: spec.md#Edge-Cases
+    source: research.md
     assets:
     - asset.base
     - asset.process-secrets
-    status: open
+    status: retired
     actor: actor.contributor
     constitution: VII. A library, not a harness (presets are versioned and frozen)
     elements:
-    - component.base-v4
-    - flow.confine-v4
+    - component.process-access-class
+    profile: stride
+    retired_reason: 'Session 2026-11-02 (no release users yet): the fix went in place into the process-access class;
+      there is no base V4 and no sysctl allowlist to widen. Weakening the class''s rule is threat.rule-weakened.'
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.linux-root-refused
+  name: Existing policies change behaviour after the upgrade (on Linux a rule or grant on / or /proc is refused;
+    on macOS a run that reads other processes is refused on every base and preset), so consumers break, or accept
+    proc-other-processes or waive process-access reflexively without seeing the exposure
+  categories:
+  - Denial of Service
+  - Information Disclosure
+  risk:
+    comment: read grants on / are common in existing policies and tests
+    impact: 50
+    likelihood: 50
+  attributes:
+    source: plan.md#Summary
+    assets:
+    - asset.compat
+    - asset.process-secrets
+    status: mitigated
+    actor: actor.consumer
+    constitution: VII. A library, not a harness (breaking changes ship with a migration note)
+    elements:
+    - component.proc-reach
+    - component.process-access-class
+    - component.docs
+    - flow.policy-in
     profile: stride
     severity: medium
     technique: privilege-escalation-via-config
@@ -330,12 +449,15 @@ threats:
     assets:
     - asset.process-secrets
     - asset.base
-    status: open
+    status: retired
     actor: actor.consumer
     disposition: needs-clarification
     elements:
-    - component.base-v4
+    - component.process-access-class
     profile: stride
+    retired_reason: 'Superseded by Session 2026-11-02 (no release users yet): the fix went in place into the process-access
+      class of every policy: there is no V4 base to opt in to; every base and preset closes the read unless the
+      class is waived.'
     severity: unrated
     technique: sensitive-data-exposure
 - id: threat.nc-pid-one
@@ -350,15 +472,38 @@ threats:
     source: spec.md#Clarifications
     assets:
     - asset.lifetime
-    status: open
+    status: retired
     actor: actor.caged-code
     disposition: needs-clarification
     elements:
-    - component.pidns
     - component.lifetime
     profile: stride
+    retired_reason: 'Clarification 2026-11-02: no PID namespace and no PID 1 in this change.'
     severity: unrated
     technique: broken-access-control
+- id: threat.numeric-unnamed-sysctl
+  name: A query the child makes by numeric MIB is matched differently from its name (an exact sysctl-name filter
+    does not match KERN_PROCARGS2 by number), so a rule that reads right lets other processes' arguments through
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    comment: 'measured on macOS 26.6.2: a prefix matches the numeric call, an exact name does not'
+    impact: 70
+    likelihood: 25
+  attributes:
+    source: research.md
+    assets:
+    - asset.process-secrets
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.process-access-class
+    - flow.sysctl
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
 - id: threat.pidns-lifetime
   name: The PID namespace changes how the run is tracked and killed (namespace-relative pids, orphans reparented
     inside it, signals to its init ignored), so a descendant outlives the run (R-23) or zombies pile up
@@ -373,19 +518,73 @@ threats:
     source: spec.md#FR-003
     assets:
     - asset.lifetime
-    status: open
+    status: retired
     actor: actor.caged-code
     constitution: V. Hygiene by default
     elements:
-    - component.pidns
     - component.lifetime
     - flow.kill
     profile: stride
+    retired_reason: 'Clarification 2026-11-02: no PID namespace in this change, so run tracking and killing are
+      unchanged.'
     severity: medium
     technique: broken-access-control
+- id: threat.prefix-future-name
+  name: Every base still allows sysctl-read outside the kern.procargs prefix, so a sysctl a later macOS release
+    adds (or one not yet known) that returns other processes' arguments or environment is admitted
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-200
+  risk:
+    comment: Apple has added process sysctls before; the canaries probe the queries known today
+    impact: 90
+    likelihood: 20
+  attributes:
+    source: research.md
+    assets:
+    - asset.process-secrets
+    - asset.base
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.process-access-class
+    - flow.sysctl
+    profile: stride
+    severity: medium
+    technique: sensitive-data-exposure
+- id: threat.proc-reach-bypass
+  name: The /proc reach check misses a rule or grant that reaches other processes (a symbolic link or bind mount
+    to /proc, a raw Landlock rule, a glob, a grant bound at spawn), or the /proc/self carve-out resolves to a process
+    other than the child, so the read is silent
+  categories:
+  - Information Disclosure
+  - Elevation of Privilege
+  cwes:
+  - CWE-22
+  - CWE-59
+  risk:
+    comment: lexical path checks and magic links are easy to get wrong
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: plan.md#Summary
+    assets:
+    - asset.process-secrets
+    status: mitigated
+    actor: actor.consumer
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.proc-reach
+    - flow.policy-in
+    - flow.procfs
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
 - id: threat.procargs-variant
-  name: On the V4 base the child reads another process's arguments or environment through a query the rule does
-    not cover (KERN_PROCARGS, a numeric MIB, a pidinfo flavour), stealing tokens
+  name: On any base the child reads another process's arguments or environment through a query the class's rule
+    does not cover (KERN_PROCARGS by numeric MIB, a pidinfo flavour, a pidinfo of a process outside the sandbox),
+    stealing tokens
   categories:
   - Information Disclosure
   cwes:
@@ -396,18 +595,68 @@ threats:
     impact: 90
     likelihood: 50
   attributes:
-    source: spec.md#FR-001
+    source: research.md
     assets:
     - asset.process-secrets
-    status: open
+    status: mitigated
     actor: actor.caged-code
     elements:
-    - component.base-v4
+    - component.process-access-class
     - flow.sysctl
     - flow.exposure
     profile: stride
     severity: high
     technique: sensitive-data-exposure
+- id: threat.program-set-gap
+  name: The class's new rules break a program of the base program set or a frozen preset (a tool that reads its
+    own or a sibling's process information, ps of the run), pushing consumers to waive process-access
+  categories:
+  - Denial of Service
+  risk:
+    comment: the early pidinfo deny is quiet and Seatbelt does not log sysctl-read denials, so a break shows only
+      as a failing tool
+    impact: 50
+    likelihood: 50
+  attributes:
+    source: spec.md#User-Story-1
+    assets:
+    - asset.compat
+    - asset.base
+    status: mitigated
+    actor: actor.consumer
+    elements:
+    - component.process-access-class
+    - component.canaries
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.rule-weakened
+  name: A contributor weakens the process-access class's rule to make a program work (an exact sysctl-name instead
+    of the kern.procargs prefix, which the numeric call does not match; a filtered or dropped early pidinfo deny;
+    a pidinfo allow beyond same-sandbox; a new unfiltered allow), re-admitting KERN_PROCARGS2 on every base and
+    preset
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  risk:
+    comment: 'the measured shapes are non-obvious: the exact name looks right and does not hold'
+    impact: 90
+    likelihood: 30
+  attributes:
+    source: research.md
+    assets:
+    - asset.base
+    - asset.process-secrets
+    status: mitigated
+    actor: actor.contributor
+    constitution: VII. A library, not a harness (presets are versioned and frozen)
+    elements:
+    - component.process-access-class
+    - component.preset-fixtures
+    - flow.presets
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
 - id: threat.stale-proc-view
   name: 'On T1 the child still sees other processes: the target runs outside the new PID namespace (unshare without
     a fork), /proc is mounted from the old namespace, or another proc mount stays reachable'
@@ -423,29 +672,30 @@ threats:
     source: spec.md#FR-003
     assets:
     - asset.process-secrets
-    status: open
+    status: retired
     actor: actor.caged-code
     elements:
-    - component.pidns
-    - flow.confine-ns
     - flow.procfs
     profile: stride
+    retired_reason: 'Clarification 2026-11-02: no PID namespace in this change; Linux /proc reach is an approximation
+      by name on both tiers (threat.t2-silent-proc). The PID namespace component was dropped from the model.'
     severity: high
     technique: sensitive-data-exposure
 - id: threat.status-overclaim
-  name: The docs or the threat model present R-25 as closed for the older bases, for T2, or for Cage::exec (no PID
-    namespace), so a consumer passes secrets in arguments it believes hidden
+  name: The docs or the threat model present R-25 as closed for a run with process-access waived or a Linux cage
+    with proc-other-processes accepted, or omit the documented limits, so a consumer passes secrets in arguments
+    it believes hidden
   categories:
   - Repudiation
   risk:
-    comment: one status per class hides per-base and per-tier differences
+    comment: one status per class hides per-platform, per-waiver and per-approximation differences
     impact: 60
     likelihood: 40
   attributes:
-    source: spec.md#FR-005
+    source: spec.md#FR-004
     assets:
     - asset.process-secrets
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     elements:
@@ -455,30 +705,33 @@ threats:
     severity: medium
     technique: missing-audit-trail
 - id: threat.t2-silent-proc
-  name: On T2 a policy whose rules reach /proc (literally or through an ancestor such as /) runs without the caller
-    accepting the approximation, so other processes' command lines are readable silently
+  name: On Linux T1 or T2 a policy whose rules or grants reach /proc (literally, through an ancestor such as /,
+    a symbolic link, a raw Landlock rule or a glob) runs without the caller accepting proc-other-processes, so other
+    processes' command lines are readable silently
   categories:
   - Information Disclosure
   - Elevation of Privilege
   risk:
-    comment: read grants on / are common; the exposure needs no effort from the child
+    comment: read grants on / are common, and without a PID namespace T1 sees every process of the user
     impact: 80
     likelihood: 50
   attributes:
-    source: spec.md#FR-004
+    source: spec.md#FR-003
     assets:
     - asset.process-secrets
-    status: open
+    status: mitigated
     actor: actor.consumer
     constitution: I. Fail closed, never silently weaker
     elements:
-    - component.t2-gate
+    - component.proc-reach
+    - flow.policy-in
     - flow.procfs
     profile: stride
     severity: high
     technique: privilege-escalation-via-config
 - id: threat.unmeasured-release
-  name: The rule measured on macOS 26.6.2 does not hold on macOS 27, and V4 is frozen with the read still open there
+  name: The rule measured on macOS 26.6.2 (a prefix matches the numeric call; an explicit unfiltered pidinfo deny
+    is needed) does not hold on macOS 27 or a later release, and a release ships with the read open there
   categories:
   - Information Disclosure
   risk:
@@ -490,29 +743,34 @@ threats:
     assets:
     - asset.process-secrets
     - asset.base
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: III. The kernel is the oracle
     elements:
-    - component.base-v4
+    - component.process-access-class
+    - component.canaries
     profile: stride
     severity: medium
     technique: sensitive-data-exposure
 mitigations:
 - id: mitigation.deny-then-name
-  name: V4 denies sysctl-read and process-info-pidinfo explicitly, then allows named sysctls and the process's own
-    information; R-25 canaries read KERN_PROCARGS2, KERN_PROCARGS and pidinfo of another process, with a positive
-    control on the process itself
+  name: The process-access class denies sysctl-read of the kern.procargs prefix and, first in the profile, process-info-pidinfo
+    unfiltered, then allows pidinfo for the same sandbox; the canary reads another process's KERN_PROCARGS2, KERN_PROCARGS
+    and pidinfo by numeric call, with positive controls on self and an own child and a control with the class waived
   riskReduction: 85
   attributes:
     threats:
     - threat.procargs-variant
+    - threat.numeric-unnamed-sysctl
     status: required
     kind: preventive
     requirements:
     - SR-001
     touchpoints:
-    - component.base-v4
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/sbpl.rs
+    - crates/procage/src/macos/sys.rs
+    - crates/procage/tests/escape_macos.rs
 - id: mitigation.fresh-proc
   name: The target runs inside the new PID namespace and /proc is mounted fresh from inside it, over the old one;
     the T1 canary checks /proc, a known outside pid and every proc mount in mountinfo
@@ -520,12 +778,11 @@ mitigations:
   attributes:
     threats:
     - threat.stale-proc-view
-    status: required
+    status: rejected
     kind: preventive
-    requirements:
-    - SR-004
+    requirements: []
     touchpoints:
-    - component.pidns
+    - no PID namespace in this change (clarification 2026-11-02)
 - id: mitigation.lifetime-suite
   name: The R-23 escape suite runs unchanged on T1 with the PID namespace, and a test checks that orphans are reaped
     and that no process of the run survives its end
@@ -533,163 +790,433 @@ mitigations:
   attributes:
     threats:
     - threat.pidns-lifetime
-    status: required
+    status: rejected
     kind: preventive
-    requirements:
-    - SR-005
+    requirements: []
     touchpoints:
-    - component.pidns
-    - component.lifetime
+    - no PID namespace in this change (clarification 2026-11-02)
 - id: mitigation.literal-allowlist
-  name: The V4 allowlist holds literal sysctl names only, each with the program that needed it; a lowering test
-    rejects prefix and regex forms; V1 to V3 fixtures stay byte-identical
+  name: The class adds exactly the prefix deny, the early pidinfo deny and the same-sandbox pidinfo allow and allows
+    nothing else (the pidinfo allow is the only allow without a policy rule); the policy tests pin the lines and
+    the preset fixtures v1 to v3 pin every preset
   riskReduction: 85
   attributes:
     threats:
-    - threat.allowlist-widening
+    - threat.rule-weakened
     status: required
     kind: preventive
     requirements:
     - SR-002
     touchpoints:
-    - component.base-v4
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/tests/base.rs
+    - crates/procage-policy/tests/precedence.rs
+    - crates/procage-policy/tests/gaps.rs
+    - crates/procage-policy/tests/presets.rs
+    - crates/procage-policy/tests/fixtures/presets
 - id: mitigation.measure-before-freeze
-  name: V4 is frozen only after the R-25 canaries and the base program set pass on the macOS 26 and 27 lanes; the
-    canaries fail, never skip
+  name: The R-25 canaries fail, never skip, in every just escape variant (default, with reporting, base V3 with
+    reporting) and on every macOS lane; the macOS 27 lane re-measures the rule when it exists
   riskReduction: 80
   attributes:
     threats:
     - threat.unmeasured-release
+    - threat.prefix-future-name
     status: required
-    kind: preventive
+    kind: detective
     requirements:
     - SR-003
     touchpoints:
-    - component.base-v4
-- id: mitigation.per-platform-status
-  name: THREAT_MODEL and docs give R-25 per platform, base and tier, with the T2 residual and the Cage::exec limit
-  riskReduction: 75
-  attributes:
-    threats:
-    - threat.status-overclaim
-    status: required
-    kind: preventive
-    requirements:
-    - SR-007
-    touchpoints:
-    - component.docs
-- id: mitigation.proc-gap
-  name: On T2 any rule whose reach includes /proc is a capability gap unless the caller accepts the approximation
-    by name, recorded in the receipt
-  riskReduction: 85
+    - crates/procage/tests/escape_macos.rs
+    - .github/workflows/ci.yml
+    - justfile
+- id: mitigation.no-default-proc
+  name: The Linux base and every preset grant nothing under /proc beyond /proc/self and /proc/thread-self; a canary
+    reads another process's cmdline on the default policy and expects a denial
+  riskReduction: 80
   attributes:
     threats:
     - threat.t2-silent-proc
     status: required
     kind: preventive
     requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage-policy/src/base.rs
+    - crates/procage-policy/src/presets.rs
+    - crates/procage-policy/tests/presets.rs
+    - crates/procage/tests/escape_linux.rs
+- id: mitigation.per-platform-status
+  name: 'THREAT_MODEL marks R-25 mitigated with per-platform text, the site pages state the Linux residual with
+    the approximation accepted and the macOS waiver, and the CHANGELOG carries both migration notes (macOS: waive
+    ProcessAccess; Linux: allow ProcOtherProcesses)'
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.status-overclaim
+    - threat.linux-root-refused
+    status: required
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage/THREAT_MODEL.md
+    - site/content/docs/macos.md
+    - site/content/docs/linux.md
+    - site/content/docs/threat-model.md
+    - CHANGELOG.md
+- id: mitigation.proc-gap
+  name: On Linux T1 and T2 a file rule, raw Landlock rule or glob that reaches /proc other than /proc/self and /proc/thread-self
+    is an approximation in the lowering; at cage creation a rule whose canonicalised path reaches /proc (a symbolic
+    link) is refused unless accepted, then listed in the plan; at spawn a grant's resolved path is checked the same
+    way and, when accepted, listed in the run's receipt
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.t2-silent-proc
+    - threat.proc-reach-bypass
+    - threat.linux-root-refused
+    status: required
+    kind: preventive
+    requirements:
     - SR-006
     touchpoints:
-    - component.t2-gate
+    - crates/procage-policy/src/linux.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/receipt.rs
+    - crates/procage/tests/escape_linux.rs
+- id: mitigation.program-set-v4
+  name: The base program set and the escape suite run with the class in force; the run's own and its children's
+    arguments and process information stay readable (same-sandbox allow); ps (setuid, refused in any cage) and pgrep
+    (needs sysmond) are documented limits
+  riskReduction: 75
+  attributes:
+    threats:
+    - threat.program-set-gap
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage/tests/spawn_macos.rs
+    - crates/procage/tests/escape_macos.rs
+    - site/content/docs/macos.md
 requirements:
 - id: SR-001
-  statement: On the V4 base, reading the arguments, environment or process information of any process outside the
-    run (KERN_PROCARGS2, KERN_PROCARGS, pidinfo) MUST fail with EPERM, while the child's reads of its own MUST succeed.
+  statement: On macOS, on every base, the process-access class MUST refuse with EPERM the child's reads of the arguments,
+    environment and process information of any process outside the run (KERN_PROCARGS2 and KERN_PROCARGS by numeric
+    MIB, pidinfo), while its reads of its own and its children's MUST succeed; waiving the class MUST lift the refusal.
   priority: P1
   mitigations:
   - mitigation.deny-then-name
   acceptance:
-  - given: a same-user process holding a token in its arguments and a child on the V4 base
+  - given: a same-user process outside the run and a child on the default policy
     then: each read fails with EPERM
-    when: the child reads that process's KERN_PROCARGS2, KERN_PROCARGS and pidinfo
-  - given: the same child
-    then: both succeed
-    when: it reads its own KERN_PROCARGS2 and pidinfo
+    when: the child reads that process's KERN_PROCARGS2, KERN_PROCARGS and pidinfo by numeric call
+  - given: the same child with a child of its own
+    then: every read succeeds
+    when: it reads its own and its child's KERN_PROCARGS2 and pidinfo
+  - given: the same policy with HardDenyClass::ProcessAccess waived
+    then: it succeeds
+    when: the child reads the other process's KERN_PROCARGS2
   tasks: []
 - id: SR-002
-  statement: The V4 sysctl allowlist MUST name each sysctl literally, with the program that needed it, and MUST
-    NOT contain a prefix or regular-expression form; V1 to V3 MUST compile byte-identical to before.
+  statement: The process-access class MUST add exactly (deny sysctl-read (sysctl-name-prefix "kern.procargs")),
+    the quiet early unfiltered (deny process-info-pidinfo) and (allow process-info-pidinfo (target same-sandbox))
+    and MUST allow nothing else; the preset profiles v1 to v3 MUST change only by these three lines, pinned by their
+    fixtures.
   priority: P1
   mitigations:
   - mitigation.literal-allowlist
   acceptance:
-  - given: the V4 base
-    then: every allow is a literal name with a recorded program, and a prefix or regex form fails the test
-    when: its sysctl rules are lowered
-  - given: the V1, V2 and V3 fixtures
-    then: they equal the frozen fixtures
-    when: they are compiled
+  - given: the empty policy
+    then: the only allow is (allow process-info-pidinfo (target same-sandbox))
+    when: it is lowered for macOS
+  - given: the reference policies
+    then: the same-sandbox pidinfo allow is the only allow without a policy rule
+    when: every allow is traced to its source
+  - given: every preset version v1 to v3
+    then: it equals its fixture, which contains the prefix deny, the early pidinfo deny and the same-sandbox allow
+    when: it is lowered
   tasks: []
 - id: SR-003
-  statement: V4 MUST NOT be frozen until the R-25 canaries and the base program set pass on the macOS 26 and 27
-    lanes, and the canaries MUST fail, never skip, when the read succeeds or the child is already sandboxed.
+  statement: The R-25 canaries MUST run on the default policy and MUST fail, never skip, when another process's
+    arguments are readable, in every just escape variant and on every macOS lane; the macOS 27 lane MUST re-measure
+    the rule when it exists.
   priority: P1
   mitigations:
   - mitigation.measure-before-freeze
   acceptance:
-  - given: the macOS 26 and 27 lanes
-    then: the canaries are refused and every program works as on V3
-    when: the R-25 canaries and the base program set run on V4
+  - given: every just escape variant (default, with reporting, base V3 with reporting)
+    then: it passes, and it is not ignored
+    when: r25_other_processes_arguments_are_unreadable runs
   - given: a lane where the read succeeds
     then: it fails the lane
     when: the canary runs
   tasks: []
 - id: SR-004
-  statement: On Linux T1 every spawned run MUST run inside a new PID namespace with a /proc mounted from inside
-    it, and no proc mount showing processes outside the run MUST be reachable.
+  statement: On Linux (T1 and T2) the base and every preset MUST grant nothing under /proc beyond /proc/self and
+    /proc/thread-self, so on the default policy a child's read of another process's cmdline or environ MUST be denied.
   priority: P1
   mitigations:
-  - mitigation.fresh-proc
+  - mitigation.no-default-proc
   acceptance:
-  - given: T1 and a same-user process outside the run
-    then: it sees only the run's processes and the read fails
-    when: the child lists /proc and reads that process's cmdline by its outside pid
-  - given: the same child
-    then: every proc mount shows only the run's processes
-    when: it lists the proc mounts in /proc/self/mountinfo
+  - given: Linux T1 or T2, the base policy and a same-user process outside the run
+    then: both reads are denied
+    when: the child reads that process's cmdline and environ
+  - given: every preset version v1 to v3 on T1 and T2
+    then: none names proc-other-processes
+    when: its rules are lowered
   tasks: []
 - id: SR-005
-  statement: With the PID namespace, Lifetime::Run MUST still end every process of the run, orphans MUST be reaped,
-    and the R-23 escape suite MUST pass unchanged on T1.
-  priority: P1
+  statement: With the class in force the run's own processes MUST stay readable (the pidinfo allow is same-sandbox,
+    not self and children) and the base program set MUST work as before; ps (setuid, refused in any cage) and pgrep
+    (needs sysmond) MUST be documented as limits.
+  priority: P2
   mitigations:
-  - mitigation.lifetime-suite
+  - mitigation.program-set-v4
   acceptance:
-  - given: T1 and a double-forked descendant
-    then: the descendant is gone
-    when: the run ends
-  - given: a child that orphans many short-lived processes
-    then: no zombie of the run remains
-    when: the run proceeds
-  - given: the R-23 canaries
-    then: every canary holds
-    when: they run on T1 with the namespace
+  - given: a child on the default policy with a child of its own
+    then: every read succeeds
+    when: it reads its own and its child's arguments and pidinfo
+  - given: the base program set
+    then: every program works as before
+    when: it runs with the class in force
+  - given: the macOS docs
+    then: they state what of ps of the run works and the ps and pgrep limits
+    when: they describe R-25
   tasks: []
 - id: SR-006
-  statement: On Linux T2 a policy whose rules reach /proc, literally or through an ancestor, MUST be refused as
-    a capability gap unless the caller accepts the approximation by name, and the acceptance MUST be recorded in
-    the receipt; other processes' environ MUST stay unreadable.
+  statement: On Linux T1 and T2 a policy whose file rule, raw Landlock rule or glob reaches /proc other than /proc/self
+    and /proc/thread-self (literally, through an ancestor such as /, or through a symbolic link resolved at cage
+    creation), or a grant whose resolved path does at spawn, MUST be refused naming proc-other-processes unless
+    the caller accepts it by name; an accepted rule MUST be listed in the plan and an accepted grant in the run's
+    receipt, which is then not enforced as written; other processes' environ MUST stay unreadable.
   priority: P1
   mitigations:
   - mitigation.proc-gap
   acceptance:
-  - given: T2 and a policy that grants read on /
-    then: it is refused with a capability gap naming /proc
-    when: the cage spawns without the approximation
+  - given: T1 or T2 and a rule on /proc
+    then: it is refused naming proc-other-processes
+    when: the cage is made without the approximation
   - given: the approximation accepted by name
-    then: cmdline is readable, environ is refused, and the receipt records the approximation
-    when: the child reads another process's cmdline and environ
+    then: environ is refused, cmdline is readable (the residual), its own environ is readable, and the plan lists
+      the approximation
+    when: the child reads another process's environ and cmdline and its own environ
+  - given: a rule on a symbolic link to /proc
+    then: it is refused naming the construct, then made with the approximation in the plan
+    when: the cage is made without, then with the approximation
+  - given: a grant bound at spawn to a symbolic link to /proc
+    then: the spawn is refused naming the construct, then the receipt lists the approximation and enforced_as_written
+      is false
+    when: the run is spawned without, then with the approximation
   tasks: []
 - id: SR-007
-  statement: THREAT_MODEL and the docs MUST give R-25's status per platform, base and tier, MUST state that V1 to
-    V3 and T2 leave command lines readable, and MUST state that Cage::exec gets no PID namespace.
+  statement: 'THREAT_MODEL MUST mark R-25 mitigated with per-platform text (macOS: the class on every base, lifted
+    by waiving it; Linux: no /proc by default, the approximation by name with its residual), the site docs MUST
+    say the same, and the CHANGELOG MUST carry the migration notes (macOS: waive ProcessAccess; Linux: allow ProcOtherProcesses).'
   priority: P2
   mitigations:
   - mitigation.per-platform-status
   acceptance:
   - given: THREAT_MODEL, the crate docs and the site
-    then: they name the closing base on macOS, T1's canary, the T2 residual and the Cage::exec limit
+    then: they give the macOS class and its waiver, the Linux default and the residual with the approximation, and
+      no base or preset that does not exist
     when: they describe R-25
+  - given: the CHANGELOG
+    then: it lists the macOS refusal under Security and the Linux approximation under Changed, each with its migration
+    when: the release is cut
   tasks: []
-verification: []
+verification:
+- id: verification.sr-001.2026-11-01
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable
+  result: partial
+  verdict: partial
+  justification: On V4 the test asserts EPERM for the parent's KERN_PROCARGS2 and success for the child's own and
+    its child's KERN_PROCARGS2 (passes on macOS 26.6.2, also in the V4 escape run); no test reads another process's
+    KERN_PROCARGS (the older numeric variant) or its pidinfo, and the child's own pidinfo is not asserted.
+  verified_at: '2026-11-01T23:58:07Z'
+  commit: 0b8cb30
+- id: verification.sr-001.2026-11-02
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable
+  result: pass
+  verdict: verified
+  justification: On the default policy (fork on) the child's reads of the caller's KERN_PROCARGS2, KERN_PROCARGS
+    and pidinfo by numeric call are asserted EPERM, its own and its own child's procargs and pidinfo asserted readable,
+    and with HardDenyClass::ProcessAccess waived the caller's KERN_PROCARGS2 asserted readable; passed on macOS
+    26.6.2 in all three just escape variants (default, with reporting, base V3 with reporting), run 2026-11-02.
+  verified_at: '2026-11-02T00:53:55Z'
+  commit: 0b8cb30
+- id: verification.sr-002.2026-11-01
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-policy/tests/base_v4.rs::the_allowlist_leaves_out_the_argument_queries
+  result: partial
+  verdict: partial
+  justification: 'Tests show no prefix or name covers kern.procargs/kern.procargs2 (base_v4.rs), V4 allows nothing
+    V3 does not (base_v4.rs::v4_allows_nothing_v3_does_not) and V1-V3 presets match the unchanged frozen fixtures
+    (tests/presets.rs, passing); but no entry has a recorded program (Seatbelt does not log sysctl-read denials,
+    so the allowlist is justified only by the program set''s functional result, which the SR does not say), and
+    no test rejects a regex filter in the V4 sysctl allow (it only checks the filters are non-empty). Proposed wording:
+    "each entry is justified by the base program set as a whole running on V4 as on V3 (Seatbelt does not report
+    sysctl-read denials), and the sysctl allow uses only sysctl-name and sysctl-name-prefix filters".'
+  verified_at: '2026-11-01T23:58:07Z'
+  commit: 0b8cb30
+- id: verification.sr-002.2026-11-02
+  requirement: SR-002
+  method: test
+  evidence: crates/procage-policy/tests/precedence.rs::every_allow_has_a_source
+  result: pass
+  verdict: verified
+  justification: precedence.rs::every_allow_has_a_source asserts the empty policy's only allow is the same-sandbox
+    pidinfo allow and every other allow has a policy source; base.rs::base_names_nothing_personal and gaps.rs::the_empty_policy_denies_everything_on_every_target
+    assert the same line as the empty policy's only allow; presets.rs::every_preset_is_pinned compares every preset
+    v1 to v3 with its fixture, and each of the 12 fixtures contains exactly the prefix deny, the quiet early pidinfo
+    deny and the same-sandbox allow (the +3 lines in the working-tree diff). cargo test -p procage-policy --all-features
+    green.
+  verified_at: '2026-11-02T00:53:55Z'
+  commit: 0b8cb30
+- id: verification.sr-003.2026-11-01
+  requirement: SR-003
+  method: review
+  evidence: .github/workflows/ci.yml:81
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: 'The canaries fail rather than skip (r25_other_processes_arguments_are_unreadable is not ignored
+    and asserts EPERM) and pass locally on macOS 26.6.2 with PROCAGE_ESCAPE_BASE=v4 (29 passed, R-26 open); the
+    CI step running the escape suite on V4 is added but no CI run of it is on record, and spawn_macos base_v4_*
+    was not run here. The macOS 27 lane does not exist yet: its green run is a precondition of releasing V4, not
+    missing implementation.'
+  verified_at: '2026-11-01T23:58:07Z'
+  commit: 0b8cb30
+- id: verification.sr-003.2026-11-02
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable
+  result: pass
+  verdict: verified
+  justification: The canary carries no ignore attribute and asserts with assert_eq, so a readable argument query
+    fails it; the suite fails rather than skips when already sandboxed (escape_macos.rs:16); it passed in all three
+    just escape variants locally, and .github/workflows/ci.yml:70-80 runs the same three variants on the macos-26
+    lane. The macOS 27 lane does not exist yet; re-measuring there is conditional on it (spec 039), not a missing
+    implementation.
+  verified_at: '2026-11-02T00:53:55Z'
+  commit: 0b8cb30
+- id: verification.sr-004.2026-11-01
+  requirement: SR-004
+  method: review
+  evidence: crates/procage/tests/escape_linux.rs::r25_other_processes_are_opaque
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The escape test asserts EACCES for the caller's cmdline and environ on T1 and T2 with base V1 (reported
+    green in Docker, not run here); base.rs and presets.rs contain no /proc path, but no test lowers every preset
+    version on Linux and asserts that none reaches /proc beyond /proc/self and /proc/thread-self.
+  verified_at: '2026-11-01T23:58:07Z'
+  commit: 0b8cb30
+- id: verification.sr-004.2026-11-02
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r25_other_processes_are_opaque
+  result: pass
+  verdict: verified
+  justification: On the base policy the child's reads of the caller's environ and cmdline are asserted EACCES on
+    every tier the host gives (T1 and T2 on the T1 lane), passed in just linux-t1 and just linux (Docker, Linux
+    7.0.14) on 2026-11-02; crates/procage-policy/tests/presets.rs::presets_do_not_reach_other_processes_on_linux
+    lowers every preset v1 to v3 on T1 and T2 and asserts none names proc-other-processes (green).
+  verified_at: '2026-11-02T00:53:55Z'
+  commit: 0b8cb30
+- id: verification.sr-005.2026-11-01
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable
+  result: partial
+  verdict: partial
+  justification: 'The child''s own child''s KERN_PROCARGS2 is asserted readable and spawn_macos.rs base_v4_runs_ordinary_programs
+    and base_v4_runs_developer_tools assert the program set works on V4; the child''s pidinfo and ps of the run
+    are not exercised, and the "no denial unaccounted for" scenario cannot be shown from violation records because
+    Seatbelt does not log sysctl-read denials. Proposed wording: "the base program set on V4 behaves as on V3 (the
+    functional result is the measurement, since Seatbelt does not report sysctl-read denials)".'
+  verified_at: '2026-11-01T23:58:07Z'
+  commit: 0b8cb30
+- id: verification.sr-005.2026-11-02
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable
+  result: partial
+  verdict: partial
+  justification: 'Own and own child''s procargs and pidinfo are asserted readable (canary, green) and the program
+    set passes with the class in force (spawn_macos base_runs_ordinary_programs, base_v2_runs_developer_tools, preset_*
+    green); but the third scenario fails: site/content/docs/macos.md:61 says "so ps of the run works", while ps
+    is setuid and refused in any cage, and no doc states the ps or pgrep (needs sysmond) limit.'
+  verified_at: '2026-11-02T00:53:55Z'
+  commit: 0b8cb30
+- id: verification.sr-005.2026-11-02-2
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable
+  result: pass
+  verdict: verified
+  justification: Own and own child's procargs and pidinfo are asserted readable with the class in force (canary,
+    green in all three just escape variants); the base program set passes with the class in force (spawn_macos base_runs_ordinary_programs,
+    base_v2_runs_developer_tools, preset_* green); site/content/docs/macos.md:55 now states the limits (ps is setuid
+    and setuid programs are refused in any cage; pgrep needs sysmond and fails in any cage), replacing the earlier
+    "ps of the run works" claim.
+  verified_at: '2026-11-02T00:56:32Z'
+  commit: 0b8cb30
+- id: verification.sr-006.2026-11-01
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r25_other_processes_are_opaque
+  result: partial
+  verdict: partial
+  justification: 'A rule on /proc is refused naming proc-other-processes, then accepted and listed in the plan,
+    and environ stays EACCES (escape_linux.rs); reading / needs the construct (gaps.rs::reading_everything_needs_exactly_the_spawn_snapshot);
+    but proc_reach (crates/procage-policy/src/lower/linux.rs:175) checks only literal policy and raw Landlock paths:
+    a grant bound at spawn (crates/procage/src/linux/mod.rs bind) or a rule on a symlink to /proc is not counted,
+    there is no reachability table test, cmdline readability and the receipt listing are not asserted.'
+  verified_at: '2026-11-01T23:58:07Z'
+  commit: 0b8cb30
+- id: verification.sr-006.2026-11-02
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r25_proc_through_a_link_or_a_grant_is_an_approximation
+  result: pass
+  verdict: verified
+  justification: escape_linux.rs::r25_other_processes_are_opaque asserts a rule on /proc is refused naming proc-other-processes,
+    and accepted lists it in the plan with the caller's environ EACCES, own environ ok and caller's cmdline ok;
+    r25_proc_through_a_link_or_a_grant_is_an_approximation asserts a rule on a symlink to /proc is refused then
+    listed in the plan, and a grant bound to it is refused at spawn then listed in the receipt with enforced_as_written
+    false; both passed on T1 and T2 (just linux-t1, just linux) on 2026-11-02.
+  verified_at: '2026-11-02T00:53:55Z'
+  commit: 0b8cb30
+- id: verification.sr-007.2026-11-01
+  requirement: SR-007
+  method: review
+  evidence: crates/procage/THREAT_MODEL.md:208
+  result: partial
+  verdict: partial
+  justification: THREAT_MODEL R-25 (row and harness note), site macos.md, linux.md, threat-model.md, README and
+    the CHANGELOG migration note describe V4, V1-V3 and the Linux approximation; but crates/procage/src/macos/mod.rs:33
+    still says the sandbox does not mediate KERN_PROCARGS2, site presets.md, policies.md and getting-started.md
+    still list and recommend v3, and the Linux refusal is under Security rather than Changed in the CHANGELOG.
+  verified_at: '2026-11-01T23:58:07Z'
+  commit: 0b8cb30
+- id: verification.sr-007.2026-11-02
+  requirement: SR-007
+  method: review
+  evidence: crates/procage/THREAT_MODEL.md:204
+  result: pass
+  verdict: verified
+  justification: THREAT_MODEL R-25 row (line 204) is mitigated with macOS and Linux text and the four canaries;
+    crates/procage/tests/threat_model.rs::statuses_are_parsed asserts R-25 mitigated; site macos.md, linux.md and
+    threat-model.md give the class, its waiver, the Linux default and the residual; CHANGELOG.md has the macOS refusal
+    under Security (line 24, migration = waive ProcessAccess) and the Linux approximation under Changed (line 52,
+    migration = allow ProcOtherProcesses); no base V4 or presets v4 remain in these files.
+  verified_at: '2026-11-02T00:53:55Z'
+  commit: 0b8cb30
 decisions: []

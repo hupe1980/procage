@@ -132,6 +132,7 @@ constructs! {
     BaseV1 => "base-v1",
     BaseV2 => "base-v2",
     BaseV3 => "base-v3",
+    ProcOtherProcesses => "proc-other-processes",
     HdFcntlModify => "hd-fcntl-modify",
     HdPrivilege => "hd-privilege",
     HdServiceHandoff => "hd-service-handoff",
@@ -425,8 +426,8 @@ impl LowerOptions {
     /// Paths created after the spawn are not covered by a mask; entries
     /// created on the way to a hidden path are denied. No other
     /// approximation is accepted, and each accepted one is still listed in
-    /// the plan's degradations. This is what reading the whole file system
-    /// except secrets needs on Linux.
+    /// the plan's degradations. With [`Construct::ProcOtherProcesses`] it
+    /// is what reading the whole file system except secrets needs on Linux.
     pub fn accept_spawn_snapshot(mut self) -> Self {
         for &construct in Construct::SPAWN_SNAPSHOT {
             self = self.allow(construct);

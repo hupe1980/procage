@@ -1,0 +1,12 @@
+verdicts:
+  - requirement: SR-005
+    verdict: verified
+    method: test
+    evidence: crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable
+    result: pass
+    justification: >-
+      Own and own child's procargs and pidinfo are asserted readable with the class in force (canary, green in all
+      three just escape variants); the base program set passes with the class in force (spawn_macos
+      base_runs_ordinary_programs, base_v2_runs_developer_tools, preset_* green); site/content/docs/macos.md:55 now
+      states the limits (ps is setuid and setuid programs are refused in any cage; pgrep needs sysmond and fails in
+      any cage), replacing the earlier "ps of the run works" claim.

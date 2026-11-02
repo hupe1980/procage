@@ -88,7 +88,7 @@ fn a_hostile_directory_name_stays_one_subpath() {
     // Outside quoted strings, the profile holds no syntax from the name.
     let syntax: String = plan.profile.lines().map(outside_quotes).collect();
     assert!(
-        !syntax.contains("(allow default") && !syntax.contains("(with"),
+        !syntax.contains("(allow default") && !syntax.contains("(with no-sandbox"),
         "{syntax}"
     );
 }

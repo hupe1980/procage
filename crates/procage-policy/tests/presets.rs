@@ -288,3 +288,28 @@ fn v3_presets_differ_from_v2_only_by_the_base() {
         assert_eq!(same, v2, "{name}");
     }
 }
+
+/// No preset version reaches other processes' `/proc` entries on Linux, so
+/// none needs `proc-other-processes`.
+#[test]
+fn presets_do_not_reach_other_processes_on_linux() {
+    for (name, p) in all().into_iter().chain(all_v2()).chain(all_v3()) {
+        for tier in [Tier::T1, Tier::T2] {
+            let target = Target::Linux {
+                tier,
+                landlock_abi: 8,
+            };
+            let named = match lower(&p, target, &LowerOptions::default()) {
+                Ok(Plan::Linux(plan)) => plan
+                    .degradations
+                    .iter()
+                    .any(|d| d.construct == Construct::ProcOtherProcesses),
+                Err(LowerError::Gaps(gaps)) => gaps
+                    .iter()
+                    .any(|g| g.construct == Construct::ProcOtherProcesses),
+                other => panic!("{name} {tier}: {other:?}"),
+            };
+            assert!(!named, "{name} {tier}");
+        }
+    }
+}

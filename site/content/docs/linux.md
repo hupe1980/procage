@@ -16,11 +16,11 @@ Linux has no single sandbox call. procage combines kernel features into a **tier
 | **T2** | Landlock and seccomp only | Landlock ABI 1+ | A Docker container with default settings; hosts that restrict user namespaces (for example Ubuntu's AppArmor restriction) |
 | none | | | Preparing a cage fails with `Unsupported`; procage never runs a child unsandboxed |
 
-`procage::linux::probe()` measures the host once per process: the Landlock ABI (asked of the kernel, not guessed from its version, because distributions backport Landlock), and whether a user namespace with mounts works, tried in a throwaway child. `Cage::with_options` picks the strongest tier unless `CageOptions::with_tier` asks for one; asking for T1 where it is unavailable is `Unsupported`.
+`procage::linux::probe()` measures the host once per process: the Landlock ABI (asked of the kernel, since distributions backport Landlock) and whether a user namespace with mounts works, tried in a throwaway child. `Cage::with_options` picks the strongest tier unless `CageOptions::with_tier` asks for one; asking for T1 where it is unavailable is `Unsupported`.
 
 ## Spawning
 
-A `Cage` lowers the policy for the tier and the kernel's Landlock ABI; a construct the tier cannot enforce is a capability gap at preparation. `Cage::spawn` builds everything in the parent (the Landlock ruleset on descriptors opened for that spawn, the seccomp filter, the mounts and id maps) and forks a child that applies it with system calls only, in this order:
+A `Cage` lowers the policy for the tier and the kernel's Landlock ABI; a construct the tier cannot enforce is a capability gap at preparation. `Cage::spawn` builds everything in the parent (Landlock ruleset, seccomp filter, mounts and id maps) and forks a child that applies it with system calls only, in this order:
 
 1. session (or process group);
 2. parent-death signal;
@@ -37,7 +37,7 @@ If any step fails, the target never runs and `SpawnError::Apply` names the step.
 
 ## Landlock ABIs
 
-Both tiers accept Landlock ABI 1 (Linux 5.13) and later. Each newer ABI makes more of a policy exact; what an older one cannot express is a capability gap or, where noted, a stricter rule.
+Both tiers accept Landlock ABI 1 (Linux 5.13) and later. What an older ABI cannot express is a capability gap or, where noted, a stricter rule.
 
 | ABI | Linux | For example | Below it |
 |---|---|---|---|
@@ -45,13 +45,13 @@ Both tiers accept Landlock ABI 1 (Linux 5.13) and later. Each newer ABI makes mo
 | 3 | 6.2 | Ubuntu 22.04 HWE, 23.10 | Landlock cannot deny truncation, so procage refuses `truncate` by path and `open` with `O_TRUNC` without write access *everywhere*, also inside writable paths (truncate through a descriptor opened for writing instead), and `openat2` fails with `ENOSYS`. Debian 12 (6.1) is at ABI 2 |
 | 4 | 6.7 | Ubuntu 24.04 (6.8) | No TCP rules: with the network off seccomp still refuses IP sockets, but an IP socket the caller hands over can connect (tier T2) |
 | 6 | 6.12 | Debian 13, RHEL 10 | No signal scope: `Signals::SelfAndChildren` is a gap. Abstract Unix sockets are not scoped |
-| 9 | | | Unix-socket rules on T2 |
+| 9 | | | No Unix-socket rules: `ipc.unix_sockets` is approximated on T1 and refused on T2 |
 
-RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 8 (`procage::linux::BACKEND_MAX_ABI`), the newest verified on a kernel.
+RHEL 9.6 has ABI 5 through backports. procage uses Landlock rights up to ABI 8 (`procage::linux::BACKEND_MAX_ABI`), the newest verified on a kernel, so the "below 9" limits hold on every kernel.
 
 ### Testing against older kernels
 
-`CageOptions::with_landlock_abi` lowers and enforces a policy as on an older kernel, so you can see which gaps your users' kernels give, or give every host of a fleet the same plan. A cap above the kernel's ABI has no effect.
+`CageOptions::with_landlock_abi` lowers and enforces a policy as on an older kernel: to see which gaps your users' kernels give, or to give every host of a fleet the same plan. A cap above the kernel's ABI has no effect.
 
 ```rust
 use procage::linux::{Cage, CageOptions};
@@ -64,36 +64,36 @@ assert_eq!(cage.landlock_abi(), 2);
 
 ## Reading everything except secrets
 
-A policy that reads `/` reaches the paths of the `secrets`, `trust-handoff` and `persistence` classes.
+A policy that reads `/` reaches the paths of the `secrets`, `trust-handoff` and `persistence` classes, and other processes' `/proc` entries.
 
-- On **T1** the paths that exist at spawn are masked.
+- On **T1** the class paths that exist at spawn are masked.
 - On **T2** a hidden path (an `Access::Hide` rule, or the secrets class) that no write rule reaches is kept out by granting the trees around it entry by entry, as listed at spawn: entries added later on the way are denied, the directories on the way cannot be listed, symbolic links on the way are not followed, and `stat` of the hidden path still works.
 - A hidden or protected path **inside a writable tree** cannot be kept out on T2, and a write grant bound around one fails the spawn.
 
-Each of these is an approximation you accept with `LowerOptions::accept_spawn_snapshot()`. Looking for class paths under writable trees walks them; a tree with more entries than `CageOptions::walk_limit` (200,000 by default) fails the spawn rather than going unchecked.
+Each of these is an approximation accepted with `LowerOptions::accept_spawn_snapshot()`. Without a PID namespace, a rule or grant that reaches `/proc` beyond `/proc/self` and `/proc/thread-self` (on `/` or `/proc`, through a symbolic link to them, or a grant bound to such a path) exposes other processes' arguments, though not their environment (R-25): the approximation `proc-other-processes`, accepted only by name (`LowerOptions::allow(Construct::ProcOtherProcesses)`).
+
+Looking for class paths under writable trees walks them; a tree with more entries than `CageOptions::walk_limit` (200,000 by default) fails the spawn with `SpawnError::Walk` rather than going unchecked.
 
 ## Unix sockets
 
-`ipc.unix_sockets` allows only `AF_UNIX` sockets when the network is otherwise off. On T1 below ABI 9, abstract sockets stay inside the cage's network namespace, and every listening socket outside the allowed paths, as listed in `/proc/net/unix` at spawn, is masked; sockets bound later stay reachable (an approximation accepted with the same option). T2 below ABI 9 cannot restrict pathname sockets and refuses the setting.
+`ipc.unix_sockets` allows only `AF_UNIX` sockets when the network is otherwise off. On T1 below ABI 9, abstract sockets stay inside the cage's network namespace, and every listening socket outside the allowed paths, as listed in `/proc/net/unix` at spawn, is masked; sockets bound later stay reachable (an approximation accepted with `accept_spawn_snapshot()`). T2 below ABI 9 cannot restrict pathname sockets and refuses the setting.
+
+The D-Bus, systemd and container-engine sockets are kept out by the [socket classes](@/docs/hard-deny.md#the-socket-classes).
 
 ## What the tests observe
 
-The Linux tests run in containers on tier T1 (seccomp unconfined) and tier T2 (Docker's defaults), with T2 also forced on the T1 host. Among what they observe:
+The tests (`tests/spawn_linux.rs`, `tests/escape_linux.rs`) run in containers on tier T1 (seccomp unconfined) and tier T2 (Docker's defaults), with T2 also forced on the T1 host; the [threat model](@/docs/threat-model.md) lists the canaries per escape class. Beyond those:
 
-- granted files work; every other file access fails with "permission denied"; `ptrace`, `io_uring_setup`, `bpf`, `keyctl`, `unshare`, `setns`, `perf_event_open` and `userfaultfd` fail;
-- without network access, the host's loopback is unreachable (T1: a network namespace; T2: no sockets);
-- on T1 a protected subtree is a read-only file system that neither `umount` nor a read-write remount undoes; `.ssh` and `.aws` in a readable home are unreadable; git hooks, `.vscode` and `.bashrc` in a writable workspace cannot be written, and a systemd user unit cannot be planted;
-- on T2, protecting a subtree inside a writable one is a capability gap, and a grant bound to a home holding `.ssh` is refused;
-- under `Lifetime::Run`, `setsid` and `setpgid` fail with `EPERM`, and descendants die with the child's process group;
+- a denied file access fails with "permission denied" (macOS says "operation not permitted");
+- on T1 a protected subtree is a read-only file system that neither `umount` nor a read-write remount undoes;
 - with the Landlock ABI capped at 1, 2, 3 and 5, on both tiers, writes stay in the workspace, the network is off, `ptrace` is refused and no file outside the writable paths can be truncated.
 
 ## Limits
 
-- No PID namespace or private `/proc`, so keeping signals within the run needs Landlock ABI 6. A policy that grants `/proc` exposes other processes' arguments (R-25); their environment stays out of reach.
+- No PID namespace or private `/proc`: keeping signals within the run needs Landlock ABI 6, and reaching other processes' `/proc` entries is an [approximation](#reading-everything-except-secrets).
 - With `Lifetime::Tree`, a descendant that double-forks into a session of its own outlives the run.
 - No loopback or proxy networking: a gap on both tiers.
 - Protect, and hide inside a writable tree, are gaps on T2; glob rules are gaps on both tiers.
-- The evidence was recorded on one kernel (7.0.14, aarch64), older ABIs through the cap.
 - The probe is cached per process, not per boot.
 
 ## Options
@@ -104,8 +104,12 @@ The Linux tests run in containers on tier T1 (seccomp unconfined) and tier T2 (D
 | `with_tier(Tier)` | Ask for T1 or T2 instead of the strongest available |
 | `with_landlock_abi(u8)` | Behave as on an older kernel |
 | `with_home(path)` | One more home directory for the data-driven classes |
+| `with_runtime_dir(path)` | One more runtime directory for the socket classes |
 | `with_walk_limit(usize)` | Entries one spawn may visit looking for class paths under writable trees |
+| `with_violations()` | [Violation reports](@/docs/violations.md) |
+| `with_link_audit(LinkAudit)`, `with_handoff_audit()` | [Audits](@/docs/audits.md) |
+| `with_policy_in_receipt()` | The policy in each [receipt](@/docs/receipts.md) |
 
 ## Violation reports
 
-With `CageOptions::with_violations`, every system call the seccomp filter refuses is reported to the harness, exactly, with the process, the call and why (a hard-deny class, not granted, the lifetime lock, the older-kernel truncation guard). It needs no privileges and works on both tiers. Landlock's file, network and signal denials are not reported. See [Violations](@/docs/violations.md).
+With `CageOptions::with_violations`, every system call the seccomp filter refuses is reported exactly, on both tiers and without privileges; Landlock's file, network and signal denials are not. See [Violations](@/docs/violations.md#how-it-works-on-linux).

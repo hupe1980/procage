@@ -331,7 +331,9 @@ pub enum HardDenyClass {
     /// events, the pasteboard and XPC services; on Linux the D-Bus buses and
     /// the systemd service managers' sockets (connect denied).
     ServiceHandoff,
-    /// Task ports, process introspection outside the sandbox, ptrace.
+    /// Task ports, signals, ptrace and reading other processes (on macOS
+    /// their arguments and environment); the run's own processes stay
+    /// readable.
     ProcessAccess,
     /// Renaming a writable root or an ancestor of a protected or hidden path.
     RenameAnchors,
@@ -361,7 +363,7 @@ pub enum HardDenyClass {
 }
 
 impl HardDenyClass {
-    /// Every class of this release, in emission order.
+    /// Every class, in emission order.
     pub const ALL: &'static [HardDenyClass] = &[
         HardDenyClass::FcntlModify,
         HardDenyClass::Privilege,

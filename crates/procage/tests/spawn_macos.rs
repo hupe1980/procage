@@ -1007,8 +1007,13 @@ fn outside(program: &str, args: &[&str]) -> String {
 
 #[test]
 fn base_runs_ordinary_programs() {
-    let work = scratch("base-work");
+    ordinary_programs_run(Base::V1);
+}
+
+fn ordinary_programs_run(base: Base) {
+    let work = scratch(&format!("base-{base:?}-work"));
     let mut p = base_v1();
+    p.base = base;
     p.fs.push(rule(Access::Read, &work));
     let cage = Cage::new(&p).unwrap();
     let cases: &[(&str, &[&str], Option<String>)] = &[
@@ -1171,13 +1176,17 @@ fn developer_tools() -> bool {
 /// shim's second call in a reused `TMPDIR` is fast. Under V1 the shims fail.
 #[test]
 fn base_v2_runs_developer_tools() {
-    let work = scratch("v2-tools");
+    developer_tools_run(Base::V2);
+}
+
+fn developer_tools_run(base: Base) {
+    let work = scratch(&format!("{base:?}-tools"));
     std::fs::write(
         work.join("hello.c"),
         "#include <stdio.h>\nint main(){puts(\"hi\");}\n",
     )
     .unwrap();
-    let cage = Cage::new(&developer_policy(Base::V2, &work)).unwrap();
+    let cage = Cage::new(&developer_policy(base, &work)).unwrap();
     let dev = developer_tools();
     let brew = |tool: &str| Path::new("/opt/homebrew/bin").join(tool).exists();
     // `git init` writes hooks, which the trust-handoff class refuses: the

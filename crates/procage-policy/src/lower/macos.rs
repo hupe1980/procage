@@ -124,6 +124,16 @@ fn hard_deny(class: HardDenyClass, policy: &Policy) -> Vec<Rule> {
             ),
             deny(&["process-info*"], vec![Filter::OutsideSameSandbox]),
             deny(&["signal"], vec![Filter::Target("others")]),
+            // Another process's arguments and environment (`KERN_PROCARGS2`)
+            // pass if either `sysctl-read` or `process-info-pidinfo` allows
+            // them, and only unfiltered or prefix rules match the numeric
+            // query (measured on macOS 26.6.2): the argument sysctls are
+            // denied by prefix here, and pidinfo outside the sandbox by the
+            // early deny `process_access_early` adds.
+            deny(
+                &["sysctl-read"],
+                vec![Filter::SysctlNamePrefix("kern.procargs".into())],
+            ),
         ],
         HardDenyClass::RenameAnchors => {
             let mut rules = Vec::new();
@@ -430,6 +440,17 @@ pub(super) fn lower(policy: &Policy, options: &LowerOptions) -> Result<SeatbeltP
                     .into_iter()
                     .map(|r| r.because(DenyReason::HardDeny(class))),
             );
+            if class == HardDenyClass::ProcessAccess {
+                // An explicit, unfiltered deny first (the default deny does
+                // not hold the argument query), then process information
+                // for the run's own sandbox again.
+                quiet.push(Rule::new(Effect::Deny, &["process-info-pidinfo"], vec![]).quietly());
+                allow.push(Rule::new(
+                    Effect::Allow,
+                    &["process-info-pidinfo"],
+                    vec![Filter::Target("same-sandbox")],
+                ));
+            }
         }
     }
 

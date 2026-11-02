@@ -102,6 +102,10 @@ pub enum Filter {
     GlobalName(String),
     /// `(global-name-prefix "…")`.
     GlobalNamePrefix(String),
+    /// `(sysctl-name "…")`.
+    SysctlName(String),
+    /// `(sysctl-name-prefix "…")`.
+    SysctlNamePrefix(String),
     /// `(global-name (param "…"))`: the value is bound when compiling.
     GlobalNameParam(&'static str),
     /// `(global-name-prefix (param "…"))`: the value is bound when compiling.
@@ -238,6 +242,8 @@ impl Rule {
             | Filter::Extension(s)
             | Filter::GlobalName(s)
             | Filter::GlobalNamePrefix(s)
+            | Filter::SysctlName(s)
+            | Filter::SysctlNamePrefix(s)
             | Filter::XpcServiceNamePrefix(s)
             | Filter::RemoteIp(s)
             | Filter::LocalIp(s)
@@ -350,6 +356,11 @@ fn render_filter(filter: &Filter, params: &mut Params) -> Result<String, EscapeE
         Filter::GlobalName(s) => format!("(global-name {})", string_value(s.as_bytes(), params)?),
         Filter::GlobalNamePrefix(s) => format!(
             "(global-name-prefix {})",
+            string_value(s.as_bytes(), params)?
+        ),
+        Filter::SysctlName(s) => format!("(sysctl-name {})", string_value(s.as_bytes(), params)?),
+        Filter::SysctlNamePrefix(s) => format!(
+            "(sysctl-name-prefix {})",
             string_value(s.as_bytes(), params)?
         ),
         Filter::GlobalNameParam(name) => {

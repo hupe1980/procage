@@ -1027,16 +1027,20 @@ fn missing_canary_is_caught() {
 #[test]
 fn mitigated_with_an_open_canary_is_caught() {
     assert_caught(
-        |f| f.doc = edit_row(&f.doc, "R-25", set(5, "mitigated")),
+        |f| {
+            f.suites[0].push_str(
+                "\n#[test]\n#[ignore = \"open: R-25 a variant\"]\nfn r25_an_open_variant() {}\n",
+            );
+        },
         Rule::OpenCanary,
-        "R-25 r25_other_processes_arguments_are_unreadable",
+        "R-25 r25_an_open_variant",
     );
 }
 
 #[test]
 fn partial_without_a_note_is_caught() {
     assert_caught(
-        |f| f.doc = f.doc.replace("- **R-25**", "- R-25"),
+        |f| f.doc = edit_row(&f.doc, "R-25", set(5, "partial")),
         Rule::OpenVariantNote,
         "R-25",
     );
@@ -1111,6 +1115,6 @@ fn statuses_are_parsed() {
     let status = |id: &str| rows.iter().find(|r| r.id == id).map(|r| r.status);
     assert_eq!(status("R-10"), Some(Status::Mitigated));
     assert_eq!(status("R-23"), Some(Status::Mitigated));
-    assert_eq!(status("R-25"), Some(Status::Partial));
+    assert_eq!(status("R-25"), Some(Status::Mitigated));
     assert_eq!(status("R-26"), Some(Status::Planned));
 }

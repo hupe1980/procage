@@ -18,6 +18,8 @@ const MACOS_V1: &[&str] = &[
     r#"(allow file-read-metadata (require-any (literal "/Library") (literal "/etc") (literal "/private") (literal "/private/var") (literal "/tmp") (literal "/usr") (literal "/var")))"#,
     r#"(allow ipc-posix-shm-read* (ipc-posix-name "apple.shm.notification_center"))"#,
     r#"(allow mach-lookup (require-any (global-name "com.apple.SystemConfiguration.configd") (global-name "com.apple.oahd") (global-name "com.apple.system.notification_center") (global-name "com.apple.system.opendirectoryd.libinfo") (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent")))"#,
+    // From the process-access class, on every base.
+    r#"(allow process-info-pidinfo (target same-sandbox))"#,
     r#"(allow sysctl-read)"#,
 ];
 
@@ -95,7 +97,12 @@ fn base_allows_come_before_every_deny() {
     let profile = seatbelt_plan(&p, &LowerOptions::default()).profile;
     let lines: Vec<&str> = profile.lines().skip(2).collect();
     let last_allow = lines.iter().rposition(|l| l.starts_with("(allow")).unwrap();
-    let first_deny = lines.iter().position(|l| l.starts_with("(deny")).unwrap();
+    // Early unreported denies come first on purpose: every allow after them
+    // still wins.
+    let first_deny = lines
+        .iter()
+        .position(|l| l.starts_with("(deny") && !l.contains("(with no-report)"))
+        .unwrap();
     assert!(last_allow < first_deny, "{profile}");
     let tty = lines.iter().position(|l| *l == MACOS_TTY).unwrap();
     let tiocsti = lines
@@ -173,7 +180,12 @@ fn base_names_nothing_personal() {
             }
         }
     }
-    assert!(allows(&Policy::default()).is_empty());
+    // Without a base, only the process-access class's allow of the run's own
+    // process information, which its early deny would otherwise take away.
+    assert_eq!(
+        allows(&Policy::default()),
+        ["(allow process-info-pidinfo (target same-sandbox))"]
+    );
 }
 
 /// What base V2 adds to V1, rendered (frozen).
@@ -317,7 +329,9 @@ fn v3_is_v2_plus_quiet_denies() {
         let v3 = macos_profile(&policy);
         let stripped: String = v3
             .lines()
-            .filter(|l| !l.ends_with(" (with no-report))"))
+            // V3's own quiet denies (the process-access class's early deny
+            // is in every profile).
+            .filter(|l| !l.ends_with(" (with no-report))") || l.contains("process-info-pidinfo"))
             .map(|l| format!("{l}\n"))
             .collect();
         assert_eq!(stripped, v2, "{name}");
@@ -345,9 +359,10 @@ fn quiet_targets_are_not_hard_deny_targets() {
             "{path}"
         );
     }
+    // V3's quiet denies, without the process-access class's early deny.
     let quiet: Vec<String> = macos_profile(&policy)
         .lines()
-        .filter(|l| l.ends_with(" (with no-report))"))
+        .filter(|l| l.ends_with(" (with no-report))") && !l.contains("process-info-pidinfo"))
         .map(String::from)
         .collect();
     assert_eq!(quiet.len(), 3, "{quiet:?}");

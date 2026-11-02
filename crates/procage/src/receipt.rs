@@ -378,13 +378,29 @@ pub(crate) struct RunFacts {
     pub(crate) cage: Arc<CageFacts>,
     /// Sorted grant names.
     pub(crate) grants: Vec<String>,
+    /// Approximations only this run's grants made, beyond the cage's.
+    approximations: Vec<ReceiptApproximation>,
 }
 
 impl RunFacts {
     pub(crate) fn new(cage: Arc<CageFacts>, mut grants: Vec<String>) -> RunFacts {
         grants.sort();
         grants.dedup();
-        RunFacts { cage, grants }
+        RunFacts {
+            cage,
+            grants,
+            approximations: Vec::new(),
+        }
+    }
+
+    /// These facts with `approximation` listed, unless the cage lists it.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) fn with_approximation(mut self, approximation: ReceiptApproximation) -> RunFacts {
+        let listed = |a: &ReceiptApproximation| a.construct == approximation.construct;
+        if !self.cage.approximations.iter().any(listed) && !self.approximations.iter().any(listed) {
+            self.approximations.push(approximation);
+        }
+        self
     }
 
     /// The receipt of a run that ended with `status`.
@@ -397,6 +413,9 @@ impl RunFacts {
     ) -> Receipt {
         use std::os::unix::process::ExitStatusExt;
         let c = &self.cage;
+        let mut approximations = c.approximations.clone();
+        approximations.extend(self.approximations.iter().cloned());
+        approximations.sort_by_key(|a| a.construct);
         let (coverage, reason, observed) = match record.coverage() {
             Coverage::Off => (ReceiptCoverage::Off, None, false),
             Coverage::Observed => (ReceiptCoverage::Observed, None, true),
@@ -413,12 +432,12 @@ impl RunFacts {
             base: c.base,
             grants: self.grants.clone(),
             backend: c.backend.clone(),
-            approximations: c.approximations.clone(),
-            relaxations: c.relaxations.clone(),
-            waivers: c.waivers.clone(),
-            enforced_as_written: c.approximations.is_empty()
+            enforced_as_written: approximations.is_empty()
                 && c.relaxations.is_empty()
                 && c.waivers.is_empty(),
+            approximations,
+            relaxations: c.relaxations.clone(),
+            waivers: c.waivers.clone(),
             violations: ReceiptViolations {
                 coverage,
                 reason,

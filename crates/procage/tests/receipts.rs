@@ -88,7 +88,7 @@ fn a_receipt_names_the_cage_and_the_exit() {
 #[test]
 fn no_receipt_while_the_run_is_alive() {
     let cage = Cage::new(&presets::minimal::v3()).unwrap();
-    let mut child = cage.spawn(&mut sh("sleep 2"), &Grants::new()).unwrap();
+    let mut child = cage.spawn(&mut sh("exec sleep 2"), &Grants::new()).unwrap();
     assert!(child.receipt().is_none());
     child.wait().unwrap();
     assert!(child.receipt().is_some());

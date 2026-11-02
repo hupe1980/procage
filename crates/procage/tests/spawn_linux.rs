@@ -1205,7 +1205,10 @@ fn t2_reading_everything_except_secrets() {
         Access::Read,
         FsTarget::Subpath(AbsPath::root()),
     ));
-    let cage = Cage::with_options(&child_policy(p), &t2_snapshot().with_home(&home)).unwrap();
+    // Reading everything reaches other processes' /proc entries.
+    let options = t2_snapshot().with_home(&home);
+    let lower = options.lower.clone().allow(Construct::ProcOtherProcesses);
+    let cage = Cage::with_options(&child_policy(p), &options.with_lower(lower)).unwrap();
     let h = home.display();
     assert_eq!(
         run_in(

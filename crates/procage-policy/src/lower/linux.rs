@@ -169,6 +169,40 @@ fn written_around(policy: &Policy, hidden: &AbsPath) -> bool {
     fs || extra
 }
 
+/// The paths of `policy`'s rules (file rules and raw Landlock rules, any
+/// access) that reach other processes' entries under `/proc`; a grant's
+/// path is checked when it is bound at spawn.
+fn proc_reach(policy: &Policy) -> Vec<alloc::string::String> {
+    let reaches = crate::linux::reaches_other_processes;
+    let mut out = Vec::new();
+    for rule in &policy.fs {
+        if matches!(rule.access, Access::Protect | Access::Hide) {
+            continue;
+        }
+        match &rule.target {
+            FsTarget::Subpath(p) | FsTarget::Literal(p) if reaches(p.as_bytes()) => {
+                out.push(p.to_string());
+            }
+            FsTarget::Glob(g) if may_overlap(g.as_str(), b"/proc/1/cmdline") => {
+                out.push(g.as_str().into());
+            }
+            _ => {}
+        }
+    }
+    if let Some(layer) = &policy.linux {
+        out.extend(
+            layer
+                .landlock_extra
+                .iter()
+                .filter(|(p, _)| reaches(p.as_bytes()))
+                .map(|(p, _)| p.to_string()),
+        );
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// The note for hiding by piecewise grants on tier T2.
 const PIECEWISE: &str = "the trees around the hidden path are granted entry by entry as \
     listed at spawn: entries added later on the way are denied, the directories on the way \
@@ -536,6 +570,17 @@ pub(super) fn lower(
                 access: rights(*access, handled),
             });
         }
+    }
+
+    // Without a PID namespace, `/proc` shows every process of the user: a
+    // rule that reaches other processes' entries is an approximation.
+    for subject in proc_reach(policy) {
+        ledger.outcome(
+            Construct::ProcOtherProcesses,
+            Outcome::Approximated,
+            Some(subject),
+            crate::linux::PROC_OTHER_PROCESSES_NOTE,
+        );
     }
 
     let mut classes = Vec::new();

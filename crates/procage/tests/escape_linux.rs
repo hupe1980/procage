@@ -1065,14 +1065,107 @@ fn r25_other_processes_are_opaque() {
         assert_eq!(got, format!("{EACCES} {EACCES} {EPERM} {EPERM}"), "{tier}");
         let mut p = policy();
         p.fs.push(rule(Access::Read, "/proc"));
-        let got = in_child(
+        // Reaching other processes' entries is an approximation by name.
+        let gaps = refused(&p, &options(tier));
+        assert!(
+            gaps.contains(&(Construct::ProcOtherProcesses, GapKind::Approximation)),
+            "{tier}: {gaps:?}"
+        );
+        let accepted = options(tier);
+        let lower = accepted.lower.clone().allow(Construct::ProcOtherProcesses);
+        let cage = Cage::with_options(&p, &accepted.with_lower(lower)).unwrap();
+        assert!(
+            cage.plan()
+                .degradations
+                .iter()
+                .any(|d| d.construct == Construct::ProcOtherProcesses),
+            "{tier}: listed in the plan"
+        );
+        let got = run_in(
+            &cage,
             "parent:environ;read:/proc/self/environ;parent:cmdline",
-            &p,
-            tier,
+            &Grants::new(),
         );
         println!("{tier}: with /proc readable: {got}");
         let r: Vec<&str> = got.split(' ').collect();
-        assert_eq!(r[..2], [EACCES.to_string().as_str(), "ok"], "{tier}: {got}");
+        // The residual the approximation names: arguments readable, the
+        // environment not.
+        assert_eq!(
+            r,
+            [EACCES.to_string().as_str(), "ok", "ok"],
+            "{tier}: {got}"
+        );
+    }
+}
+
+/// `/proc` reached through a symbolic link in a rule, or through a grant
+/// bound at spawn, is the same approximation as a rule on `/proc`: refused
+/// unless accepted by name, then listed in the plan or the run's receipt.
+#[test]
+fn r25_proc_through_a_link_or_a_grant_is_an_approximation() {
+    let dir = scratch("r25-link");
+    let link = dir.join("proc");
+    std::os::unix::fs::symlink("/proc", &link).unwrap();
+    let accept = |tier| {
+        let o = options(tier);
+        let lower = o.lower.clone().allow(Construct::ProcOtherProcesses);
+        o.with_lower(lower)
+    };
+    for tier in tiers() {
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, &link));
+        let gaps = refused(&p, &options(tier));
+        assert_eq!(
+            gaps,
+            [(Construct::ProcOtherProcesses, GapKind::Approximation)],
+            "{tier}"
+        );
+        let cage = Cage::with_options(&p, &accept(tier)).unwrap();
+        assert!(
+            cage.plan()
+                .degradations
+                .iter()
+                .any(|d| d.construct == Construct::ProcOtherProcesses),
+            "{tier}: listed in the plan"
+        );
+
+        let mut p = policy();
+        p.grants.push(Grant {
+            name: GrantName::new("procs").unwrap(),
+            access: Access::Read,
+        });
+        let grants = Grants::new().bind("procs", &link);
+        let cage = Cage::with_options(&p, &options(tier)).unwrap();
+        match cage.spawn(&mut child_command("read:/proc/self/environ"), &grants) {
+            Err(SpawnError::Lower(LowerError::Gaps(gaps))) => assert!(
+                gaps.iter()
+                    .all(|g| g.construct == Construct::ProcOtherProcesses),
+                "{tier}: {gaps:?}"
+            ),
+            other => panic!("{tier}: the grant was bound: {:?}", other.map(|_| ())),
+        }
+        let cage = Cage::with_options(&p, &accept(tier)).unwrap();
+        assert!(
+            !cage
+                .plan()
+                .degradations
+                .iter()
+                .any(|d| d.construct == Construct::ProcOtherProcesses),
+            "{tier}: nothing approximated before a grant is bound"
+        );
+        let mut child = cage
+            .spawn(&mut child_command("read:/proc/self/environ"), &grants)
+            .unwrap();
+        child.wait().unwrap();
+        let receipt = child.receipt().unwrap();
+        assert!(
+            receipt
+                .approximations
+                .iter()
+                .any(|a| a.construct == Construct::ProcOtherProcesses),
+            "{tier}: listed in the receipt"
+        );
+        assert!(!receipt.enforced_as_written, "{tier}");
     }
 }
 
@@ -1242,7 +1335,10 @@ fn r32_the_seccomp_listener_stays_out_of_reach() {
     for tier in tiers() {
         let mut p = policy();
         p.fs.push(rule(Access::Read, "/proc"));
-        let c = Cage::with_options(&p, &options(tier).with_violations())
+        // Granting `/proc` reaches other processes: accepted by name here.
+        let options = options(tier).with_violations();
+        let lower = options.lower.clone().allow(Construct::ProcOtherProcesses);
+        let c = Cage::with_options(&p, &options.with_lower(lower))
             .unwrap_or_else(|e| panic!("{tier}: {e}"));
         let mut child = c
             .spawn(

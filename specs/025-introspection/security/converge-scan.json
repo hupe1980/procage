@@ -1,0 +1,668 @@
+{
+  "feature": "025-introspection",
+  "commit": "0b8cb30",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "On macOS, on every base, the process-access class MUST refuse with EPERM the child's reads of the arguments, environment and process information of any process outside the run (KERN_PROCARGS2 and KERN_PROCARGS by numeric MIB, pidinfo), while its reads of its own and its children's MUST succeed; waiving the class MUST lift the refusal.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a same-user process outside the run and a child on the default policy",
+          "then": "each read fails with EPERM",
+          "when": "the child reads that process's KERN_PROCARGS2, KERN_PROCARGS and pidinfo by numeric call"
+        },
+        {
+          "given": "the same child with a child of its own",
+          "then": "every read succeeds",
+          "when": "it reads its own and its child's KERN_PROCARGS2 and pidinfo"
+        },
+        {
+          "given": "the same policy with HardDenyClass::ProcessAccess waived",
+          "then": "it succeeds",
+          "when": "the child reads the other process's KERN_PROCARGS2"
+        }
+      ],
+      "mitigations": [
+        "mitigation.deny-then-name"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-001] [SR-002] macOS: the `ProcessAccess` class's hard denies gain `(deny sysctl-read (sysctl-name-prefix \"kern.procargs\"))`; for the class only, a quiet early `(deny process-info-pidinfo)` and `(allow process-info-pidinfo (target same-sandbox))` \u2014 crates/procage-policy/src/lower/macos.rs; filters `SysctlName`/`SysctlNamePrefix` in crates/procage-policy/src/sbpl.rs"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-005] `r25_other_processes_arguments_are_unreadable` un-ignored on the default policy: other process's `KERN_PROCARGS2`, `KERN_PROCARGS`, pidinfo EPERM; own and own child's readable; readable with `ProcessAccess` waived \u2014 crates/procage/tests/escape_macos.rs, helpers in crates/procage/src/macos/sys.rs"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[SR-001] Complete SR-001 \u2014 done: the canary now reads another process's `KERN_PROCARGS` and pidinfo and the child's own pidinfo (crates/procage/tests/escape_macos.rs)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-001.2026-11-01",
+          "requirement": "SR-001",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "On V4 the test asserts EPERM for the parent's KERN_PROCARGS2 and success for the child's own and its child's KERN_PROCARGS2 (passes on macOS 26.6.2, also in the V4 escape run); no test reads another process's KERN_PROCARGS (the older numeric variant) or its pidinfo, and the child's own pidinfo is not asserted.",
+          "verified_at": "2026-11-01T23:58:07Z",
+          "commit": "0b8cb30"
+        },
+        {
+          "id": "verification.sr-001.2026-11-02",
+          "requirement": "SR-001",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "On the default policy (fork on) the child's reads of the caller's KERN_PROCARGS2, KERN_PROCARGS and pidinfo by numeric call are asserted EPERM, its own and its own child's procargs and pidinfo asserted readable, and with HardDenyClass::ProcessAccess waived the caller's KERN_PROCARGS2 asserted readable; passed on macOS 26.6.2 in all three just escape variants (default, with reporting, base V3 with reporting), run 2026-11-02.",
+          "verified_at": "2026-11-02T00:53:55Z",
+          "commit": "0b8cb30"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/sbpl.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The process-access class MUST add exactly (deny sysctl-read (sysctl-name-prefix \"kern.procargs\")), the quiet early unfiltered (deny process-info-pidinfo) and (allow process-info-pidinfo (target same-sandbox)) and MUST allow nothing else; the preset profiles v1 to v3 MUST change only by these three lines, pinned by their fixtures.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the empty policy",
+          "then": "the only allow is (allow process-info-pidinfo (target same-sandbox))",
+          "when": "it is lowered for macOS"
+        },
+        {
+          "given": "the reference policies",
+          "then": "the same-sandbox pidinfo allow is the only allow without a policy rule",
+          "when": "every allow is traced to its source"
+        },
+        {
+          "given": "every preset version v1 to v3",
+          "then": "it equals its fixture, which contains the prefix deny, the early pidinfo deny and the same-sandbox allow",
+          "when": "it is lowered"
+        }
+      ],
+      "mitigations": [
+        "mitigation.literal-allowlist"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-001] [SR-002] macOS: the `ProcessAccess` class's hard denies gain `(deny sysctl-read (sysctl-name-prefix \"kern.procargs\"))`; for the class only, a quiet early `(deny process-info-pidinfo)` and `(allow process-info-pidinfo (target same-sandbox))` \u2014 crates/procage-policy/src/lower/macos.rs; filters `SysctlName`/`SysctlNamePrefix` in crates/procage-policy/src/sbpl.rs"
+        },
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-002] Policy tests: crates/procage-policy/tests/base.rs, tests/precedence.rs (the pidinfo allow is the only allow without a policy rule), tests/gaps.rs (the empty policy's only allow); preset fixtures v1\u2013v3 regenerated, +3 lines each (crates/procage-policy/tests/fixtures/presets/*.sb)"
+        },
+        {
+          "id": "T012",
+          "done": true,
+          "text": "[SR-002] Complete SR-002 \u2014 moot: there is no sysctl allowlist; SR-002 now pins the class's three lines and the fixtures"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-002.2026-11-01",
+          "requirement": "SR-002",
+          "method": "test",
+          "evidence": "crates/procage-policy/tests/base_v4.rs::the_allowlist_leaves_out_the_argument_queries",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "Tests show no prefix or name covers kern.procargs/kern.procargs2 (base_v4.rs), V4 allows nothing V3 does not (base_v4.rs::v4_allows_nothing_v3_does_not) and V1-V3 presets match the unchanged frozen fixtures (tests/presets.rs, passing); but no entry has a recorded program (Seatbelt does not log sysctl-read denials, so the allowlist is justified only by the program set's functional result, which the SR does not say), and no test rejects a regex filter in the V4 sysctl allow (it only checks the filters are non-empty). Proposed wording: \"each entry is justified by the base program set as a whole running on V4 as on V3 (Seatbelt does not report sysctl-read denials), and the sysctl allow uses only sysctl-name and sysctl-name-prefix filters\".",
+          "verified_at": "2026-11-01T23:58:07Z",
+          "commit": "0b8cb30"
+        },
+        {
+          "id": "verification.sr-002.2026-11-02",
+          "requirement": "SR-002",
+          "method": "test",
+          "evidence": "crates/procage-policy/tests/precedence.rs::every_allow_has_a_source",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "precedence.rs::every_allow_has_a_source asserts the empty policy's only allow is the same-sandbox pidinfo allow and every other allow has a policy source; base.rs::base_names_nothing_personal and gaps.rs::the_empty_policy_denies_everything_on_every_target assert the same line as the empty policy's only allow; presets.rs::every_preset_is_pinned compares every preset v1 to v3 with its fixture, and each of the 12 fixtures contains exactly the prefix deny, the quiet early pidinfo deny and the same-sandbox allow (the +3 lines in the working-tree diff). cargo test -p procage-policy --all-features green.",
+          "verified_at": "2026-11-02T00:53:55Z",
+          "commit": "0b8cb30"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/base.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/fixtures/presets",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/gaps.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/precedence.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/presets.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The R-25 canaries MUST run on the default policy and MUST fail, never skip, when another process's arguments are readable, in every just escape variant and on every macOS lane; the macOS 27 lane MUST re-measure the rule when it exists.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "every just escape variant (default, with reporting, base V3 with reporting)",
+          "then": "it passes, and it is not ignored",
+          "when": "r25_other_processes_arguments_are_unreadable runs"
+        },
+        {
+          "given": "a lane where the read succeeds",
+          "then": "it fails the lane",
+          "when": "the canary runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.measure-before-freeze"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-005] `r25_other_processes_arguments_are_unreadable` un-ignored on the default policy: other process's `KERN_PROCARGS2`, `KERN_PROCARGS`, pidinfo EPERM; own and own child's readable; readable with `ProcessAccess` waived \u2014 crates/procage/tests/escape_macos.rs, helpers in crates/procage/src/macos/sys.rs"
+        },
+        {
+          "id": "T013",
+          "done": true,
+          "text": "[SR-003] Add a test for SR-003 \u2014 done: the canary is not ignored and passes in every `just escape` variant; no V4 escape step is needed"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-003.2026-11-01",
+          "requirement": "SR-003",
+          "method": "review",
+          "evidence": ".github/workflows/ci.yml:81",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The canaries fail rather than skip (r25_other_processes_arguments_are_unreadable is not ignored and asserts EPERM) and pass locally on macOS 26.6.2 with PROCAGE_ESCAPE_BASE=v4 (29 passed, R-26 open); the CI step running the escape suite on V4 is added but no CI run of it is on record, and spawn_macos base_v4_* was not run here. The macOS 27 lane does not exist yet: its green run is a precondition of releasing V4, not missing implementation.",
+          "verified_at": "2026-11-01T23:58:07Z",
+          "commit": "0b8cb30"
+        },
+        {
+          "id": "verification.sr-003.2026-11-02",
+          "requirement": "SR-003",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "The canary carries no ignore attribute and asserts with assert_eq, so a readable argument query fails it; the suite fails rather than skips when already sandboxed (escape_macos.rs:16); it passed in all three just escape variants locally, and .github/workflows/ci.yml:70-80 runs the same three variants on the macos-26 lane. The macOS 27 lane does not exist yet; re-measuring there is conditional on it (spec 039), not a missing implementation.",
+          "verified_at": "2026-11-02T00:53:55Z",
+          "commit": "0b8cb30"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "On Linux (T1 and T2) the base and every preset MUST grant nothing under /proc beyond /proc/self and /proc/thread-self, so on the default policy a child's read of another process's cmdline or environ MUST be denied.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "Linux T1 or T2, the base policy and a same-user process outside the run",
+          "then": "both reads are denied",
+          "when": "the child reads that process's cmdline and environ"
+        },
+        {
+          "given": "every preset version v1 to v3 on T1 and T2",
+          "then": "none names proc-other-processes",
+          "when": "its rules are lowered"
+        }
+      ],
+      "mitigations": [
+        "mitigation.no-default-proc"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-004] [SR-006] `Construct::ProcOtherProcesses`, `procage_policy::linux::reaches_other_processes` and `PROC_OTHER_PROCESSES_NOTE` (crates/procage-policy/src/linux.rs, unit test `what_reaches_other_processes`); `proc_reach` in crates/procage-policy/src/lower/linux.rs (file rules, raw Landlock rules, globs); lowering table row in crates/procage-policy/src/lowering.md"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US2] [SR-004] [SR-006] `escape_linux::r25_other_processes_are_opaque` and `r25_proc_through_a_link_or_a_grant_is_an_approximation` (crates/procage/tests/escape_linux.rs); `presets_do_not_reach_other_processes_on_linux` (crates/procage-policy/tests/presets.rs); existing tests that read `/` accept the construct (crates/procage/tests/spawn_linux.rs, crates/procage-policy/tests/gaps.rs, tests/fit.rs)"
+        },
+        {
+          "id": "T014",
+          "done": true,
+          "text": "[SR-004] Add a test for SR-004 \u2014 done: `presets_do_not_reach_other_processes_on_linux` lowers every preset v1\u2013v3 on T1 and T2 (crates/procage-policy/tests/presets.rs)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-004.2026-11-01",
+          "requirement": "SR-004",
+          "method": "review",
+          "evidence": "crates/procage/tests/escape_linux.rs::r25_other_processes_are_opaque",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The escape test asserts EACCES for the caller's cmdline and environ on T1 and T2 with base V1 (reported green in Docker, not run here); base.rs and presets.rs contain no /proc path, but no test lowers every preset version on Linux and asserts that none reaches /proc beyond /proc/self and /proc/thread-self.",
+          "verified_at": "2026-11-01T23:58:07Z",
+          "commit": "0b8cb30"
+        },
+        {
+          "id": "verification.sr-004.2026-11-02",
+          "requirement": "SR-004",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r25_other_processes_are_opaque",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "On the base policy the child's reads of the caller's environ and cmdline are asserted EACCES on every tier the host gives (T1 and T2 on the T1 lane), passed in just linux-t1 and just linux (Docker, Linux 7.0.14) on 2026-11-02; crates/procage-policy/tests/presets.rs::presets_do_not_reach_other_processes_on_linux lowers every preset v1 to v3 on T1 and T2 and asserts none names proc-other-processes (green).",
+          "verified_at": "2026-11-02T00:53:55Z",
+          "commit": "0b8cb30"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/base.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/presets.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "With the class in force the run's own processes MUST stay readable (the pidinfo allow is same-sandbox, not self and children) and the base program set MUST work as before; ps (setuid, refused in any cage) and pgrep (needs sysmond) MUST be documented as limits.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a child on the default policy with a child of its own",
+          "then": "every read succeeds",
+          "when": "it reads its own and its child's arguments and pidinfo"
+        },
+        {
+          "given": "the base program set",
+          "then": "every program works as before",
+          "when": "it runs with the class in force"
+        },
+        {
+          "given": "the macOS docs",
+          "then": "they state what of ps of the run works and the ps and pgrep limits",
+          "when": "they describe R-25"
+        }
+      ],
+      "mitigations": [
+        "mitigation.program-set-v4"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[US1] [SR-001] [SR-003] [SR-005] `r25_other_processes_arguments_are_unreadable` un-ignored on the default policy: other process's `KERN_PROCARGS2`, `KERN_PROCARGS`, pidinfo EPERM; own and own child's readable; readable with `ProcessAccess` waived \u2014 crates/procage/tests/escape_macos.rs, helpers in crates/procage/src/macos/sys.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[US1] [SR-005] The base program set runs with the class in force (crates/procage/tests/spawn_macos.rs `base_*`, `preset_*`); the `ps`/`pgrep` limit in the docs is T018"
+        },
+        {
+          "id": "T015",
+          "done": true,
+          "text": "[SR-005] Complete SR-005 \u2014 done: own and own child's pidinfo asserted; the allowlist part is moot; the `ps`/`pgrep` limit in the docs moved to T018"
+        },
+        {
+          "id": "T018",
+          "done": true,
+          "text": "[SR-005] Complete SR-005 (With the class in force the run's own processes MUST stay readable (the pidinfo allow is same-sandbox, not self and children) and the base program set MUST work as before; ps (setuid, refused in any cage) and pgrep (needs sysmond) MUST be documented as limits) \u2014 touchpoints: crates/procage/tests/escape_macos.rs, crates/procage/tests/spawn_macos.rs, site/content/docs/macos.md [converge: partial; Own and own child's procargs and pidinfo are asserted readable (canary, green) and the program set passes with the class in force (spawn_macos base_runs_ordinary_programs, base_v2_runs_developer_tools, preset_* green); but the third scenario fails: site/content/docs/macos.md:61 says \"so ps of the run works\", while ps is setuid and refused in any cage, and no doc states the ps or pgrep (needs sysmond) limit.] \u2014 done: site/content/docs/macos.md states both limits"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-005.2026-11-01",
+          "requirement": "SR-005",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "The child's own child's KERN_PROCARGS2 is asserted readable and spawn_macos.rs base_v4_runs_ordinary_programs and base_v4_runs_developer_tools assert the program set works on V4; the child's pidinfo and ps of the run are not exercised, and the \"no denial unaccounted for\" scenario cannot be shown from violation records because Seatbelt does not log sysctl-read denials. Proposed wording: \"the base program set on V4 behaves as on V3 (the functional result is the measurement, since Seatbelt does not report sysctl-read denials)\".",
+          "verified_at": "2026-11-01T23:58:07Z",
+          "commit": "0b8cb30"
+        },
+        {
+          "id": "verification.sr-005.2026-11-02",
+          "requirement": "SR-005",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_macos.rs::r25_other_processes_arguments_are_unreadable",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "Own and own child's procargs and pidinfo are asserted readable (canary, green) and the program set passes with the class in force (spawn_macos base_runs_ordinary_programs, base_v2_runs_developer_tools, preset_* green); but the third scenario fails: site/content/docs/macos.md:61 says \"so ps of the run works\", while ps is setuid and refused in any cage, and no doc states the ps or pgrep (needs sysmond) limit.",
+          "verified_at": "2026-11-02T00:53:55Z",
+          "commit": "0b8cb30"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/spawn_macos.rs",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/macos.md",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "On Linux T1 and T2 a policy whose file rule, raw Landlock rule or glob reaches /proc other than /proc/self and /proc/thread-self (literally, through an ancestor such as /, or through a symbolic link resolved at cage creation), or a grant whose resolved path does at spawn, MUST be refused naming proc-other-processes unless the caller accepts it by name; an accepted rule MUST be listed in the plan and an accepted grant in the run's receipt, which is then not enforced as written; other processes' environ MUST stay unreadable.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "T1 or T2 and a rule on /proc",
+          "then": "it is refused naming proc-other-processes",
+          "when": "the cage is made without the approximation"
+        },
+        {
+          "given": "the approximation accepted by name",
+          "then": "environ is refused, cmdline is readable (the residual), its own environ is readable, and the plan lists the approximation",
+          "when": "the child reads another process's environ and cmdline and its own environ"
+        },
+        {
+          "given": "a rule on a symbolic link to /proc",
+          "then": "it is refused naming the construct, then made with the approximation in the plan",
+          "when": "the cage is made without, then with the approximation"
+        },
+        {
+          "given": "a grant bound at spawn to a symbolic link to /proc",
+          "then": "the spawn is refused naming the construct, then the receipt lists the approximation and enforced_as_written is false",
+          "when": "the run is spawned without, then with the approximation"
+        }
+      ],
+      "mitigations": [
+        "mitigation.proc-gap"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-004] [SR-006] `Construct::ProcOtherProcesses`, `procage_policy::linux::reaches_other_processes` and `PROC_OTHER_PROCESSES_NOTE` (crates/procage-policy/src/linux.rs, unit test `what_reaches_other_processes`); `proc_reach` in crates/procage-policy/src/lower/linux.rs (file rules, raw Landlock rules, globs); lowering table row in crates/procage-policy/src/lowering.md"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[US2] [SR-006] Backend: `proc_links` at cage creation (rules that resolve to `/proc`) and the grant check in `bind` at spawn, receipt via `RunFacts::with_approximation` \u2014 crates/procage/src/linux/mod.rs, crates/procage/src/receipt.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[US2] [SR-004] [SR-006] `escape_linux::r25_other_processes_are_opaque` and `r25_proc_through_a_link_or_a_grant_is_an_approximation` (crates/procage/tests/escape_linux.rs); `presets_do_not_reach_other_processes_on_linux` (crates/procage-policy/tests/presets.rs); existing tests that read `/` accept the construct (crates/procage/tests/spawn_linux.rs, crates/procage-policy/tests/gaps.rs, tests/fit.rs)"
+        },
+        {
+          "id": "T016",
+          "done": true,
+          "text": "[SR-006] Complete SR-006 \u2014 done: symbolic-link rules (`proc_links`) and grants at spawn (`bind`) are checked, cmdline readability and the receipt listing are asserted (crates/procage/src/linux/mod.rs, crates/procage/tests/escape_linux.rs)"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-006.2026-11-01",
+          "requirement": "SR-006",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r25_other_processes_are_opaque",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "A rule on /proc is refused naming proc-other-processes, then accepted and listed in the plan, and environ stays EACCES (escape_linux.rs); reading / needs the construct (gaps.rs::reading_everything_needs_exactly_the_spawn_snapshot); but proc_reach (crates/procage-policy/src/lower/linux.rs:175) checks only literal policy and raw Landlock paths: a grant bound at spawn (crates/procage/src/linux/mod.rs bind) or a rule on a symlink to /proc is not counted, there is no reachability table test, cmdline readability and the receipt listing are not asserted.",
+          "verified_at": "2026-11-01T23:58:07Z",
+          "commit": "0b8cb30"
+        },
+        {
+          "id": "verification.sr-006.2026-11-02",
+          "requirement": "SR-006",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r25_proc_through_a_link_or_a_grant_is_an_approximation",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "escape_linux.rs::r25_other_processes_are_opaque asserts a rule on /proc is refused naming proc-other-processes, and accepted lists it in the plan with the caller's environ EACCES, own environ ok and caller's cmdline ok; r25_proc_through_a_link_or_a_grant_is_an_approximation asserts a rule on a symlink to /proc is refused then listed in the plan, and a grant bound to it is refused at spawn then listed in the receipt with enforced_as_written false; both passed on T1 and T2 (just linux-t1, just linux) on 2026-11-02.",
+          "verified_at": "2026-11-02T00:53:55Z",
+          "commit": "0b8cb30"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/receipt.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "THREAT_MODEL MUST mark R-25 mitigated with per-platform text (macOS: the class on every base, lifted by waiving it; Linux: no /proc by default, the approximation by name with its residual), the site docs MUST say the same, and the CHANGELOG MUST carry the migration notes (macOS: waive ProcessAccess; Linux: allow ProcOtherProcesses).",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "THREAT_MODEL, the crate docs and the site",
+          "then": "they give the macOS class and its waiver, the Linux default and the residual with the approximation, and no base or preset that does not exist",
+          "when": "they describe R-25"
+        },
+        {
+          "given": "the CHANGELOG",
+          "then": "it lists the macOS refusal under Security and the Linux approximation under Changed, each with its migration",
+          "when": "the release is cut"
+        }
+      ],
+      "mitigations": [
+        "mitigation.per-platform-status"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-007] Docs: THREAT_MODEL R-25 mitigated, site macos/linux/threat-model pages, CHANGELOG (Security and Changed, with migrations)"
+        },
+        {
+          "id": "T017",
+          "done": true,
+          "text": "[SR-007] Complete SR-007 \u2014 done: the crate module note is removed, R-25 is mitigated, the Linux change is under Changed; the presets pages need no change since there is no v4"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-007.2026-11-01",
+          "requirement": "SR-007",
+          "method": "review",
+          "evidence": "crates/procage/THREAT_MODEL.md:208",
+          "result": "partial",
+          "verdict": "partial",
+          "justification": "THREAT_MODEL R-25 (row and harness note), site macos.md, linux.md, threat-model.md, README and the CHANGELOG migration note describe V4, V1-V3 and the Linux approximation; but crates/procage/src/macos/mod.rs:33 still says the sandbox does not mediate KERN_PROCARGS2, site presets.md, policies.md and getting-started.md still list and recommend v3, and the Linux refusal is under Security rather than Changed in the CHANGELOG.",
+          "verified_at": "2026-11-01T23:58:07Z",
+          "commit": "0b8cb30"
+        },
+        {
+          "id": "verification.sr-007.2026-11-02",
+          "requirement": "SR-007",
+          "method": "review",
+          "evidence": "crates/procage/THREAT_MODEL.md:204",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "THREAT_MODEL R-25 row (line 204) is mitigated with macOS and Linux text and the four canaries; crates/procage/tests/threat_model.rs::statuses_are_parsed asserts R-25 mitigated; site macos.md, linux.md and threat-model.md give the class, its waiver, the Linux default and the residual; CHANGELOG.md has the macOS refusal under Security (line 24, migration = waive ProcessAccess) and the Linux approximation under Changed (line 52, migration = allow ProcOtherProcesses); no base V4 or presets v4 remain in these files.",
+          "verified_at": "2026-11-02T00:53:55Z",
+          "commit": "0b8cb30"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "CHANGELOG.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/linux.md",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/macos.md",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/threat-model.md",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.program-set-gap"
+  ],
+  "decisions": [],
+  "check_findings": [],
+  "metrics": {
+    "threats": 10,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "mitigated": 9,
+      "open": 1
+    },
+    "threats_by_severity": {
+      "medium": 8,
+      "high": 2
+    },
+    "mitigations": 9,
+    "requirements": 7,
+    "requirements_with_tasks": 7,
+    "requirements_verified": 6,
+    "decisions": 0,
+    "findings": {}
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

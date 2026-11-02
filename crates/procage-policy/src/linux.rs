@@ -462,6 +462,23 @@ impl ClassPaths {
     }
 }
 
+/// Whether a rule on `path` reaches other processes' entries under `/proc`:
+/// `/`, `/proc` or a path below it other than `/proc/self` and
+/// `/proc/thread-self`. Without a PID namespace such a rule is the
+/// approximation `proc-other-processes`.
+pub fn reaches_other_processes(path: &[u8]) -> bool {
+    let own = |p: &[u8]| {
+        [b"/proc/self".as_slice(), b"/proc/thread-self"]
+            .iter()
+            .any(|o| p == *o || (p.starts_with(o) && p.get(o.len()) == Some(&b'/')))
+    };
+    path == b"/" || path == b"/proc" || (path.starts_with(b"/proc/") && !own(path))
+}
+
+/// What the approximation `proc-other-processes` does.
+pub const PROC_OTHER_PROCESSES_NOTE: &str =
+    "other processes' command lines are readable under /proc (no PID namespace)";
+
 /// The Linux sockets of a socket hard-deny class (`service-handoff`,
 /// `container-engines`), found and covered at spawn. Landlock cannot refuse
 /// one Unix socket inside an allowed tree, so the backend looks for these at
@@ -669,6 +686,31 @@ mod tests {
         assert_eq!(handled_net(10).0, 0b1111);
         assert_eq!(scopes(5), Scopes::NONE);
         assert_eq!(scopes(6).0, 0b11);
+    }
+
+    #[test]
+    fn what_reaches_other_processes() {
+        for p in [
+            "/",
+            "/proc",
+            "/proc/1",
+            "/proc/1/cmdline",
+            "/proc/sys",
+            "/proc/selfish",
+        ] {
+            assert!(reaches_other_processes(p.as_bytes()), "{p}");
+        }
+        for p in [
+            "/proc/self",
+            "/proc/self/environ",
+            "/proc/thread-self",
+            "/proc/thread-self/fd",
+            "/home",
+            "/procfs",
+            "/tmp/proc",
+        ] {
+            assert!(!reaches_other_processes(p.as_bytes()), "{p}");
+        }
     }
 
     #[test]
