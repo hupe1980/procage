@@ -325,6 +325,8 @@ impl fmt::Display for Syscall {
 pub const AF_UNIX: u32 = 1;
 /// `AF_INET`.
 pub const AF_INET: u32 = 2;
+/// `AF_INET6`.
+pub const AF_INET6: u32 = 10;
 /// `AF_NETLINK`.
 pub const AF_NETLINK: u32 = 16;
 /// `AF_VSOCK`.
@@ -653,7 +655,7 @@ pub struct LinuxPlan {
     /// the backend handles at spawn.
     pub classes: Vec<ClassPaths>,
     /// The socket hard-deny classes in force that the policy can reach (the
-    /// network is on, or `ipc.unix_sockets` is set), found and handled by
+    /// network is `Network::All`, or `ipc.unix_sockets` is set), found and handled by
     /// the backend at cage creation and at each spawn.
     pub service_sockets: Vec<SocketPaths>,
     /// Environment, limits and terminal, unchanged from the policy.

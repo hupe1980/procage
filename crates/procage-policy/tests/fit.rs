@@ -229,3 +229,45 @@ fn a_relaxed_gap_reads_as_one_sentence() {
          the user; Landlock ABI 6 would enforce it"
     );
 }
+
+/// A socket class's gap as the Linux backend reports it at cage creation.
+fn socket_gap(construct: Construct, subject: &str) -> CapabilityGap {
+    CapabilityGap {
+        construct,
+        target: t2(8),
+        kind: GapKind::Unsupported,
+        subject: Some(subject.into()),
+    }
+}
+
+#[test]
+fn no_unix_sockets_answers_the_socket_classes_of_a_networked_policy() {
+    let mut p = harness();
+    p.net = Network::All;
+    let gaps = [
+        socket_gap(Construct::HdServiceHandoff, "/run/user/1001/bus"),
+        socket_gap(Construct::HdContainerEngines, "/run/docker.sock"),
+    ];
+    let relaxed = Relax::new().no_unix_sockets().apply(&mut p, &gaps).unwrap();
+    assert_eq!(relaxed.len(), 2);
+    assert!(relaxed.iter().all(|(_, r)| *r == Relaxation::NoUnixSockets));
+    assert_eq!(p.net, Network::Ip);
+    assert!(p.ipc.unix_sockets.is_empty());
+    assert!(!p.waive.contains(&HardDenyClass::ServiceHandoff));
+    assert!(Relaxation::NoUnixSockets.answers(Construct::HdContainerEngines));
+    assert!(!Relaxation::Waive(HardDenyClass::Secrets).answers(Construct::HdServiceHandoff));
+}
+
+#[test]
+fn no_unix_sockets_leaves_a_socket_class_gap_of_another_network() {
+    let mut p = harness();
+    p.net = Network::Loopback(ports(&[8080]));
+    let gap = socket_gap(Construct::HdServiceHandoff, "/run/user/1001/bus");
+    assert_eq!(
+        Relax::new()
+            .no_unix_sockets()
+            .apply(&mut p, std::slice::from_ref(&gap)),
+        Err(vec![gap])
+    );
+    assert_eq!(p.net, Network::Loopback(ports(&[8080])));
+}

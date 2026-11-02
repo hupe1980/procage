@@ -11,7 +11,7 @@ nav = "Async (tokio)"
 With the `tokio` feature, a cage spawns on a tokio runtime. Enable it in `Cargo.toml`:
 
 ```toml
-procage = { version = "0.3", features = ["tokio"] }
+procage = { version = "0.4", features = ["tokio"] }
 ```
 
 `Cage::spawn_async` takes a `tokio::process::Command` and returns an `AsyncChild`. It dereferences to `tokio::process::Child`, so you await the exit and read the pipes as with any tokio child:

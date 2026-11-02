@@ -6,6 +6,22 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-02
+
+### Added
+
+- `Network::Ip`: any IP address, Unix sockets only at `ipc.unix_sockets`
+  (macOS keeps the system resolver's socket). On Linux `socket()` is
+  allowed for IPv4 and IPv6 only, so the D-Bus and container-engine
+  sockets are out of reach on tier T2 too. Construct `net-ip`.
+- `Relax::no_unix_sockets()` answers the `hd-service-handoff` and
+  `hd-container-engines` gaps of `Network::All` (tier T2): the network
+  becomes `Network::Ip`. `Relaxation::answers(construct)`.
+
+### Changed
+
+- `Network` is `#[non_exhaustive]` (breaking).
+
 ## [0.3.2] - 2026-11-02
 
 ### Added
@@ -168,7 +184,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/hupe1980/procage/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/hupe1980/procage/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/hupe1980/procage/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/hupe1980/procage/compare/v0.2.0...v0.3.0

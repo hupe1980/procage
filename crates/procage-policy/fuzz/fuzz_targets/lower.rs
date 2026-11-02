@@ -38,10 +38,11 @@ fn build(data: &[u8]) -> (Policy, LowerOptions, Vec<Target>) {
             }
             4 => {
                 let port = Port::new(u16::from(next().unwrap_or(1)).max(1)).unwrap();
-                p.net = match next().unwrap_or(0) % 4 {
+                p.net = match next().unwrap_or(0) % 5 {
                     0 => Network::None,
                     1 => Network::Loopback(Ports::List([port].into())),
                     2 => Network::Proxy { http: Some(port), socks: None },
+                    3 => Network::Ip,
                     _ => Network::All,
                 };
             }

@@ -11,7 +11,7 @@ nav = "Proxy"
 "Network on" lets a caged program reach package registries and APIs, and anywhere else too. With the `proxy` feature, a cage gives each run a proxy of its own that connects only to the hosts an allowlist names, and the kernel keeps the child from every other route.
 
 ```toml
-procage = { version = "0.3", features = ["proxy"] }
+procage = { version = "0.4", features = ["proxy"] }
 ```
 
 ```rust

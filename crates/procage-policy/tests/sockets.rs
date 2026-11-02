@@ -28,14 +28,15 @@ fn linux_plan(p: &Policy, target: Target) -> LinuxPlan {
 }
 
 /// Every setting that leaves the child a Unix connect hands the socket
-/// classes to the backend; with the network off or through the proxy, and
-/// no Unix sockets, seccomp refuses Unix sockets, so the plan carries none.
+/// classes to the backend; with the network off, through the proxy or IP
+/// only, and no Unix sockets, seccomp refuses Unix sockets, so the plan carries none.
 /// A waived class is never carried.
 #[test]
 fn the_backend_gets_the_classes_exactly_when_a_unix_connect_is_possible() {
     let networks = [
         (Network::None, false),
         (Network::All, true),
+        (Network::Ip, false),
         (Network::Loopback(Ports::Any), true),
         (
             Network::Proxy {

@@ -1,0 +1,23 @@
+## Security Convergence — 048-ip-network
+
+Commit `476d2a1` · 2026-11-02T22:55:22Z
+
+| Metric | Value |
+|---|---|
+| Threats (active) | 4 |
+| Open blocking threats | 0  |
+| Security requirements | 3 |
+| verified | 3 |
+| implemented, unverified | 0  |
+| partial | 0  |
+| missing | 0  |
+| Expired decisions | 0  |
+| Source drift | none |
+
+**Status: CONVERGED**
+
+| Requirement | Verdict | Method | Evidence | Justification |
+|---|---|---|---|---|
+| SR-001 | verified | test | `crates/procage/tests/escape_linux.rs::r34_the_ip_network_keeps_every_unix_socket_out, crates/procage/tests/escape_macos.rs::r34_the_ip_network_keeps_every_unix_socket_out` | Under Network::Ip the caged child connects over TCP, sends UDP, listens and resolves a name, while connects to a fake bus, a fake engine and an abstract bus fail with EPERM on T1 and T2 (container lanes), and on macOS to the engine and another listener; the project's socket at ipc.unix_sockets connects (macOS, T1; T2 below ABI 9 is the expected gap). |
+| SR-002 | verified | test | `crates/procage/tests/escape_linux.rs::r34_fit_keeps_unix_sockets_out_of_a_networked_command, crates/procage-policy/tests/fit.rs::no_unix_sockets_leaves_a_socket_class_gap_of_another_network` | On T2 with a fake bus and engine, fit without a relaxation fails with the gaps; with no_unix_sockets it relaxes both with NoUnixSockets and the T1 lift, and the child reaches TCP but gets EPERM on both sockets. Under Loopback the gap is returned unanswered and the policy is unchanged. |
+| SR-003 | verified | test | `crates/procage-policy/tests/network_ip.rs::only_ip_sockets_are_created_without_a_namespace_or_a_socket_search, crates/procage-policy/tests/network_ip.rs::unix_sockets_at_their_paths_as_with_the_network_off` | The plan's only socket rule allows exactly AF_INET and AF_INET6 on T1 and T2, also with socket-families waived, plus AF_UNIX with ipc.unix_sockets; T1 at ABI 5 and T2 at ABI 8 report ipc-unix-sockets unsupported, T1 at ABI 6 an approximation. |

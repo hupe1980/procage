@@ -69,19 +69,21 @@
 //! approximation the caller accepts with
 //! [`LowerOptions::accept_spawn_snapshot`](procage_policy::LowerOptions::accept_spawn_snapshot).
 //!
-//! **Unix sockets.** `ipc.unix_sockets` allows only `AF_UNIX` sockets when
-//! the network is otherwise off. From Landlock ABI 9 both tiers enforce it
+//! **Unix sockets.** `ipc.unix_sockets` allows `AF_UNIX` sockets when the
+//! network is off or `Network::Ip`. From Landlock ABI 9 both tiers enforce it
 //! exactly: a pathname socket outside its paths cannot be reached, and
-//! abstract sockets are scoped to the run. With the network on every
+//! abstract sockets are scoped to the run. With `Network::All` every
 //! pathname socket stays reachable. Below ABI 9, on tier T1
-//! abstract sockets stay inside the cage's network namespace and every
+//! abstract sockets stay inside the cage's network namespace (with
+//! `Network::Ip`, which has none, the scope keeps them out from ABI 6, and
+//! the setting is refused below) and every
 //! listening socket outside the allowed paths, as listed in `/proc/net/unix`
 //! at spawn, is masked; sockets bound later outside them stay reachable (an
 //! approximation accepted with the same option), and tier T2 cannot
 //! restrict pathname sockets and refuses the setting.
 //!
-//! **Service and engine sockets.** When the network is on (or
-//! `ipc.unix_sockets` is set), the `service-handoff` and `container-engines`
+//! **Service and engine sockets.** With `Network::All` (or
+//! `ipc.unix_sockets` set), the `service-handoff` and `container-engines`
 //! classes keep the child from the D-Bus buses, the systemd managers and
 //! container engines (see `procage_policy::presets` for the lists). The
 //! cage looks for these sockets in the system locations and every runtime
@@ -91,9 +93,10 @@
 //! socket bound later elsewhere is not covered, so this is an approximation
 //! accepted with the spawn snapshot or by name. Tier T2 cannot cover a socket:
 //! while one exists the cage is refused, naming it, and a spawn is refused if
-//! one appeared after the cage was made. A connect refused by a cover is not
-//! reported as a violation. Waive `container-engines` for builds that need an
-//! engine.
+//! one appeared after the cage was made; `Network::Ip`, which refuses Unix
+//! sockets, needs no search (`Relax::no_unix_sockets` switches to it). A
+//! connect refused by a cover is not reported as a violation. Waive
+//! `container-engines` for builds that need an engine.
 //!
 //! **Limits:**
 //!

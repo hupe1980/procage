@@ -3,7 +3,7 @@
 //!
 //! Landlock cannot refuse one Unix socket inside a tree it allows, and
 //! seccomp cannot read a `connect` path. So when a policy leaves the child a
-//! Unix connect (the network on, or `ipc.unix_sockets`), the parent looks
+//! Unix connect (`Network::All`, or `ipc.unix_sockets`), the parent looks
 //! for the classes' sockets: tier T1 covers what it finds (and the classes'
 //! directories as a whole), which is an approximation the caller accepts with
 //! the spawn snapshot or by name; tier T2 cannot cover and reports a gap per

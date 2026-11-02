@@ -194,6 +194,7 @@ pub fn reference_policy(construct: Construct) -> Policy {
                 socks: None,
             }
         }
+        Construct::NetIp => p.net = Network::Ip,
         Construct::NetAll => p.net = Network::All,
         Construct::ExecAny => p.process.exec = Exec::Any,
         Construct::ExecNever => p.process.exec = Exec::Never,

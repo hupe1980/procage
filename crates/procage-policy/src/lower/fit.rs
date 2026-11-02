@@ -19,7 +19,9 @@ pub enum Relaxation {
     LeaveOutHide,
     /// The class's `hd-*` construct: the class is waived.
     Waive(HardDenyClass),
-    /// `ipc-unix-sockets`: no Unix socket is reachable (stricter).
+    /// `ipc-unix-sockets`: no Unix socket is reachable (stricter). It also
+    /// answers the `hd-service-handoff` and `hd-container-engines` gaps of
+    /// [`Network::All`], which then becomes [`Network::Ip`].
     NoUnixSockets,
     /// `signals-self-and-children`: signals reach every process of the user
     /// ([`Signals::SameUser`]).
@@ -29,7 +31,7 @@ pub enum Relaxation {
 }
 
 impl Relaxation {
-    /// The construct whose gap this relaxation answers.
+    /// The construct this relaxation is named for.
     pub fn construct(self) -> Construct {
         match self {
             Relaxation::LeaveOutProtect => Construct::FsProtect,
@@ -39,6 +41,16 @@ impl Relaxation {
             Relaxation::SignalsSameUser => Construct::SignalsSelfAndChildren,
             Relaxation::NoLoopback => Construct::NetLoopback,
         }
+    }
+
+    /// Whether this relaxation answers a gap of `construct`.
+    pub fn answers(self, construct: Construct) -> bool {
+        construct == self.construct()
+            || (self == Relaxation::NoUnixSockets
+                && matches!(
+                    construct,
+                    Construct::HdServiceHandoff | Construct::HdContainerEngines
+                ))
     }
 }
 
@@ -116,7 +128,7 @@ impl Relax {
         self.accepted
             .iter()
             .copied()
-            .find(|r| r.construct() == gap.construct)
+            .find(|r| r.answers(gap.construct))
     }
 
     /// Relaxes `policy` for `gaps`: every gap must be unsupported and have
@@ -168,6 +180,16 @@ fn relax_one(policy: &mut Policy, gap: &CapabilityGap, r: Relaxation) -> bool {
         }
         Relaxation::Waive(class) => {
             policy.waive.insert(class);
+            true
+        }
+        // A socket class's gap: only the network that leaves every Unix
+        // socket reachable becomes the IP network (`Ip` after an earlier gap).
+        Relaxation::NoUnixSockets if gap.construct != Construct::IpcUnixSockets => {
+            if !matches!(policy.net, Network::All | Network::Ip) {
+                return false;
+            }
+            policy.net = Network::Ip;
+            policy.ipc.unix_sockets.clear();
             true
         }
         Relaxation::NoUnixSockets => {

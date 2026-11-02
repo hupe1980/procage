@@ -63,7 +63,10 @@ The order of rules never changes the result. `AbsPath` is an absolute path held 
 | `None` (default) | exact | exact: `socket` is refused for every family (`socketpair` still works); tier T1 also gets an empty network namespace |
 | `Loopback(Ports)` | exact | gap |
 | `Proxy { http, socks }` | exact: outbound only to those loopback ports | T1 with [`with_proxy`](@/docs/proxy.md): exact; T2: gap |
+| `Ip` | exact: IP addresses, and the system resolver's socket | exact: `socket` only for IPv4 and IPv6 |
 | `All` | exact | exact |
+
+`Ip` is the network for commands that should not reach local services: Unix sockets only at `ipc.unix_sockets`, as with the network off, so on Linux the D-Bus and container-engine sockets stay out of reach on every tier without a search. Programs that talk to a local daemon over a Unix socket (nscd, syslog, `gpg-agent`, git's `credential-cache`) fail under it. With `All`, every Unix socket is reachable unless a [hard-deny class](@/docs/hard-deny.md#the-socket-classes) denies it.
 
 ## Processes
 

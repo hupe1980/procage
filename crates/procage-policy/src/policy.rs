@@ -98,6 +98,7 @@ pub enum Ports {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "kebab-case", deny_unknown_fields)
 )]
+#[non_exhaustive]
 pub enum Network {
     /// No network at all.
     #[default]
@@ -111,7 +112,12 @@ pub enum Network {
         /// SOCKS5 proxy port.
         socks: Option<Port>,
     },
-    /// Unrestricted network.
+    /// Connect to and listen on any IP address. Unix sockets only at
+    /// [`Ipc::unix_sockets`], as with the network off, so the D-Bus and
+    /// container-engine sockets stay out of reach on every Linux tier. On
+    /// macOS the system resolver's socket stays reachable, so names resolve.
+    Ip,
+    /// Unrestricted network, Unix sockets included.
     All,
 }
 

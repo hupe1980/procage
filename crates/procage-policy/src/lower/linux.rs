@@ -9,10 +9,10 @@ use super::{
     subject_of,
 };
 use crate::linux::{
-    AF_INET, AF_NETLINK, AF_UNIX, AF_VSOCK, AccessFs, AccessNet, Action, ClassPaths, Condition,
-    Landlock, LandlockRule, LinuxNetwork, LinuxPlan, Mount, Namespaces, NetRule, RuleTarget,
-    Scopes, SeccompRule, Syscall, TIOCLINUX, TIOCSTI, handled_fs, handled_net, may_overlap, rights,
-    scopes,
+    AF_INET, AF_INET6, AF_NETLINK, AF_UNIX, AF_VSOCK, AccessFs, AccessNet, Action, ClassPaths,
+    Condition, Landlock, LandlockRule, LinuxNetwork, LinuxPlan, Mount, Namespaces, NetRule,
+    RuleTarget, Scopes, SeccompRule, Syscall, TIOCLINUX, TIOCSTI, handled_fs, handled_net,
+    may_overlap, rights, scopes,
 };
 use crate::name::Port;
 use crate::path::AbsPath;
@@ -228,7 +228,7 @@ pub(super) fn lower(
     if policy.process.exec == Exec::Any {
         handled = handled.without(AccessFs::EXECUTE);
     }
-    // With the network on every pathname socket stays reachable, as below
+    // With `Network::All` every pathname socket stays reachable, as below
     // ABI 9.
     if policy.net == Network::All {
         handled = handled.without(AccessFs::RESOLVE_UNIX);
@@ -382,6 +382,24 @@ pub(super) fn lower(
             }
             LinuxNetwork::ProxyBridge { ports }
         }
+        // The host's network, without a namespace; IP sockets only, so the
+        // Unix sockets are kept as with the network off.
+        Network::Ip => {
+            if ledger.outcome(Construct::NetIp, Outcome::Exact, None, "") {
+                let mut families = vec![AF_INET, AF_INET6];
+                if !policy.ipc.unix_sockets.is_empty() {
+                    families.push(AF_UNIX);
+                }
+                seccomp.push(deny_if(
+                    Syscall::Socket,
+                    Condition::SocketFamilyExcept(families),
+                ));
+            }
+            if let Some(ns) = namespaces.as_mut() {
+                ns.net = false;
+            }
+            LinuxNetwork::NoNamespace
+        }
         Network::All => {
             ledger.outcome(Construct::NetAll, Outcome::Exact, None, "");
             if let Some(ns) = namespaces.as_mut() {
@@ -409,8 +427,16 @@ pub(super) fn lower(
                     });
                 }
             }
+        } else if t1 && policy.net == Network::Ip && abi < 6 {
+            ledger.outcome(
+                construct,
+                Outcome::Unsupported,
+                None,
+                "without a network namespace, abstract sockets are kept out only from Landlock ABI 6",
+            );
         } else if t1 {
-            // Pathname sockets cross network namespaces; abstract ones do not.
+            // Pathname sockets cross network namespaces; abstract ones do not
+            // (with `Network::Ip` there is none: the scope keeps them out).
             if ledger.outcome(
                 construct,
                 Outcome::Approximated,
@@ -628,10 +654,14 @@ pub(super) fn lower(
 
     let mut classes = Vec::new();
     let mut service_sockets = Vec::new();
-    // With the network off or through the proxy, and no `ipc.unix_sockets`,
-    // seccomp refuses Unix sockets, so the socket classes hold without help;
-    // any other setting leaves Unix connects to the backend.
-    let unix_off = matches!(policy.net, Network::None | Network::Proxy { .. });
+    // With the network off, through the proxy or IP only, and no
+    // `ipc.unix_sockets`, seccomp refuses Unix sockets, so the socket classes
+    // hold without help; any other setting leaves Unix connects to the
+    // backend.
+    let unix_off = matches!(
+        policy.net,
+        Network::None | Network::Proxy { .. } | Network::Ip
+    );
     let unix_reachable = !unix_off || !policy.ipc.unix_sockets.is_empty();
     for &class in HardDenyClass::ALL {
         if policy.waive.contains(&class) {

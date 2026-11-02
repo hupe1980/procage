@@ -39,7 +39,7 @@ Each relaxation has exactly one effect. Nothing else can be relaxed.
 | `leave_out_protect()` | `fs-protect` | The protect rule the gap names is left out |
 | `leave_out_hide()` | `fs-hide` | The hide rule the gap names is left out |
 | `waive(class)` | the class's `hd-*` construct | The hard-deny class is waived |
-| `no_unix_sockets()` | `ipc-unix-sockets` | No Unix socket is reachable (stricter) |
+| `no_unix_sockets()` | `ipc-unix-sockets`; `hd-service-handoff` and `hd-container-engines` with `Network::All` | No Unix socket is reachable (stricter); `Network::All` becomes `Network::Ip` |
 | `no_loopback()` | `net-loopback` | No network at all (stricter) |
 | `signals_same_user()` | `signals-self-and-children` | Signals reach every process of the user |
 

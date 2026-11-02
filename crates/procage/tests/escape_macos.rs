@@ -236,6 +236,12 @@ fn op(spec: &str) -> String {
             arg.parse::<u16>().unwrap(),
         ))),
         "unix" => errno_of(std::os::unix::net::UnixStream::connect(arg)),
+        "listen" => errno_of(std::net::TcpListener::bind("127.0.0.1:0")),
+        "udp-send" => errno_of(
+            std::net::UdpSocket::bind("127.0.0.1:0")
+                .and_then(|s| s.send_to(b"canary", ("127.0.0.1", arg.parse::<u16>().unwrap()))),
+        ),
+        "resolve" => errno_of(std::net::ToSocketAddrs::to_socket_addrs(&(arg, 80))),
         "link" => {
             let (from, to) = arg.split_once('|').unwrap();
             errno_of(std::fs::hard_link(from, to))
@@ -1035,10 +1041,10 @@ struct FakeEngine {
 }
 
 impl FakeEngine {
-    /// `~/.lima/procage-r34-<pid>/sock/docker.sock` (Lima's layout).
-    fn new() -> FakeEngine {
+    /// `~/.lima/procage-<name>-<pid>/sock/docker.sock` (Lima's layout).
+    fn new(name: &str) -> FakeEngine {
         let home = PathBuf::from(std::env::var_os("HOME").expect("HOME"));
-        let dir = real(&home).join(format!(".lima/procage-r34-{}", std::process::id()));
+        let dir = real(&home).join(format!(".lima/procage-{name}-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("sock")).unwrap();
         let socket = dir.join("sock/docker.sock");
         let _ = std::fs::remove_file(&socket);
@@ -1065,7 +1071,7 @@ impl Drop for FakeEngine {
 /// leaves service handoff denied.
 #[test]
 fn r34_container_engines_are_unreachable() {
-    let engine = FakeEngine::new();
+    let engine = FakeEngine::new("r34");
     let d = scratch("r34");
     std::fs::create_dir_all(d.join("ws")).unwrap();
     let ws = real(&d.join("ws"));
@@ -1114,6 +1120,43 @@ fn r34_container_engines_are_unreachable() {
         got.split(' ').all(|r| r != "ok"),
         "service handoff stays denied: {got}"
     );
+}
+
+/// With `Network::Ip` the child reaches IP addresses and resolves names,
+/// but no Unix socket outside `ipc.unix_sockets`: not an engine, not any
+/// other listener, while the project's own socket stays reachable.
+#[test]
+fn r34_the_ip_network_keeps_every_unix_socket_out() {
+    let engine = FakeEngine::new("r34-ip");
+    let d = scratch("r34-ip");
+    std::fs::create_dir_all(d.join("ws")).unwrap();
+    let ws = real(&d.join("ws"));
+    let _other = std::os::unix::net::UnixListener::bind(real(&d).join("other.sock")).unwrap();
+    let _app = std::os::unix::net::UnixListener::bind(ws.join("app.sock")).unwrap();
+    let tcp = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let mut p = policy();
+    p.net = Network::Ip;
+    p.ipc.unix_sockets.push(abs(&ws));
+    let attempt = format!(
+        "connect:{};udp-send:{};listen;unix:{};unix:{};unix:{}",
+        tcp.local_addr().unwrap().port(),
+        udp.local_addr().unwrap().port(),
+        engine.socket.display(),
+        real(&d).join("other.sock").display(),
+        ws.join("app.sock").display()
+    );
+    assert_eq!(
+        in_child(&attempt, &p),
+        format!("ok ok ok {EPERM} {EPERM} ok")
+    );
+    // A real name, where the host resolves it: through the system resolver's
+    // socket, the one Unix socket the setting keeps.
+    if std::net::ToSocketAddrs::to_socket_addrs(&("example.com", 80)).is_ok() {
+        assert_eq!(in_child("resolve:example.com", &p), "ok");
+    } else {
+        println!("r34_the_ip_network_keeps_every_unix_socket_out: no resolver on this host");
+    }
 }
 
 // ---- R-35 Allowlist parser differential ----

@@ -294,6 +294,12 @@ fn op(spec: &str) -> String {
             arg.parse::<u16>().unwrap(),
         ))),
         "unix" => errno_of(std::os::unix::net::UnixStream::connect(arg)),
+        "listen" => errno_of(std::net::TcpListener::bind("127.0.0.1:0")),
+        "udp-send" => errno_of(
+            std::net::UdpSocket::bind("127.0.0.1:0")
+                .and_then(|s| s.send_to(b"canary", ("127.0.0.1", arg.parse::<u16>().unwrap()))),
+        ),
+        "resolve" => errno_of(std::net::ToSocketAddrs::to_socket_addrs(&(arg, 80))),
         // Sends on a UDP socket the parent handed over: `fd|port`.
         "net" => {
             let (kind, port) = arg.split_once('|').unwrap();
@@ -1781,6 +1787,112 @@ fn r34_fit_waives_by_name() {
         &Grants::new(),
     );
     assert_eq!(got, "ok", "the relaxed cage reaches the bus");
+}
+
+/// With `Network::Ip` the child reaches IP addresses and no Unix socket:
+/// neither the bus nor the engine nor an abstract bus, on either tier and
+/// without a cover, so a T2 cage with the network on exists beside them.
+#[test]
+fn r34_the_ip_network_keeps_every_unix_socket_out() {
+    use std::os::linux::net::SocketAddrExt;
+    let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
+    let (d, _listeners) = runtime_with("r34-ip", &["bus", "docker.sock"]);
+    let name = format!("/tmp/dbus-procage-r34-ip-{}", std::process::id());
+    let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
+    let _bus = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+    let tcp = TcpListener::bind("127.0.0.1:0").unwrap();
+    let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let attempt = format!(
+        "connect:{};udp-send:{};listen;resolve:localhost;unix:{};unix:{};abstract:{name}",
+        tcp.local_addr().unwrap().port(),
+        udp.local_addr().unwrap().port(),
+        d.join("bus").display(),
+        d.join("docker.sock").display(),
+    );
+    for tier in tiers() {
+        let mut p = for_tier(policy(), tier);
+        p.net = Network::Ip;
+        let cage = Cage::with_options(&p, &socket_options(tier, &d, false))
+            .unwrap_or_else(|e| panic!("{tier}: {e}"));
+        assert!(cage.plan().degradations.is_empty(), "{tier}");
+        assert_eq!(
+            run_in(&cage, &attempt, &Grants::new()),
+            format!("ok ok ok ok {EPERM} {EPERM} {EPERM}"),
+            "{tier}"
+        );
+    }
+    // With `ipc.unix_sockets`, the project's socket is reachable as with the
+    // network off: T1 covers the others, ABI 9 refuses them, T2 below it is
+    // a gap, and so is T1 below ABI 6 (no namespace keeps abstract sockets
+    // in).
+    let ws = d.join("ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    let _app = std::os::unix::net::UnixListener::bind(ws.join("app.sock")).unwrap();
+    let attempt = format!(
+        "unix:{};unix:{}",
+        ws.join("app.sock").display(),
+        d.join("bus").display()
+    );
+    for tier in tiers() {
+        let mut p = for_tier(policy(), tier);
+        p.net = Network::Ip;
+        p.ipc.unix_sockets.push(abs(&ws));
+        let opts = socket_options(tier, &d, true);
+        let floor = if tier == Tier::T2 { 9 } else { 6 };
+        if probe().landlock_abi < floor {
+            let gaps = match Cage::with_options(&p, &opts) {
+                Err(SpawnError::Lower(LowerError::Gaps(gaps))) => gaps,
+                other => panic!("{tier}: {:?}", other.map(|_| ())),
+            };
+            assert!(
+                gaps.iter()
+                    .any(|g| g.construct == Construct::IpcUnixSockets),
+                "{gaps:?}"
+            );
+            continue;
+        }
+        let cage = Cage::with_options(&p, &opts).unwrap_or_else(|e| panic!("{tier}: {e}"));
+        let got = run_in(&cage, &attempt, &Grants::new());
+        let (app, bus) = got.split_once(' ').unwrap();
+        assert_eq!(app, "ok", "{tier}: {got}");
+        assert!(refused_one(bus), "{tier}: {got}");
+    }
+}
+
+/// `fit` answers the socket classes of a networked policy with
+/// `no_unix_sockets` on tier T2: the network becomes `Network::Ip`.
+#[test]
+fn r34_fit_keeps_unix_sockets_out_of_a_networked_command() {
+    use procage::policy::{Relax, Relaxation};
+    let (d, _listeners) = runtime_with("r34-fit-ip", &["bus", "docker.sock"]);
+    let mut p = policy();
+    p.net = Network::All;
+    let opts = socket_options(Tier::T2, &d, false);
+    assert!(matches!(
+        Cage::fit(&p, &opts, &Relax::new()),
+        Err(SpawnError::Lower(LowerError::Gaps(_)))
+    ));
+    let (cage, relaxed) = Cage::fit(&p, &opts, &Relax::new().no_unix_sockets()).unwrap();
+    for construct in [Construct::HdServiceHandoff, Construct::HdContainerEngines] {
+        let r = relaxed
+            .iter()
+            .find(|r| r.gap.construct == construct)
+            .unwrap_or_else(|| panic!("{construct}: {relaxed:?}"));
+        assert_eq!(r.relaxation, Relaxation::NoUnixSockets, "{r}");
+        assert!(r.lift.tier1, "tier T1 lifts it: {r}");
+    }
+    let tcp = TcpListener::bind("127.0.0.1:0").unwrap();
+    let got = run_in(
+        &cage,
+        &format!(
+            "connect:{};unix:{};unix:{}",
+            tcp.local_addr().unwrap().port(),
+            d.join("bus").display(),
+            d.join("docker.sock").display()
+        ),
+        &Grants::new(),
+    );
+    assert_eq!(got, format!("ok {EPERM} {EPERM}"));
 }
 
 /// An abstract bus is out of reach: from Landlock ABI 6 every plan scopes

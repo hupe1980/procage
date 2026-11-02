@@ -1,0 +1,444 @@
+otmVersion: 0.2.0
+project:
+  id: 048-ip-network
+  name: An IP network without Unix sockets
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child (a build, a test, an agent's command)
+    trust: untrusted
+  - id: actor.harness
+    name: The harness that fits policies and spawns runs
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  - disposition: not-applicable
+    reason: no authentication surface; the change is a socket-family filter and Seatbelt network rules
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: procage does not carry the child's traffic under Network::Ip
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: 'checked component.lowering: no caller string enters the Seatbelt rules for Network::Ip; ipc.unix_sockets
+      paths are quoted as before'
+    technique: injection
+  - disposition: no-threat-detected
+    reason: 'checked component.fitting: every relaxed gap is returned and listed in the receipts with its lift'
+    technique: missing-audit-trail
+  - disposition: not-applicable
+    reason: single user; runs of one caller
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.lowering and component.fitting: one seccomp rule and two Seatbelt rules, and fitting
+      runs at most four rounds as before; nothing the child does adds work'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: no data is stored
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.lowering: the change narrows what a networked child reaches; IP egress is the policy''s
+      stated intent'
+    technique: sensitive-data-exposure
+  exclusions: []
+  extends: null
+  generated: '2026-11-02T22:55:22Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: e63ab07885077641fda64f46f7e9ad58aa65c0dcf5e12c5bd035999070a02ae5
+  - path: spec.md
+    sha256: b53da87c013f93903d6730773e28b137194c0c6bd11acedc4035362bbc07a2ae
+  surfaces:
+  - external-input
+  - authorization
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.host-services
+  name: 'Services on Unix sockets: D-Bus buses, systemd managers, container engines'
+  risk:
+    trustRating: 80
+- id: tz.kernel
+  name: seccomp, Landlock and Seatbelt
+  risk:
+    trustRating: 95
+assets:
+- id: asset.host-services
+  name: Host services reachable over Unix sockets (D-Bus, Docker, systemd)
+  risk:
+    availability: 60
+    confidentiality: 80
+    integrity: 90
+  attributes:
+    type: capability
+    source: spec.md#Context
+    classification: internal
+components:
+- id: component.fitting
+  name: Relax::no_unix_sockets for the socket classes
+  type: library
+  parent:
+    trustZone: tz.kernel
+  attributes:
+    source: spec.md#FR-002
+- id: component.lowering
+  name: Lowering of Network::Ip (Linux seccomp, macOS Seatbelt)
+  type: library
+  parent:
+    trustZone: tz.kernel
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.fit
+  name: The harness fits a networked policy
+  source: actor.harness
+  destination: component.fitting
+  assets:
+  - asset.host-services
+  attributes:
+    crosses: []
+- id: flow.unix-connect
+  name: The child connects to a Unix socket of a host service
+  source: actor.caged-code
+  destination: tz.host-services
+  assets:
+  - asset.host-services
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.kernel
+threats:
+- id: threat.abstract-socket-without-namespace
+  name: On T1 below ABI 6 with ipc.unix_sockets, a child under Network::Ip reaches an abstract host socket, with
+    no network namespace to keep it out
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-284
+  risk:
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host-services
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.unix-connect
+    - component.lowering
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.other-socket-family
+  name: A child under Network::Ip opens a socket of another family (netlink, packet, vsock) to reach the host
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-284
+  risk:
+    impact: 70
+    likelihood: 30
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host-services
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.lowering
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.relaxation-changes-network
+  name: Relax::no_unix_sockets applied to a socket-class gap changes a network setting other than All, or answers
+    the gap without removing the route
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-693
+  risk:
+    impact: 80
+    likelihood: 30
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host-services
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.fitting
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.service-socket-under-ip
+  name: A networked child under Network::Ip connects to the session bus or an engine socket and runs code outside
+    the cage
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-284
+  risk:
+    impact: 90
+    likelihood: 60
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host-services
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.unix-connect
+    - component.lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+mitigations:
+- id: mitigation.ip-families-only
+  name: 'Linux: socket() for AF_INET and AF_INET6 only, AF_UNIX only with ipc.unix_sockets (handled as with the
+    network off); macOS: IP addresses and the resolver socket only; T1 below ABI 6 with ipc.unix_sockets unsupported'
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.service-socket-under-ip
+    - threat.other-socket-family
+    - threat.abstract-socket-without-namespace
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    - SR-003
+    touchpoints:
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage/tests/escape_linux.rs
+    - crates/procage/tests/escape_macos.rs
+    - crates/procage-policy/tests/network_ip.rs
+- id: mitigation.relax-to-ip
+  name: NoUnixSockets answers socket-class gaps only under Network::All (or Ip), switching to Network::Ip and clearing
+    ipc.unix_sockets; the cage is made again from the relaxed policy
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.relaxation-changes-network
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/lower/fit.rs
+    - crates/procage-policy/tests/fit.rs
+    - crates/procage/tests/escape_linux.rs
+requirements:
+- id: SR-001
+  statement: Under Network::Ip no Unix socket outside ipc.unix_sockets MUST be reachable on macOS, T1 or T2, while
+    IP connects, listening and name resolution MUST work.
+  priority: P1
+  mitigations:
+  - mitigation.ip-families-only
+  acceptance:
+  - given: Network::Ip without ipc.unix_sockets
+    then: the IP operations succeed and the Unix connect fails on every tier
+    when: the child connects over TCP, listens, resolves a name and connects to a Unix socket
+  - given: Network::Ip with ipc.unix_sockets naming a socket
+    then: it connects (T1 and T2 from ABI 9, macOS)
+    when: the child connects to it
+  tasks: []
+- id: SR-002
+  statement: Relax::no_unix_sockets MUST answer hd-service-handoff and hd-container-engines gaps only under Network::All,
+    by switching the policy to Network::Ip; under any other network the gap MUST stay.
+  priority: P1
+  mitigations:
+  - mitigation.relax-to-ip
+  acceptance:
+  - given: T2, Network::All and a session bus socket in a runtime directory
+    then: the cage is made with Network::Ip, the gap is reported relaxed with the T1 lift, and the child cannot
+      connect to the bus
+    when: fitting with no_unix_sockets
+  - given: a socket-class gap and a Loopback network
+    then: the gap is returned unanswered and the policy is unchanged
+    when: applying no_unix_sockets
+  tasks: []
+- id: SR-003
+  statement: On Linux, Network::Ip MUST refuse every socket family but AF_INET, AF_INET6 and, with ipc.unix_sockets,
+    AF_UNIX; ipc.unix_sockets with Network::Ip on T1 below ABI 6 MUST be unsupported.
+  priority: P1
+  mitigations:
+  - mitigation.ip-families-only
+  acceptance:
+  - given: Network::Ip lowered for T1 and T2
+    then: seccomp refuses socket() except AF_INET and AF_INET6 (and AF_UNIX with ipc.unix_sockets), even with socket-families
+      waived
+    when: the plan is built
+  - given: Network::Ip with ipc.unix_sockets on T1 at ABI 5
+    then: ipc-unix-sockets is an unsupported gap
+    when: lowering
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-02
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_the_ip_network_keeps_every_unix_socket_out, crates/procage/tests/escape_macos.rs::r34_the_ip_network_keeps_every_unix_socket_out
+  result: pass
+  verdict: verified
+  justification: Under Network::Ip the caged child connects over TCP, sends UDP, listens and resolves a name, while
+    connects to a fake bus, a fake engine and an abstract bus fail with EPERM on T1 and T2 (container lanes), and
+    on macOS to the engine and another listener; the project's socket at ipc.unix_sockets connects (macOS, T1; T2
+    below ABI 9 is the expected gap).
+  verified_at: '2026-11-02T22:54:55Z'
+  commit: 476d2a1
+- id: verification.sr-001.2026-11-02-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_the_ip_network_keeps_every_unix_socket_out, crates/procage/tests/escape_macos.rs::r34_the_ip_network_keeps_every_unix_socket_out
+  result: pass
+  verdict: verified
+  justification: Under Network::Ip the caged child connects over TCP, sends UDP, listens and resolves a name, while
+    connects to a fake bus, a fake engine and an abstract bus fail with EPERM on T1 and T2 (container lanes), and
+    on macOS to the engine and another listener; the project's socket at ipc.unix_sockets connects (macOS, T1; T2
+    below ABI 9 is the expected gap).
+  verified_at: '2026-11-02T22:55:22Z'
+  commit: 476d2a1
+- id: verification.sr-002.2026-11-02
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_fit_keeps_unix_sockets_out_of_a_networked_command, crates/procage-policy/tests/fit.rs::no_unix_sockets_leaves_a_socket_class_gap_of_another_network
+  result: pass
+  verdict: verified
+  justification: On T2 with a fake bus and engine, fit without a relaxation fails with the gaps; with no_unix_sockets
+    it relaxes both with NoUnixSockets and the T1 lift, and the child reaches TCP but gets EPERM on both sockets.
+    Under Loopback the gap is returned unanswered and the policy is unchanged.
+  verified_at: '2026-11-02T22:54:55Z'
+  commit: 476d2a1
+- id: verification.sr-002.2026-11-02-2
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r34_fit_keeps_unix_sockets_out_of_a_networked_command, crates/procage-policy/tests/fit.rs::no_unix_sockets_leaves_a_socket_class_gap_of_another_network
+  result: pass
+  verdict: verified
+  justification: On T2 with a fake bus and engine, fit without a relaxation fails with the gaps; with no_unix_sockets
+    it relaxes both with NoUnixSockets and the T1 lift, and the child reaches TCP but gets EPERM on both sockets.
+    Under Loopback the gap is returned unanswered and the policy is unchanged.
+  verified_at: '2026-11-02T22:55:22Z'
+  commit: 476d2a1
+- id: verification.sr-003.2026-11-02
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-policy/tests/network_ip.rs::only_ip_sockets_are_created_without_a_namespace_or_a_socket_search,
+    crates/procage-policy/tests/network_ip.rs::unix_sockets_at_their_paths_as_with_the_network_off
+  result: pass
+  verdict: verified
+  justification: The plan's only socket rule allows exactly AF_INET and AF_INET6 on T1 and T2, also with socket-families
+    waived, plus AF_UNIX with ipc.unix_sockets; T1 at ABI 5 and T2 at ABI 8 report ipc-unix-sockets unsupported,
+    T1 at ABI 6 an approximation.
+  verified_at: '2026-11-02T22:54:55Z'
+  commit: 476d2a1
+- id: verification.sr-003.2026-11-02-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage-policy/tests/network_ip.rs::only_ip_sockets_are_created_without_a_namespace_or_a_socket_search,
+    crates/procage-policy/tests/network_ip.rs::unix_sockets_at_their_paths_as_with_the_network_off
+  result: pass
+  verdict: verified
+  justification: The plan's only socket rule allows exactly AF_INET and AF_INET6 on T1 and T2, also with socket-families
+    waived, plus AF_UNIX with ipc.unix_sockets; T1 at ABI 5 and T2 at ABI 8 report ipc-unix-sockets unsupported,
+    T1 at ABI 6 an approximation.
+  verified_at: '2026-11-02T22:55:22Z'
+  commit: 476d2a1
+decisions: []

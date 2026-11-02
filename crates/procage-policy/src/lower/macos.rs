@@ -54,6 +54,9 @@ fn path_filter(target: &FsTarget) -> Filter {
     }
 }
 
+/// The system resolver's socket (mDNSResponder), which `getaddrinfo` uses.
+const RESOLVER_SOCKET: &[u8] = b"/private/var/run/mDNSResponder";
+
 fn loopback(ports: &Ports) -> Vec<String> {
     match ports {
         Ports::Any => vec!["localhost:*".to_string()],
@@ -312,6 +315,25 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
                 Effect::Allow,
                 &["network-outbound"],
                 filters,
+            )));
+            allow.push(socket());
+        }
+        // Remote and local IP addresses only, so Unix sockets stay as with
+        // the network off; the resolver's socket, or no name resolves.
+        Network::Ip => {
+            ledger.outcome(Construct::NetIp, Outcome::Exact, None, "");
+            allow.push(net(Rule::new(
+                Effect::Allow,
+                &["network-outbound"],
+                vec![
+                    Filter::RemoteIp("*:*".into()),
+                    Filter::RemoteUnixSocket(RESOLVER_SOCKET.to_vec()),
+                ],
+            )));
+            allow.push(net(Rule::new(
+                Effect::Allow,
+                &["network-bind", "network-inbound"],
+                vec![Filter::LocalIp("*:*".into())],
             )));
             allow.push(socket());
         }
