@@ -233,7 +233,7 @@ pub(crate) fn decide(
         kind,
         subject: Some(subject),
     };
-    // From Landlock ABI 9 with the network off, a pathname socket no
+    // From Landlock ABI 9 without `Network::All`, a pathname socket no
     // Unix-socket rule reaches cannot be connected to; abstract ones are
     // scoped. Only a socket under an allowed path needs a cover.
     let resolve = plan.landlock.handled_fs.contains(AccessFs::RESOLVE_UNIX);
@@ -397,7 +397,7 @@ mod tests {
         assert_eq!(outcome.gaps[0].kind, GapKind::Unsupported);
     }
 
-    /// From Landlock ABI 9 with the network off, only a socket under an
+    /// From Landlock ABI 9 without `Network::All`, only a socket under an
     /// allowed Unix-socket path needs a cover; at ABI 8 every one does.
     #[test]
     fn landlock_keeps_other_sockets_out_from_abi_9() {

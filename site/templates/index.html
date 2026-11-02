@@ -105,12 +105,12 @@
         <thead><tr><th scope="col">Platform</th><th scope="col">Mechanism</th><th scope="col">Needs</th><th scope="col">Notable limits today</th></tr></thead>
         <tbody>
           <tr><th scope="row">macOS</th><td>Seatbelt profile compiled and applied through libsandbox’s private interface, resolved at run time</td><td>A process that is not itself sandboxed</td><td>No pseudo-terminals; base profiles curated on macOS 26.6.2</td></tr>
-          <tr><th scope="row">Linux tier T1</th><td>User, mount, IPC, UTS and network namespaces, mounts, Landlock, seccomp</td><td>Unprivileged user namespaces, Landlock ABI 1 (Linux 5.13) or later</td><td>No PID namespace; no loopback or proxy networking; glob rules are gaps</td></tr>
-          <tr><th scope="row">Linux tier T2</th><td>Landlock and seccomp only</td><td>Landlock ABI 1 or later (for example Docker’s default settings)</td><td>As T1, and cannot protect or hide a path inside a writable tree</td></tr>
+          <tr><th scope="row">Linux tier T1</th><td>User, mount, IPC, UTS and network namespaces, mounts, Landlock, seccomp</td><td>Unprivileged user namespaces, Landlock ABI 1 (Linux 5.13) or later</td><td>No PID namespace; no loopback networking; glob rules are gaps</td></tr>
+          <tr><th scope="row">Linux tier T2</th><td>Landlock and seccomp only</td><td>Landlock ABI 1 or later (for example Docker’s default settings)</td><td>As T1, no proxy-only networking, and cannot protect or hide a path inside a writable tree</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="muted small">Linux tests have run on one kernel (7.0, aarch64, in Docker), older Landlock ABIs through a cap. Details: <a href="{{ get_url(path='@/docs/macos.md') }}">macOS backend</a>, <a href="{{ get_url(path='@/docs/linux.md') }}">Linux backend and tiers</a>.</p>
+    <p class="muted small">Linux tests run on eight mainline kernels from 5.15 to 7.3.1 (Landlock ABI 1 to 11) and in Docker on both tiers. Details: <a href="{{ get_url(path='@/docs/macos.md') }}">macOS backend</a>, <a href="{{ get_url(path='@/docs/linux.md') }}">Linux backend and tiers</a>.</p>
   </div>
 </section>
 
