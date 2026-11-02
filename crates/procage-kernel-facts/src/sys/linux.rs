@@ -275,7 +275,8 @@ pub struct NotifyRound {
     pub child_errno: i32,
     /// Notifications the parent received.
     pub notified: u32,
-    /// Whether the listener reported POLLHUP after the child exited.
+    /// Whether the listener reported POLLHUP once the child exited or was
+    /// reaped.
     pub hung_up: bool,
 }
 
@@ -463,6 +464,18 @@ pub fn seccomp_notify_round() -> Result<NotifyRound, String> {
     let mut status = 0;
     // SAFETY: reaping our child.
     unsafe { libc::waitpid(pid, &raw mut status, 0) };
+    if !hung_up {
+        // Older kernels (6.8 and earlier here) release the filter when the
+        // child is reaped, not when it exits.
+        let mut pfd = libc::pollfd {
+            fd: listener.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: poll on one descriptor.
+        let n = unsafe { libc::poll(&raw mut pfd, 1, 1000) };
+        hung_up = n > 0 && pfd.revents & libc::POLLHUP != 0;
+    }
     Ok(NotifyRound {
         second_listener_errno: out[0],
         child_errno: out[1],

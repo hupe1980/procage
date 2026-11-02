@@ -1160,7 +1160,12 @@ fn shell(cage: &Cage, work: &Path, script: &str) -> Output {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    run(cage, cmd, &Grants::new())
+    // Each run's private TMPDIR starts the developer shims with a cold
+    // cache, which a busy CI machine takes well over 10 s to fill.
+    let child = cage
+        .spawn(&mut cmd, &Grants::new())
+        .unwrap_or_else(|e| panic!("spawn: {e}"));
+    finish(child, Duration::from_secs(60))
 }
 
 /// Whether Xcode or the Command Line Tools are selected on this machine.

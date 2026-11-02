@@ -1115,7 +1115,7 @@ mod linux {
         },
         Fact {
             id: "KF-L15",
-            statement: "seccomp user notification works unprivileged: the listener reaches the parent, the call returns the parent's EPERM, the listener hangs up once the child exits, and a second listener in one chain fails with EBUSY",
+            statement: "seccomp user notification works unprivileged: the listener reaches the parent, the call returns the parent's EPERM, the listener hangs up once the child exits (on older kernels once it is reaped), and a second listener in one chain fails with EBUSY",
             kind: Kind::Enforcement,
             tiers: ALL,
             slow: false,

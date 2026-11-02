@@ -625,7 +625,7 @@ fn r04_files_move_between_writable_directories_and_gain_no_right() {
     }
     std::fs::write(d.join("ro/f"), "read-only").unwrap();
     for tier in tiers() {
-        for f in ["a/x", "a/y", "b/x", "b/t", "bin/y", "f", "g"] {
+        for f in ["a/x", "a/y", "b/x", "b/y", "b/t", "bin/y", "f", "g"] {
             let _ = std::fs::remove_file(d.join("ws").join(f));
         }
         let mut p = policy();
@@ -643,8 +643,8 @@ fn r04_files_move_between_writable_directories_and_gain_no_right() {
         let got = run_in(
             &c,
             &format!(
-                "write:{w}/a/x;rename:{w}/a/x|{w}/b/x;link:{w}/b/x|{w}/a/y;tmpdir-move:{w}/b/t;\
-                 rename:{w}/a/y|{w}/bin/y;rename:{r}/f|{w}/f;link:{r}/f|{w}/g"
+                "write:{w}/a/x;write:{w}/a/y;rename:{w}/a/x|{w}/b/x;link:{w}/a/y|{w}/b/y;\
+                 tmpdir-move:{w}/b/t;rename:{w}/a/y|{w}/bin/y;rename:{r}/f|{w}/f;link:{r}/f|{w}/g"
             ),
             &Grants::new(),
         );
@@ -655,16 +655,15 @@ fn r04_files_move_between_writable_directories_and_gain_no_right() {
             EXDEV.to_string()
         };
         let moved = moved.as_str();
-        assert_eq!(parts[..4], ["ok", moved, moved, moved], "{tier}: {got}");
-        if abi() >= 2 {
-            assert_eq!(
-                parts[4],
-                EXDEV.to_string(),
-                "{tier}: a right gained ({got})"
-            );
-        }
+        assert_eq!(
+            parts[..5],
+            ["ok", "ok", moved, moved, moved],
+            "{tier}: {got}"
+        );
+        // A right gained (or, below ABI 2, any move between directories).
+        assert_eq!(parts[5], EXDEV.to_string(), "{tier}: {got}");
         assert!(
-            parts[5..].iter().all(|p| *p != "ok"),
+            parts[6..].iter().all(|p| *p != "ok"),
             "{tier}: moved out of a read-only tree ({got})"
         );
         assert_eq!(
@@ -1416,7 +1415,8 @@ fn r29_nested_user_namespaces_and_mount_changes_are_refused() {
 fn r31_files_outside_the_writable_paths_cannot_be_truncated() {
     let routes = ["truncate", "rdonly", "noaccess", "openat2", "open"];
     for tier in tiers() {
-        for abi in [1, 2, 3] {
+        // A cap never raises the kernel's ABI.
+        for abi in [1, 2, 3].into_iter().filter(|a| *a <= abi()) {
             let w = scratch(&format!("r31-w-{tier}-{abi}"));
             let o = scratch(&format!("r31-o-{tier}-{abi}"));
             let mut p = policy();
@@ -1611,6 +1611,9 @@ fn refused_one(r: &str) -> bool {
 /// workspace stays reachable throughout.
 #[test]
 fn r34_service_and_engine_sockets_are_unreachable() {
+    // Below ABI 6 the abstract bus another canary binds would make every
+    // cage here a gap.
+    let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
     let cases: [(&[&str], HardDenyClass); 2] = [
         (&["bus", "systemd/private"], HardDenyClass::ServiceHandoff),
         (
