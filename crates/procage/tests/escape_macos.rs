@@ -388,6 +388,11 @@ fn child_entry() {
         ops => ops.split(';').map(op).collect::<Vec<_>>().join(" "),
     };
     println!("procage-result: {result}");
+    // On a terminal: stay until the parent has read the result.
+    if std::env::var_os("PROCAGE_HANDSHAKE").is_some() {
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
 }
 
 /// Runs uncaged with secrets in its own environment (set by the canary) and
@@ -834,12 +839,15 @@ fn in_terminal(action: &str, policy: &Policy) -> (String, String) {
     let mut p = policy.clone();
     p.tty = Tty::NewPty;
     let cage = cage_for(&p).unwrap_or_else(|e| panic!("cage: {e}"));
+    let mut cmd = child_command(action);
+    cmd.env("PROCAGE_HANDSHAKE", "1");
+    let spawned = Instant::now();
     let mut child = cage
-        .spawn(&mut child_command(action), &Grants::new())
+        .spawn(&mut cmd, &Grants::new())
         .unwrap_or_else(|e| panic!("spawn: {e}"));
     let mut pty = child.take_pty().expect("a terminal");
-    // Read at once, on this thread: macOS discards terminal output not read
-    // within about 0.6 s of the child's exit. A watchdog ends a hung run.
+    // The child stays until its result is read and answered, so nothing it
+    // wrote can be lost with its exit. A watchdog ends a hung run.
     let pid = child.id();
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let watch = done.clone();
@@ -854,9 +862,25 @@ fn in_terminal(action: &str, policy: &Policy) -> (String, String) {
         }
     });
     let mut out = Vec::new();
-    // The read ends with end of file once the run is over.
-    let _ = pty.read_to_end(&mut out);
+    let mut chunk = [0u8; 4096];
+    let mut answered = false;
+    loop {
+        match pty.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => out.extend_from_slice(&chunk[..n]),
+        }
+        let text = String::from_utf8_lossy(&out);
+        if !answered
+            && text
+                .split_once("procage-result: ")
+                .is_some_and(|(_, rest)| rest.contains('\n'))
+        {
+            std::io::Write::write_all(&mut pty, b"\n").unwrap();
+            answered = true;
+        }
+    }
     done.store(true, std::sync::atomic::Ordering::SeqCst);
+    let ended = spawned.elapsed();
     let status = child.wait().unwrap();
     drop(child);
     let text = String::from_utf8_lossy(&out).into_owned();
@@ -866,7 +890,7 @@ fn in_terminal(action: &str, policy: &Policy) -> (String, String) {
             l.split_once("procage-result: ")
                 .map(|(_, r)| r.trim_end().to_string())
         })
-        .unwrap_or_else(|| panic!("no result ({status}) in {text:?}"));
+        .unwrap_or_else(|| panic!("no result ({status}, read ended after {ended:?}) in {text:?}"));
     (result, text)
 }
 

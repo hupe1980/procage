@@ -31,8 +31,11 @@ Findings on the way:
   descriptor closes is discarded after the exit's drain, about 0.6 s
   (measured); holding a copy of the device would keep it but block the
   exit until it is read, so procage does not. A harness reads while the
-  run runs. The R-22 canary read on a thread started after the spawn and
-  lost the output twice in 15 loaded runs (CI run 41675095393); it now
-  reads on the spawning thread.
+  run runs. An active reader loses nothing (0 of 2,000 under load,
+  measured). The R-22 canary still saw an empty terminal from a child that
+  exited 0 on both macOS lanes (CI runs 41675095393, 41681810635; not
+  reproduced locally in 85 loaded runs), so its child now prints the
+  result and waits for the parent's answer before exiting, and a failure
+  reports how long the read lasted.
 - The concurrent test exposed a marker-search race on macOS (plan, step
   11): about one run in three failed before the fix, none in 20 after.
