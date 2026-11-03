@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-01
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: procage 0.1.0 was verified on macOS 26.6.2 and Ubuntu 24.04 (x86_64) only. macOS 27 and Ubuntu 26.04 are generally available, `ubuntu-latest` moves to 26.04 during November 2026, and many users run arm64 Linux and macOS 15. Every claim procage makes must hold on the releases its users run, and say which ones those are.
 

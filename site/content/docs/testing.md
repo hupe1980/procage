@@ -70,7 +70,7 @@ The bench also times `Cage::explain`'s evaluator: 0.61 ms per question for a
 
 ## Where they have run
 
-The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; lower ABIs are also exercised through `CageOptions::with_landlock_abi`, and every ABI step on a real kernel in the kernel matrix below. CI runs the kernel facts, the escape suites and the explain oracle on every push, on GitHub's macOS 26 and Ubuntu 24.04 (x86_64, tiers T1 and T2) runners.
+The evidence in the threat model was recorded on macOS 26.6.2 (25G83, arm64) and Linux 7.0.14-linuxkit (aarch64, Landlock ABI 8) in containers for tiers T1 and T2; lower ABIs are also exercised through `CageOptions::with_landlock_abi`, and every ABI step on a real kernel in the kernel matrix below. CI runs the kernel facts, the escape suites and the explain oracle on every push, on GitHub's macOS 26 and 27 (arm64) runners and on Ubuntu 24.04 (x86_64 and arm64) and 26.04 (x86_64), each Linux runner as shipped (tier T2) and with Ubuntu's documented sysctl lifted (tier T1). Each lane asserts the macOS major version or tier and the architecture it expects; the [README](https://github.com/hupe1980/procage#%EF%B8%8F-platforms) lists the measured builds. macOS 15 is untested.
 
 On Linux, CI also boots Ubuntu mainline kernels with virtme-ng, one job per Landlock ABI step: 5.15 (ABI 1), 6.6 (3), 6.8 (4), 6.12 (6), 7.0 (8), 7.1 (9), 7.2 (10) and 7.3 (11). Each runs the kernel facts with the expected ABI and every Linux suite. `just kernel` boots the same kernels locally under QEMU.
 

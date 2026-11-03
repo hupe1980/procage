@@ -1,6 +1,6 @@
 # Threat Model: CI lanes for the releases people run
 
-**Feature**: `039-ci-lanes` · **Generated**: 2026-11-03T06:34:01Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
+**Feature**: `039-ci-lanes` · **Generated**: 2026-11-03T11:22:27Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
 
 > Rendered by ThreatSpec. Edit `threat-model.yaml`, not this file.
 
@@ -98,17 +98,17 @@ flowchart LR
 
 | ID | Threat | Category | Technique | Severity | Status | Mitigations | Mappings | Source |
 |---|---|---|---|---|---|---|---|---|
-| `threat.action-supply-chain` | A third-party action referenced by a tag or branch, or re-pinned to a malicious commit, runs attacker code in a lane with the job token | Tampering, Elevation of Privilege | privilege-escalation-via-config | **high** | open | `mitigation.sha-pins` |  | spec.md#FR-007 |
-| `threat.pass-without-evidence` | A lane is green without evidence because enforcement tests skip (AlreadySandboxed, no administrator, a feature missing) or the job is marked continue-on-error or unavailable | Repudiation | missing-audit-trail | **high** | open | `mitigation.no-skip-green` |  | spec.md#FR-001 |
-| `threat.silent-image-change` | An image label moves to another OS release, build or architecture (ubuntu-latest to 26.04, xcode-27 to a later macOS, an arm label on x86_64) and the lane stays green while the docs name the old release | Repudiation, Spoofing | missing-audit-trail | **high** | open | `mitigation.assert-expected` |  | spec.md#Edge-Cases |
-| `threat.silent-tier-change` | A Linux lane gets a different tier than it states (T1 expected, T2 observed after an AppArmor default change, or the reverse) and the tier-specific tests pass vacuously | Repudiation | missing-audit-trail | **high** | open | `mitigation.assert-expected` |  | spec.md#Clarifications |
-| `threat.token-overreach` | A lane gets a writable token or a secret, so pull-request code, a caged test program or a compromised action writes to the repository, releases or pages | Elevation of Privilege, Information Disclosure | credential-theft | **high** | open | `mitigation.least-privilege-workflow` |  | spec.md#FR-007 |
-| `threat.expression-injection` | A run step interpolates pull-request text (title, branch name, commit message) into a shell script, which then runs as the workflow | Tampering | injection | **medium** | open | `mitigation.least-privilege-workflow` |  | spec.md#FR-007 |
-| `threat.frozen-base-drift` | An allowance macOS 27 needs is edited into a frozen base V1 to V3 instead of a new base version, silently loosening every cage built on it | Elevation of Privilege, Tampering | privilege-escalation-via-config | **medium** | open | `mitigation.new-base-version` |  | spec.md#FR-006 |
-| `threat.stale-claims` | README or SECURITY still name a release supported after its lane was removed, turned red or its image retired (macOS 14 on 2026-11-02), or state a tier that was not measured, without a date | Repudiation | missing-audit-trail | **medium** | open | `mitigation.docs-from-lanes` |  | spec.md#FR-005 |
-| `threat.t1-unrepresentative` | A T1 job reaches T1 by weakening the host beyond what users would do (AppArmor off, tests as root), so the T1 claim and the docs' advice overstate what users get | Repudiation, Elevation of Privilege | missing-audit-trail | **medium** | open | `mitigation.representative-t1` |  | spec.md#Clarifications |
-| `threat.cache-poisoning` | A pull-request job saves a build cache that a main-branch lane restores, so pull-request code alters what main measures | Tampering | data-tampering-at-rest | **low** | open | `mitigation.least-privilege-workflow` |  | spec.md#Context |
-| `threat.evidence-expiry` | The lane report lives only in job logs that expire, so a dated claim later cites evidence nobody can see | Repudiation | missing-audit-trail | **low** | open | `mitigation.docs-from-lanes` |  | spec.md#Key-Entities |
+| `threat.action-supply-chain` | A third-party action referenced by a tag or branch, or re-pinned to a malicious commit, runs attacker code in a lane with the job token | Tampering, Elevation of Privilege | privilege-escalation-via-config | **high** | mitigated | `mitigation.sha-pins` |  | spec.md#FR-007 |
+| `threat.pass-without-evidence` | A lane is green without evidence because enforcement tests skip (AlreadySandboxed, no administrator, a feature missing) or the job is marked continue-on-error or unavailable | Repudiation | missing-audit-trail | **high** | mitigated | `mitigation.no-skip-green` |  | spec.md#FR-001 |
+| `threat.silent-image-change` | An image label moves to another OS release, build or architecture (ubuntu-latest to 26.04, xcode-27 to a later macOS, an arm label on x86_64) and the lane stays green while the docs name the old release | Repudiation, Spoofing | missing-audit-trail | **high** | mitigated | `mitigation.assert-expected` |  | spec.md#Edge-Cases |
+| `threat.silent-tier-change` | A Linux lane gets a different tier than it states (T1 expected, T2 observed after an AppArmor default change, or the reverse) and the tier-specific tests pass vacuously | Repudiation | missing-audit-trail | **high** | mitigated | `mitigation.assert-expected` |  | spec.md#Clarifications |
+| `threat.token-overreach` | A lane gets a writable token or a secret, so pull-request code, a caged test program or a compromised action writes to the repository, releases or pages | Elevation of Privilege, Information Disclosure | credential-theft | **high** | mitigated | `mitigation.least-privilege-workflow` |  | spec.md#FR-007 |
+| `threat.expression-injection` | A run step interpolates pull-request text (title, branch name, commit message) into a shell script, which then runs as the workflow | Tampering | injection | **medium** | mitigated | `mitigation.least-privilege-workflow` |  | spec.md#FR-007 |
+| `threat.frozen-base-drift` | An allowance macOS 27 needs is edited into a frozen base V1 to V3 instead of a new base version, silently loosening every cage built on it | Elevation of Privilege, Tampering | privilege-escalation-via-config | **medium** | mitigated | `mitigation.new-base-version` |  | spec.md#FR-006 |
+| `threat.stale-claims` | README or SECURITY still name a release supported after its lane was removed, turned red or its image retired (macOS 14 on 2026-11-02), or state a tier that was not measured, without a date | Repudiation | missing-audit-trail | **medium** | mitigated | `mitigation.docs-from-lanes` |  | spec.md#FR-005 |
+| `threat.t1-unrepresentative` | A T1 job reaches T1 by weakening the host beyond what users would do (AppArmor off, tests as root), so the T1 claim and the docs' advice overstate what users get | Repudiation, Elevation of Privilege | missing-audit-trail | **medium** | mitigated | `mitigation.representative-t1` |  | spec.md#Clarifications |
+| `threat.cache-poisoning` | A pull-request job saves a build cache that a main-branch lane restores, so pull-request code alters what main measures | Tampering | data-tampering-at-rest | **low** | mitigated | `mitigation.least-privilege-workflow` |  | spec.md#Context |
+| `threat.evidence-expiry` | The lane report lives only in job logs that expire, so a dated claim later cites evidence nobody can see | Repudiation | missing-audit-trail | **low** | mitigated | `mitigation.docs-from-lanes` |  | spec.md#Key-Entities |
 
 ### Techniques evaluated without findings
 
@@ -146,44 +146,47 @@ flowchart LR
 
 | ID | Mitigation | Kind | Threats | Requirements | Touchpoints | Status |
 |---|---|---|---|---|---|---|
-| `mitigation.assert-expected` | Each lane prints its report header and asserts the expected macOS major version and architecture or Linux tier; any mismatch fails the lane | detective | `threat.silent-image-change`, `threat.silent-tier-change` | SR-004 | `crates/procage-kernel-facts/tests/kernel_facts.rs`, `.github/workflows/ci.yml` | required |
-| `mitigation.docs-from-lanes` | The supported list equals the workflow's green lanes, with tier, build and measurement date copied from the lane report; a gate compares docs and workflow | detective | `threat.stale-claims`, `threat.evidence-expiry` | SR-006 | `README.md`, `SECURITY.md`, `justfile` | required |
-| `mitigation.least-privilege-workflow` | Read-only token at workflow level, no job-level widening in test lanes, no secrets, pull_request trigger only (no pull_request_target or workflow_run running PR code), no PR-saved cache restored on main, untrusted context passed through env only | preventive | `threat.token-overreach`, `threat.expression-injection`, `threat.cache-poisoning` | SR-002, SR-003 | `.github/workflows/ci.yml`, `justfile` | required |
-| `mitigation.new-base-version` | A newer macOS's allowance lands as a new frozen base version with its program-set measurement; fixtures of V1 to V3 stay byte-identical in CI | preventive | `threat.frozen-base-drift` | SR-007 | `crates/procage-policy/tests/presets.rs`, `crates/procage-policy/src/base.rs` | required |
-| `mitigation.no-skip-green` | Enforcement tests fail instead of skipping; no lane whose release is named supported is continue-on-error | preventive | `threat.pass-without-evidence` | SR-005 | `crates/procage-kernel-facts/tests/kernel_facts.rs`, `justfile` | required |
-| `mitigation.representative-t1` | A T1 job applies only the documented step, logs it, runs the tests unprivileged; without such a step T1 is recorded unavailable | preventive | `threat.t1-unrepresentative` | SR-008 | `.github/workflows/ci.yml`, `README.md` | required |
-| `mitigation.sha-pins` | Every action reference is a full commit SHA with its version as a comment; a lint gate rejects tags, branches and short SHAs | preventive | `threat.action-supply-chain` | SR-001 | `.github/workflows/ci.yml`, `justfile` | required |
+| `mitigation.assert-expected` | Each lane prints its report header and asserts the expected macOS major version and architecture or Linux tier; any mismatch fails the lane | detective | `threat.silent-image-change`, `threat.silent-tier-change` | SR-004 | `crates/procage-kernel-facts/tests/kernel_facts.rs`, `.github/workflows/ci.yml` | verified |
+| `mitigation.docs-from-lanes` | The supported list equals the workflow's green lanes, with tier, build and measurement date copied from the lane report; a gate compares docs and workflow | detective | `threat.stale-claims`, `threat.evidence-expiry` | SR-006 | `README.md`, `SECURITY.md`, `justfile` | verified |
+| `mitigation.least-privilege-workflow` | Read-only token at workflow level, no job-level widening in test lanes, no secrets, pull_request trigger only (no pull_request_target or workflow_run running PR code), no PR-saved cache restored on main, untrusted context passed through env only | preventive | `threat.token-overreach`, `threat.expression-injection`, `threat.cache-poisoning` | SR-002, SR-003 | `.github/workflows/ci.yml`, `justfile` | verified |
+| `mitigation.new-base-version` | A newer macOS's allowance lands as a new frozen base version with its program-set measurement; fixtures of V1 to V3 stay byte-identical in CI | preventive | `threat.frozen-base-drift` | SR-007 | `crates/procage-policy/tests/presets.rs`, `crates/procage-policy/src/base.rs` | verified |
+| `mitigation.no-skip-green` | Enforcement tests fail instead of skipping; no lane whose release is named supported is continue-on-error | preventive | `threat.pass-without-evidence` | SR-005 | `crates/procage-kernel-facts/tests/kernel_facts.rs`, `justfile` | verified |
+| `mitigation.representative-t1` | A T1 job applies only the documented step, logs it, runs the tests unprivileged; without such a step T1 is recorded unavailable | preventive | `threat.t1-unrepresentative` | SR-008 | `.github/workflows/ci.yml`, `README.md` | verified |
+| `mitigation.sha-pins` | Every action reference is a full commit SHA with its version as a comment; a lint gate rejects tags, branches and short SHAs | preventive | `threat.action-supply-chain` | SR-001 | `.github/workflows/ci.yml`, `justfile` | verified |
 
 ## Security Requirements
 
-### SR-001 (P1) — unverified
+### SR-001 (P1) — verified
 
 Every action a workflow uses MUST be referenced by a full 40-character commit SHA; a gate MUST fail on any tag, branch or short-SHA reference.
 
 - **Given** a workflow step using an action at a tag such as v4, **when** the workflows gate runs, **then** it fails naming the file and line
 - **Given** the workflows on main, **when** the workflows gate runs, **then** it passes and every reference carries its version as a comment
 - Mitigations: `mitigation.sha-pins`
-- Tasks: — none —
+- Tasks: T002 ✓
+- Verification `verification.sr-001.2026-11-03`: scan → pass (verified) — `justfile::workflows`
 
-### SR-002 (P1) — unverified
+### SR-002 (P1) — verified
 
 Every workflow MUST default to a read-only token; test lanes MUST NOT widen permissions or reference secrets, and no workflow MAY run pull-request code under pull_request_target or workflow_run.
 
 - **Given** the CI workflow, **when** the workflows gate parses it, **then** the top-level permissions are contents read, no test job sets permissions, and no step references secrets
 - **Given** a pull request from a fork, **when** its lanes run, **then** the token cannot push, and the job has no secrets
 - Mitigations: `mitigation.least-privilege-workflow`
-- Tasks: — none —
+- Tasks: T002 ✓
+- Verification `verification.sr-002.2026-11-03`: scan → pass (verified) — `justfile::workflows`
 
-### SR-003 (P2) — unverified
+### SR-003 (P2) — verified
 
 Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment variables), and the CI workflow MUST NOT use cache steps, so no lane restores a cache a pull-request job saved.
 
 - **Given** the workflows, **when** the workflows gate searches run steps for github.event and github.head_ref expressions, **then** none appear inside a run script
 - **Given** a cache step added to the CI workflow, **when** the workflows gate runs, **then** it fails naming the file and line
 - Mitigations: `mitigation.least-privilege-workflow`
-- Tasks: — none —
+- Tasks: T002 ✓
+- Verification `verification.sr-003.2026-11-03`: scan → pass (verified) — `justfile::workflows`
 
-### SR-004 (P1) — unverified
+### SR-004 (P1) — verified
 
 Every lane MUST print its OS release and build (or kernel release), architecture, sandbox status, observed tier, Landlock ABI and errata, and MUST fail when the macOS major version, architecture or Linux tier differs from what it expects.
 
@@ -191,18 +194,20 @@ Every lane MUST print its OS release and build (or kernel release), architecture
 - **Given** a Linux lane with PROCAGE_EXPECT_TIER=T1, **when** the probe observes T2, or a T2 lane observes T1, **then** the lane fails
 - **Given** any green lane, **when** its log is read, **then** the report header shows release, build, architecture, sandboxed no and tier
 - Mitigations: `mitigation.assert-expected`
-- Tasks: — none —
+- Tasks: T001 ✓, T003 ✓, T004 ✓
+- Verification `verification.sr-004.2026-11-03`: test → pass (verified) — `crates/procage-kernel-facts/tests/kernel_facts.rs::main`
 
-### SR-005 (P1) — unverified
+### SR-005 (P1) — verified
 
 In CI an enforcement test MUST fail, never skip, when it cannot run (AlreadySandboxed, missing administrator rights, a missing feature), and a lane whose release is named supported MUST NOT be continue-on-error.
 
 - **Given** a lane run inside an outer sandbox, **when** the enforcement tests run, **then** they fail with AlreadySandboxed
 - **Given** the workflow, **when** the workflows gate reads it, **then** no lane of a supported release has continue-on-error
 - Mitigations: `mitigation.no-skip-green`
-- Tasks: — none —
+- Tasks: T002 ✓
+- Verification `verification.sr-005.2026-11-03`: review → pass (verified) — `crates/procage-kernel-facts/tests/kernel_facts.rs:1458`
 
-### SR-006 (P2) — unverified
+### SR-006 (P2) — verified
 
 The README platform table MUST list as supported exactly the releases with a green lane, each with its runner label, build or kernel, architecture, measured Linux tier and measurement date; SECURITY MUST link that table, and the docs MUST name every other release untested.
 
@@ -210,22 +215,25 @@ The README platform table MUST list as supported exactly the releases with a gre
 - **Given** a runner label in the workflow missing from the README table, **when** the workflows gate runs, **then** it fails naming the label
 - **Given** the platform table, **when** it is read, **then** every Linux lane has its measured tier and date, and macOS 14 and any lane removed are named untested
 - Mitigations: `mitigation.docs-from-lanes`
-- Tasks: — none —
+- Tasks: T002 ✓, T006 ✓
+- Verification `verification.sr-006.2026-11-03`: scan → pass (verified) — `justfile::workflows`
 
-### SR-007 (P1) — unverified
+### SR-007 (P1) — verified
 
 Existing base profile versions MUST stay byte-identical; an entry a newer macOS needs MUST be a new frozen base version with its own program-set measurement on that release.
 
 - **Given** the fixtures of base V1 to V3, **when** CI compiles each base, **then** the output equals the fixture byte for byte
 - **Given** a base entry added for macOS 27, **when** it is reviewed, **then** it is in a new base version whose program-set test passed on the 27.x lane with the build recorded
 - Mitigations: `mitigation.new-base-version`
-- Tasks: — none —
+- Tasks: T003 ✓
+- Verification `verification.sr-007.2026-11-03`: test → pass (verified) — `crates/procage-policy/tests/presets.rs::every_preset_is_pinned`
 
-### SR-008 (P2) — unverified
+### SR-008 (P2) — verified
 
 A T1 job MUST apply only the documented step that lifts the user-namespace restriction, MUST log that step and run the tests unprivileged; where no such step exists, the docs MUST record T1 as unavailable without host changes.
 
 - **Given** a T1 job, **when** its log is read, **then** it shows the exact step applied and the tests ran as a non-root user
 - **Given** Ubuntu 26.04 with no documented step, **when** the docs are read, **then** they state T1 is unavailable there without host changes
 - Mitigations: `mitigation.representative-t1`
-- Tasks: — none —
+- Tasks: T004 ✓, T006 ✓
+- Verification `verification.sr-008.2026-11-03`: review → pass (verified) — `.github/workflows/ci.yml:133`

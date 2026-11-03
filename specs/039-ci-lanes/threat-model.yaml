@@ -128,7 +128,7 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-03T06:34:01Z'
+  generated: '2026-11-03T11:22:27Z'
   profiles:
   - stride
   - llm
@@ -137,7 +137,7 @@ threatspec:
   - path: plan.md
     sha256: cfa785843226e2999c6f8e4ffa41832e2a80d107ca2c9d250cf6e8bd933d09de
   - path: spec.md
-    sha256: 0215f3da823e2c4b80de3c7c13ae671e51c8cdc5d64586ebdfb15b80e88046af
+    sha256: fa7afeddc2cdd5f3e2d05662020a15af64642fdc193a373d98411677560af9d0
   surfaces:
   - external-input
   - authentication
@@ -353,7 +353,7 @@ threats:
     - asset.repo
     - asset.token
     - asset.evidence
-    status: open
+    status: mitigated
     actor: actor.action-author
     elements:
     - component.actions
@@ -377,7 +377,7 @@ threats:
     source: spec.md#Context
     assets:
     - asset.evidence
-    status: open
+    status: mitigated
     actor: actor.pr-author
     elements:
     - component.workflow
@@ -398,7 +398,7 @@ threats:
     source: spec.md#Key-Entities
     assets:
     - asset.evidence
-    status: open
+    status: mitigated
     actor: actor.contributor
     elements:
     - component.lane-report
@@ -423,7 +423,7 @@ threats:
     assets:
     - asset.token
     - asset.evidence
-    status: open
+    status: mitigated
     actor: actor.pr-author
     elements:
     - component.workflow
@@ -446,7 +446,7 @@ threats:
     source: spec.md#FR-006
     assets:
     - asset.frozen-bases
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: VII. A library, not a harness
     elements:
@@ -469,7 +469,7 @@ threats:
     assets:
     - asset.evidence
     - asset.claims
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     elements:
@@ -494,7 +494,7 @@ threats:
     assets:
     - asset.evidence
     - asset.claims
-    status: open
+    status: mitigated
     actor: actor.image-provider
     constitution: III. The kernel is the oracle
     elements:
@@ -519,7 +519,7 @@ threats:
     assets:
     - asset.evidence
     - asset.claims
-    status: open
+    status: mitigated
     actor: actor.image-provider
     constitution: III. The kernel is the oracle
     elements:
@@ -542,7 +542,7 @@ threats:
     source: spec.md#FR-005
     assets:
     - asset.claims
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     elements:
@@ -588,7 +588,7 @@ threats:
     assets:
     - asset.claims
     - asset.evidence
-    status: open
+    status: mitigated
     actor: actor.contributor
     elements:
     - component.t1-step
@@ -614,7 +614,7 @@ threats:
     assets:
     - asset.token
     - asset.repo
-    status: open
+    status: mitigated
     actor: actor.pr-author
     elements:
     - component.workflow
@@ -653,7 +653,7 @@ mitigations:
     threats:
     - threat.silent-image-change
     - threat.silent-tier-change
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-004
@@ -668,7 +668,7 @@ mitigations:
     threats:
     - threat.stale-claims
     - threat.evidence-expiry
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-006
@@ -686,7 +686,7 @@ mitigations:
     - threat.token-overreach
     - threat.expression-injection
     - threat.cache-poisoning
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-002
@@ -701,7 +701,7 @@ mitigations:
   attributes:
     threats:
     - threat.frozen-base-drift
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-007
@@ -714,7 +714,7 @@ mitigations:
   attributes:
     threats:
     - threat.pass-without-evidence
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-005
@@ -728,7 +728,7 @@ mitigations:
   attributes:
     threats:
     - threat.t1-unrepresentative
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-008
@@ -742,7 +742,7 @@ mitigations:
   attributes:
     threats:
     - threat.action-supply-chain
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-001
@@ -871,5 +871,87 @@ requirements:
     then: they state T1 is unavailable there without host changes
     when: the docs are read
   tasks: []
-verification: []
+verification:
+- id: verification.sr-001.2026-11-03
+  requirement: SR-001
+  method: scan
+  evidence: justfile::workflows
+  result: pass
+  verdict: verified
+  justification: The gate rejects any uses line without a 40-hex SHA and a version comment; run against a tag pin
+    it failed naming file and line, and it passes on the current workflows.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
+- id: verification.sr-002.2026-11-03
+  requirement: SR-002
+  method: scan
+  evidence: justfile::workflows
+  result: pass
+  verdict: verified
+  justification: The gate requires top-level contents read in every workflow, refuses job-level permissions and
+    secrets in ci.yml and the pull_request_target and workflow_run triggers; ci.yml declares contents read only,
+    so fork pull requests cannot push.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
+- id: verification.sr-003.2026-11-03
+  requirement: SR-003
+  method: scan
+  evidence: justfile::workflows
+  result: pass
+  verdict: verified
+  justification: The gate refuses github.event and github.head_ref expressions anywhere and any cache step; both
+    negative cases were run and failed the gate; the workflows have no caches.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
+- id: verification.sr-004.2026-11-03
+  requirement: SR-004
+  method: test
+  evidence: crates/procage-kernel-facts/tests/kernel_facts.rs::main
+  result: pass
+  verdict: verified
+  justification: With PROCAGE_KF_EXPECT_ARCH=x86_64 and PROCAGE_KF_EXPECT_MACOS=27 on macOS 26 arm64 the runner
+    printed ARCH MISMATCH and MACOS MISMATCH and failed; every lane header in CI run 41592279478 shows release,
+    build, arch, sandboxed and tier.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
+- id: verification.sr-005.2026-11-03
+  requirement: SR-005
+  method: review
+  evidence: crates/procage-kernel-facts/tests/kernel_facts.rs:1458
+  result: pass
+  verdict: verified
+  justification: Enforcement facts fail with an AlreadySandboxed outcome inside a Seatbelt sandbox, never skip;
+    the workflows gate refuses continue-on-error.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
+- id: verification.sr-006.2026-11-03
+  requirement: SR-006
+  method: scan
+  evidence: justfile::workflows
+  result: pass
+  verdict: verified
+  justification: The gate fails when the runner labels of ci.yml and the README lane table differ; the table lists
+    build or kernel, arch, tier and date per lane, names macOS 15 and earlier untested, and SECURITY links it.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
+- id: verification.sr-007.2026-11-03
+  requirement: SR-007
+  method: test
+  evidence: crates/procage-policy/tests/presets.rs::every_preset_is_pinned
+  result: pass
+  verdict: verified
+  justification: Base V1 to V3 fixtures are compared byte for byte on every run; the xcode-27 lane (macOS 27.0.1)
+    passed the base program set, so no new base version was needed.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
+- id: verification.sr-008.2026-11-03
+  requirement: SR-008
+  method: review
+  evidence: .github/workflows/ci.yml:133
+  result: pass
+  verdict: verified
+  justification: The T1 jobs apply only Ubuntu's documented sysctl, the Lane step logs it and id -un, and the suites
+    run as the runner user; Ubuntu 26.04 reached T1 with that step, so no unavailable note is needed.
+  verified_at: '2026-11-03T08:37:50Z'
+  commit: 412ed89
 decisions: []

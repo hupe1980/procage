@@ -10,7 +10,7 @@ group = "Start"
 ## Before you start
 
 - procage is **pre-1.0**: the API may change between minor versions. The [threat model](@/docs/threat-model.md) says where it stops.
-- **macOS** (tested on macOS 26.6.2, Apple silicon) or **Linux** with Landlock ABI 1 or later (Linux 5.13). On other targets only the policy types and the hygiene helpers build.
+- **macOS** (tested on macOS 26 and 27, Apple silicon) or **Linux** with Landlock ABI 1 or later (Linux 5.13). On other targets only the policy types and the hygiene helpers build.
 - **Rust 1.99** or newer (edition 2024).
 - The caller must **not already be sandboxed**. On macOS a second Seatbelt profile fails or is ignored, so procage refuses with `SpawnError::AlreadySandboxed`. Inside an AI agent's sandbox, run from a plain terminal.
 

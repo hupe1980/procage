@@ -22,10 +22,13 @@ pointer to the upstream vendor.
 
 | Version | Supported |
 |---|---|
-| 0.1.x | Yes |
-| 0.0.1 | No (name reservation; no code) |
+| 0.4.x | Yes |
+| Earlier | No |
 
 Before 1.0 only the latest minor version gets fixes; there are no backports.
+The supported OS releases are exactly those with a green CI lane, listed
+with their build or kernel and tier in the README's
+[tested releases](README.md#%EF%B8%8F-platforms).
 
 ## What to expect
 

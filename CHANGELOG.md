@@ -36,6 +36,9 @@ All notable changes to procage are listed here. The format follows
 - Linux tier T1: a protected or hidden object replaced after the cage was
   made (for example by an atomic save) refuses later spawns with
   `MountMoved`; make a new cage.
+- Tested releases: a CI lane each for macOS 26 and 27 and for Ubuntu 24.04
+  (x86_64, arm64) and 26.04, both tiers; the README lists them with their
+  builds. macOS 15 is untested.
 
 ## [0.4.0] - 2026-11-02
 

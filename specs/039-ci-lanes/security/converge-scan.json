@@ -1,0 +1,494 @@
+{
+  "feature": "039-ci-lanes",
+  "commit": "412ed89",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "Every action a workflow uses MUST be referenced by a full 40-character commit SHA; a gate MUST fail on any tag, branch or short-SHA reference.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a workflow step using an action at a tag such as v4",
+          "then": "it fails naming the file and line",
+          "when": "the workflows gate runs"
+        },
+        {
+          "given": "the workflows on main",
+          "then": "it passes and every reference carries its version as a comment",
+          "when": "the workflows gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.sha-pins"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-005] [SR-006] `workflows` gate (full-SHA pins with version comments, read-only token, no job permissions or secrets in ci.yml, no `pull_request_target`/`workflow_run`, no `github.event`/`github.head_ref` in run scripts, no caches, no `continue-on-error`, runner labels equal the README table), in `ci` and the CI gates job \u2014 justfile, .github/workflows/ci.yml"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "Every workflow MUST default to a read-only token; test lanes MUST NOT widen permissions or reference secrets, and no workflow MAY run pull-request code under pull_request_target or workflow_run.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the CI workflow",
+          "then": "the top-level permissions are contents read, no test job sets permissions, and no step references secrets",
+          "when": "the workflows gate parses it"
+        },
+        {
+          "given": "a pull request from a fork",
+          "then": "the token cannot push, and the job has no secrets",
+          "when": "its lanes run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.least-privilege-workflow"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-005] [SR-006] `workflows` gate (full-SHA pins with version comments, read-only token, no job permissions or secrets in ci.yml, no `pull_request_target`/`workflow_run`, no `github.event`/`github.head_ref` in run scripts, no caches, no `continue-on-error`, runner labels equal the README table), in `ci` and the CI gates job \u2014 justfile, .github/workflows/ci.yml"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment variables), and the CI workflow MUST NOT use cache steps, so no lane restores a cache a pull-request job saved.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the workflows",
+          "then": "none appear inside a run script",
+          "when": "the workflows gate searches run steps for github.event and github.head_ref expressions"
+        },
+        {
+          "given": "a cache step added to the CI workflow",
+          "then": "it fails naming the file and line",
+          "when": "the workflows gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.least-privilege-workflow"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-005] [SR-006] `workflows` gate (full-SHA pins with version comments, read-only token, no job permissions or secrets in ci.yml, no `pull_request_target`/`workflow_run`, no `github.event`/`github.head_ref` in run scripts, no caches, no `continue-on-error`, runner labels equal the README table), in `ci` and the CI gates job \u2014 justfile, .github/workflows/ci.yml"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Every lane MUST print its OS release and build (or kernel release), architecture, sandbox status, observed tier, Landlock ABI and errata, and MUST fail when the macOS major version, architecture or Linux tier differs from what it expects.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the macOS 27 lane expecting major version 27 on arm64",
+          "then": "the lane fails naming expected and observed",
+          "when": "the image reports another major version or architecture"
+        },
+        {
+          "given": "a Linux lane with PROCAGE_EXPECT_TIER=T1",
+          "then": "the lane fails",
+          "when": "the probe observes T2, or a T2 lane observes T1"
+        },
+        {
+          "given": "any green lane",
+          "then": "the report header shows release, build, architecture, sandboxed no and tier",
+          "when": "its log is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.assert-expected"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-004] Expected macOS major version and architecture in the kernel-facts runner (`PROCAGE_KF_EXPECT_MACOS`, `PROCAGE_KF_EXPECT_ARCH`, a `MISMATCH` line naming expected and measured) \u2014 crates/procage-kernel-facts/tests/kernel_facts.rs"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-004] [SR-007] [US1] macOS matrix `macos-26`, `xcode-27` with expected major version and arch; every suite on each lane. If a base program fails on 27, measure the cause and add a new frozen base version; V1 to V3 fixtures stay unchanged \u2014 .github/workflows/ci.yml, crates/procage-policy/src/base.rs"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-004] [SR-008] [US2] Linux matrix adds `ubuntu-26.04` shipped (T2) and with the documented sysctl (T1, kept only if measured); expected arch per lane; the T1 step logged, tests as the runner user \u2014 .github/workflows/ci.yml"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-kernel-facts/tests/kernel_facts.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "In CI an enforcement test MUST fail, never skip, when it cannot run (AlreadySandboxed, missing administrator rights, a missing feature), and a lane whose release is named supported MUST NOT be continue-on-error.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a lane run inside an outer sandbox",
+          "then": "they fail with AlreadySandboxed",
+          "when": "the enforcement tests run"
+        },
+        {
+          "given": "the workflow",
+          "then": "no lane of a supported release has continue-on-error",
+          "when": "the workflows gate reads it"
+        }
+      ],
+      "mitigations": [
+        "mitigation.no-skip-green"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-005] [SR-006] `workflows` gate (full-SHA pins with version comments, read-only token, no job permissions or secrets in ci.yml, no `pull_request_target`/`workflow_run`, no `github.event`/`github.head_ref` in run scripts, no caches, no `continue-on-error`, runner labels equal the README table), in `ci` and the CI gates job \u2014 justfile, .github/workflows/ci.yml"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-kernel-facts/tests/kernel_facts.rs",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "The README platform table MUST list as supported exactly the releases with a green lane, each with its runner label, build or kernel, architecture, measured Linux tier and measurement date; SECURITY MUST link that table, and the docs MUST name every other release untested.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a lane removed from the workflow while its label stays in the README table",
+          "then": "it fails naming the label",
+          "when": "the workflows gate runs"
+        },
+        {
+          "given": "a runner label in the workflow missing from the README table",
+          "then": "it fails naming the label",
+          "when": "the workflows gate runs"
+        },
+        {
+          "given": "the platform table",
+          "then": "every Linux lane has its measured tier and date, and macOS 14 and any lane removed are named untested",
+          "when": "it is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.docs-from-lanes"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-005] [SR-006] `workflows` gate (full-SHA pins with version comments, read-only token, no job permissions or secrets in ci.yml, no `pull_request_target`/`workflow_run`, no `github.event`/`github.head_ref` in run scripts, no caches, no `continue-on-error`, runner labels equal the README table), in `ci` and the CI gates job \u2014 justfile, .github/workflows/ci.yml"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-006] [SR-008] Docs from the measured lanes: README platform table (label, release and build or kernel, arch, tier, date; untested releases named), SECURITY supported version 0.4.x and a link to the table, site testing and getting-started \u2014 README.md, SECURITY.md, site/content/docs/{testing,getting-started,macos}.md"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "README.md",
+            "exists": true
+          },
+          {
+            "path": "SECURITY.md",
+            "exists": true
+          },
+          {
+            "path": "justfile",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Existing base profile versions MUST stay byte-identical; an entry a newer macOS needs MUST be a new frozen base version with its own program-set measurement on that release.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the fixtures of base V1 to V3",
+          "then": "the output equals the fixture byte for byte",
+          "when": "CI compiles each base"
+        },
+        {
+          "given": "a base entry added for macOS 27",
+          "then": "it is in a new base version whose program-set test passed on the 27.x lane with the build recorded",
+          "when": "it is reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.new-base-version"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-004] [SR-007] [US1] macOS matrix `macos-26`, `xcode-27` with expected major version and arch; every suite on each lane. If a base program fails on 27, measure the cause and add a new frozen base version; V1 to V3 fixtures stay unchanged \u2014 .github/workflows/ci.yml, crates/procage-policy/src/base.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/base.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/tests/presets.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "A T1 job MUST apply only the documented step that lifts the user-namespace restriction, MUST log that step and run the tests unprivileged; where no such step exists, the docs MUST record T1 as unavailable without host changes.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a T1 job",
+          "then": "it shows the exact step applied and the tests ran as a non-root user",
+          "when": "its log is read"
+        },
+        {
+          "given": "Ubuntu 26.04 with no documented step",
+          "then": "they state T1 is unavailable there without host changes",
+          "when": "the docs are read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.representative-t1"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-004] [SR-008] [US2] Linux matrix adds `ubuntu-26.04` shipped (T2) and with the documented sysctl (T1, kept only if measured); expected arch per lane; the T1 step logged, tests as the runner user \u2014 .github/workflows/ci.yml"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-006] [SR-008] Docs from the measured lanes: README platform table (label, release and build or kernel, arch, tier, date; untested releases named), SECURITY supported version 0.4.x and a link to the table, site testing and getting-started \u2014 README.md, SECURITY.md, site/content/docs/{testing,getting-started,macos}.md"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "README.md",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.action-supply-chain",
+    "threat.cache-poisoning",
+    "threat.evidence-expiry",
+    "threat.expression-injection",
+    "threat.frozen-base-drift",
+    "threat.pass-without-evidence",
+    "threat.silent-image-change",
+    "threat.silent-tier-change",
+    "threat.stale-claims",
+    "threat.t1-unrepresentative",
+    "threat.token-overreach"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 11,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 11
+    },
+    "threats_by_severity": {
+      "high": 5,
+      "low": 2,
+      "medium": 4
+    },
+    "mitigations": 7,
+    "requirements": 8,
+    "requirements_with_tasks": 8,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 5,
+      "medium": 3
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

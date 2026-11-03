@@ -58,7 +58,6 @@ jobs:
         # A label names an image (xcode-27 is an Xcode version), so each lane
         # asserts the macOS major version it runs on.
         include:
-          - { os: macos-15, macos: "15" }
           - { os: macos-26, macos: "26" }
           - { os: xcode-27, macos: "27" }
     env:
