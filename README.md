@@ -53,6 +53,8 @@ let status = cage
   backend and tier, and everything accepted short of the policy.
 - 🔎 **Violation reports.** A cage can say what the sandbox denied and which
   rule denied it: every denial on macOS, every refused system call on Linux.
+  `procage::suggest` turns a denial into the narrowest change that would
+  allow it on the next spawn, marking those that lift a protection.
 - 🌐 **Egress through an allowlist.** With the `proxy` feature, a run
   reaches the hosts an allowlist names through a proxy of its own, and no
   other route (macOS, Linux T1). One canonical host parser, checked

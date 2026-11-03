@@ -1,0 +1,578 @@
+otmVersion: 0.2.0
+project:
+  id: 017-grant-on-denial
+  name: Grant on denial
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child, which chooses what it is denied
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that turns suggestions into approvals and respawns
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the suggestion rules or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network transit; suggestions are values in the caller
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no store; procage never persists approvals (spec Clarifications)
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: single user; a suggestion only changes the policy the caller passes in
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked suggest and apply: each is one pass over one violation and the policy rules, with no loop the
+      child controls and no allocation beyond one policy clone'
+    technique: resource-exhaustion
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions:
+  - entity: Suggestion
+    reason: 'modelled as asset.policy-change: the change, the violation it answers and its weakening mark'
+  extends: null
+  generated: '2026-11-03T15:26:25Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: ae9cd4acea98ae015ab1c8ab0b54e18698a7920a80093f94ac30d2605b2ff8e4
+  - path: spec.md
+    sha256: b95214930b86261968234f42b4005d878019abdad0a5abc09660fc17e4cd6917
+  surfaces:
+  - external-input
+  - authorization
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness that asks the user and respawns
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel and its denial reports
+  risk:
+    trustRating: 95
+assets:
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.policy-change
+  name: A suggested policy change and the policy it produces
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#Key-Entities
+    classification: internal
+- id: asset.record
+  name: The receipt and diff that show what an approval changed
+  risk:
+    availability: 10
+    confidentiality: 0
+    integrity: 70
+  attributes:
+    type: log
+    source: spec.md#FR-004
+    classification: internal
+components:
+- id: component.apply
+  name: 'Suggestion::apply: a new policy for the next spawn'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.docs
+  name: Rustdoc and site docs for suggestions
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Edge-Cases
+- id: component.suggest
+  name: 'procage::suggest: a violation and a policy to a Suggestion'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.approval
+  name: The harness shows the suggestion, the user approves, the harness applies it
+  source: component.suggest
+  destination: component.apply
+  assets:
+  - asset.policy-change
+  attributes:
+    crosses: []
+- id: flow.denial
+  name: The child is denied an operation; the kernel reports it as a violation
+  source: tz.cage
+  destination: component.suggest
+  assets:
+  - asset.policy-change
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+- id: flow.respawn
+  name: The new policy cages the next spawn
+  source: component.apply
+  destination: tz.os
+  assets:
+  - asset.host
+  - asset.record
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.os
+threats:
+- id: threat.midrun-widening
+  name: Applying a suggestion widens the running child's sandbox, against the spec and the kernels' limits
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    impactComment: the running code gains access unreviewed by a respawn
+    likelihood: 15
+    likelihoodComment: an apply-to-running-child API is tempting
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.apply
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.overbroad
+  name: 'A suggestion grants more than the denied operation: a subpath, a parent directory, a glob or a wider access
+    than the one denied, so an approval exposes files the child never touched'
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-732
+  risk:
+    impact: 85
+    impactComment: approvals open more of the host than the user saw
+    likelihood: 45
+    likelihoodComment: widening to the directory is the convenient default
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.host
+    - asset.policy-change
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.suggest
+    - flow.approval
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.provoked-prompt
+  name: The caged code provokes denials chosen to make the harness ask for a dangerous grant (a shell start-up file,
+    a trust-handoff path), counting on the user to approve
+  categories:
+  - Tampering
+  risk:
+    impact: 70
+    impactComment: social engineering of the approval
+    likelihood: 55
+    likelihoodComment: the child controls which operations it attempts
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.host
+    - asset.policy-change
+    status: mitigated
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - flow.denial
+    - flow.approval
+    profile: stride
+    severity: high
+    technique: injection
+- id: threat.secret-suggested
+  name: A denial of the secrets class, or of a path under a hidden one, yields a suggestion, so one approval exposes
+    credentials
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 95
+    impactComment: credentials readable after one approval
+    likelihood: 40
+    likelihoodComment: the child can provoke any denial it likes
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.suggest
+    - flow.denial
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.unmarked-weakening
+  name: A waiver, the removal of a protect or hide rule, or wider signals is suggested without being marked, so
+    the harness shows it like an ordinary grant
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    impactComment: the user lifts a protection without knowing
+    likelihood: 40
+    likelihoodComment: all changes look alike once typed
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.policy-change
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.suggest
+    - flow.approval
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.unrecorded
+  name: An applied suggestion changes more than it says, or does not show in the receipt and diff, so an approval
+    cannot be audited
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    impactComment: unexplained policy drift
+    likelihood: 30
+    likelihoodComment: apply may normalise or reorder the policy
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.record
+    - asset.policy-change
+    status: mitigated
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.apply
+    - flow.respawn
+    profile: stride
+    severity: low
+    technique: missing-audit-trail
+mitigations:
+- id: mitigation.exact-apply
+  name: apply changes exactly the suggested rule or setting; the diff of old and new shows only it and the receipt
+    lists it
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.unrecorded
+    status: verified
+    kind: detective
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage-policy/src/suggest.rs
+    - crates/procage/tests/suggest_macos.rs
+- id: mitigation.exact-literal
+  name: A file suggestion is a literal rule on the denied path with exactly the denied access kind; never a subpath,
+    parent or glob
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.overbroad
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage/src/suggest.rs
+    - crates/procage/tests/suggest_macos.rs
+- id: mitigation.mark-weakening
+  name: Every waiver, protect or hide removal and signal widening carries the weakening mark; plain grants do not
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.unmarked-weakening
+    - threat.provoked-prompt
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage/src/suggest.rs
+    - crates/procage-policy/src/suggest.rs
+    - site/content/docs/violations.md
+- id: mitigation.never-secrets
+  name: No suggestion for the secrets class, the raw layer, the lifetime guard, the older-kernel guard or the proxy
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.secret-suggested
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage/src/suggest.rs
+    - crates/procage/tests/suggest_macos.rs
+    - crates/procage/tests/spawn_linux.rs
+- id: mitigation.respawn-only
+  name: apply returns a new policy; nothing changes a running child
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.midrun-widening
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage-policy/src/suggest.rs
+requirements:
+- id: SR-001
+  statement: A suggestion for a denied file operation MUST be a literal rule on the denied path with the access
+    kind of that operation (read, write or exec), or a Unix socket path for a denied connect; it MUST NOT be a subpath,
+    parent or glob.
+  priority: P1
+  mitigations:
+  - mitigation.exact-literal
+  acceptance:
+  - given: a caged child denied writing a file outside the policy
+    then: it is a literal write rule on that file
+    when: the harness asks for the suggestion
+  - given: the suggestion applied and the run respawned
+    then: the file write succeeds and the sibling write is still denied
+    when: the child writes the file and a sibling file
+  tasks: []
+- id: SR-002
+  statement: A denial by the secrets class, the raw layer, Lifetime::Run, the older-kernel guard or the proxy MUST
+    yield no suggestion.
+  priority: P1
+  mitigations:
+  - mitigation.never-secrets
+  acceptance:
+  - given: a caged child denied reading a file of the secrets class
+    then: there is none
+    when: the harness asks for the suggestion
+  tasks: []
+- id: SR-003
+  statement: A suggestion that waives a hard-deny class, leaves out a protect or hide rule, or widens signals MUST
+    be marked as weakening; grants MUST NOT be.
+  priority: P1
+  mitigations:
+  - mitigation.mark-weakening
+  acceptance:
+  - given: a caged child denied writing under a protected path
+    then: it leaves out that protect rule and is marked as weakening
+    when: the harness asks for the suggestion
+  - given: a denial by a hard-deny class other than secrets
+    then: it waives that class by name and is marked as weakening
+    when: the harness asks for the suggestion
+  tasks: []
+- id: SR-004
+  statement: Applying a suggestion MUST return a new policy and MUST NOT change the running child's sandbox.
+  priority: P1
+  mitigations:
+  - mitigation.respawn-only
+  acceptance:
+  - given: a running child and an applied suggestion
+    then: it is still denied until a new spawn
+    when: the child retries the operation
+  tasks: []
+- id: SR-005
+  statement: 'The policy a suggestion produces MUST differ from the old one only by the suggested change: explain::diff
+    shows that change alone, and the new run''s receipt records an added waiver.'
+  priority: P2
+  mitigations:
+  - mitigation.exact-apply
+  acceptance:
+  - given: an applied grant
+    then: only the granted path and access differ
+    when: the harness diffs the old and new policy
+  - given: an applied waiver
+    then: its receipt lists the waiver
+    when: the respawned run ends
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-03
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/suggest_macos.rs::a_denied_file_operation_suggests_exactly_that_path
+  result: pass
+  verdict: verified
+  justification: Denied read, create and exec outside the policy each give a literal rule on that path with that
+    access; applied, the respawn performs it while the sibling file stays denied, and the diff shows only the rule
+    and the base's metadata reads on its way; a_denied_socket_connect_suggests_the_socket gives the socket path;
+    the unit table in crates/procage/src/suggest.rs covers every file operation prefix.
+  verified_at: '2026-11-03T15:26:37Z'
+  commit: 4f6ceb0
+- id: verification.sr-002.2026-11-03
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/suggest_macos.rs::a_secret_suggests_nothing
+  result: pass
+  verdict: verified
+  justification: A denial of the secrets class (listing ~/Library/Keychains) yields none on the kernel; spawn_linux.rs::a_refused_call_suggests_its_class_waiver
+    shows none for setsid under Lifetime::Run and a refused socket family; the unit test nothing_without_a_safe_change
+    covers the raw layer, the older-kernel guard, the proxy and unknown kinds.
+  verified_at: '2026-11-03T15:26:37Z'
+  commit: 4f6ceb0
+- id: verification.sr-003.2026-11-03
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/suggest_macos.rs::a_protection_suggests_its_removal_marked_as_weakening
+  result: pass
+  verdict: verified
+  justification: A protect rule and a hide rule give their removal and a trust-handoff denial its waiver, each with
+    weakens() true, and the respawn performs the operation; the Linux ptrace denial gives the process-access waiver
+    marked weakening; grants and sockets are not marked (unit test only_grants_do_not_weaken).
+  verified_at: '2026-11-03T15:26:37Z'
+  commit: 4f6ceb0
+- id: verification.sr-004.2026-11-03
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/suggest_macos.rs::a_denied_file_operation_suggests_exactly_that_path
+  result: pass
+  verdict: verified
+  justification: Every case spawns again with the old policy after apply and asserts the operation is still denied;
+    apply takes the policy by reference and returns a new one (crates/procage-policy/src/suggest.rs), and no API
+    takes a running child.
+  verified_at: '2026-11-03T15:26:37Z'
+  commit: 4f6ceb0
+- id: verification.sr-005.2026-11-03
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/suggest_macos.rs::a_protection_suggests_its_removal_marked_as_weakening
+  result: pass
+  verdict: verified
+  justification: explain::diff of old and new only loosens and names only the suggested rule (with its base metadata
+    reads or rename anchors) or the waived class; the respawned run's receipt lists the trust-handoff waiver; the
+    unit test apply_changes_exactly_one_thing compares each applied policy with the hand-made expected one.
+  verified_at: '2026-11-03T15:26:37Z'
+  commit: 4f6ceb0
+decisions: []

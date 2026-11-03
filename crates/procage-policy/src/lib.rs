@@ -59,6 +59,7 @@ pub mod policy;
 pub mod presets;
 pub mod sbpl;
 pub mod seatbelt;
+pub mod suggest;
 
 pub use glob::{Glob, GlobError};
 pub use linux::LinuxPlan;
@@ -75,3 +76,4 @@ pub use policy::{
     Policy, PolicyError, Ports, PresetTag, Process, Rlimits, Signals, Tty,
 };
 pub use sbpl::{DenyReason, EscapeError};
+pub use suggest::Suggestion;

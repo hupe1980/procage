@@ -78,7 +78,7 @@ jobs:
       - name: Secret directories the hard-deny tests check
         run: mkdir -p ~/.ssh ~/.aws ~/.gnupg
       - name: Caged children (spawn tests)
-        run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec --test receipts --test audit --test oracle --test pty
+        run: cargo test --locked -p procage --lib --test spawn_macos --test suggest_macos --test native --test exec --test receipts --test audit --test oracle --test pty
       - name: Spelling matrix (the default volume and a case-sensitive APFS image)
         run: cargo test --locked -p procage --test spelling_macos
       - name: Escape suite

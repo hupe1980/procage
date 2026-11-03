@@ -1,0 +1,337 @@
+{
+  "feature": "017-grant-on-denial",
+  "commit": "4f6ceb0",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "A suggestion for a denied file operation MUST be a literal rule on the denied path with the access kind of that operation (read, write or exec), or a Unix socket path for a denied connect; it MUST NOT be a subpath, parent or glob.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a caged child denied writing a file outside the policy",
+          "then": "it is a literal write rule on that file",
+          "when": "the harness asks for the suggestion"
+        },
+        {
+          "given": "the suggestion applied and the run respawned",
+          "then": "the file write succeeds and the sibling write is still denied",
+          "when": "the child writes the file and a sibling file"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exact-literal"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [US1] `procage::suggest(&Policy, &Violation)`: the derivation table (literal grants with the operation's access, Unix sockets, leave-out of the covering protect or hide rule, waivers, signals; none for secrets, layer, lifetime, older kernel, proxy, unknown); unit tests per row; rustdoc on provoked denials \u2014 crates/procage/src/suggest.rs, crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [US1] [US2] macOS kernel tests: each row denied, suggested, applied, respawned; a sibling stays denied; diff shows only the change; a waiver shows in the receipt \u2014 crates/procage/tests/suggest_macos.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/suggest.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/suggest_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "A denial by the secrets class, the raw layer, Lifetime::Run, the older-kernel guard or the proxy MUST yield no suggestion.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a caged child denied reading a file of the secrets class",
+          "then": "there is none",
+          "when": "the harness asks for the suggestion"
+        }
+      ],
+      "mitigations": [
+        "mitigation.never-secrets"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [US1] `procage::suggest(&Policy, &Violation)`: the derivation table (literal grants with the operation's access, Unix sockets, leave-out of the covering protect or hide rule, waivers, signals; none for secrets, layer, lifetime, older kernel, proxy, unknown); unit tests per row; rustdoc on provoked denials \u2014 crates/procage/src/suggest.rs, crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [US1] [US2] macOS kernel tests: each row denied, suggested, applied, respawned; a sibling stays denied; diff shows only the change; a waiver shows in the receipt \u2014 crates/procage/tests/suggest_macos.rs"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-002] [SR-003] [US1] Linux kernel tests (T1, T2): a seccomp hard-deny gives its waiver and the respawn succeeds; `setsid` under `Lifetime::Run` gives none \u2014 crates/procage/tests/spawn_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/suggest.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/spawn_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/suggest_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "A suggestion that waives a hard-deny class, leaves out a protect or hide rule, or widens signals MUST be marked as weakening; grants MUST NOT be.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a caged child denied writing under a protected path",
+          "then": "it leaves out that protect rule and is marked as weakening",
+          "when": "the harness asks for the suggestion"
+        },
+        {
+          "given": "a denial by a hard-deny class other than secrets",
+          "then": "it waives that class by name and is marked as weakening",
+          "when": "the harness asks for the suggestion"
+        }
+      ],
+      "mitigations": [
+        "mitigation.mark-weakening"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [US1] `procage::suggest(&Policy, &Violation)`: the derivation table (literal grants with the operation's access, Unix sockets, leave-out of the covering protect or hide rule, waivers, signals; none for secrets, layer, lifetime, older kernel, proxy, unknown); unit tests per row; rustdoc on provoked denials \u2014 crates/procage/src/suggest.rs, crates/procage/src/lib.rs"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [US1] [US2] macOS kernel tests: each row denied, suggested, applied, respawned; a sibling stays denied; diff shows only the change; a waiver shows in the receipt \u2014 crates/procage/tests/suggest_macos.rs"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-002] [SR-003] [US1] Linux kernel tests (T1, T2): a seccomp hard-deny gives its waiver and the respawn succeeds; `setsid` under `Lifetime::Run` gives none \u2014 crates/procage/tests/spawn_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/suggest.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/suggest.rs",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/violations.md",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Applying a suggestion MUST return a new policy and MUST NOT change the running child's sandbox.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a running child and an applied suggestion",
+          "then": "it is still denied until a new spawn",
+          "when": "the child retries the operation"
+        }
+      ],
+      "mitigations": [
+        "mitigation.respawn-only"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-004] [SR-005] `Suggestion` and `Change` with `apply` (a new policy, exactly one change), `Display`, serde; unit tests per change \u2014 crates/procage-policy/src/suggest.rs, crates/procage-policy/src/lib.rs"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [US1] [US2] macOS kernel tests: each row denied, suggested, applied, respawned; a sibling stays denied; diff shows only the change; a waiver shows in the receipt \u2014 crates/procage/tests/suggest_macos.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/suggest.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "The policy a suggestion produces MUST differ from the old one only by the suggested change: explain::diff shows that change alone, and the new run's receipt records an added waiver.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "an applied grant",
+          "then": "only the granted path and access differ",
+          "when": "the harness diffs the old and new policy"
+        },
+        {
+          "given": "an applied waiver",
+          "then": "its receipt lists the waiver",
+          "when": "the respawned run ends"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exact-apply"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-004] [SR-005] `Suggestion` and `Change` with `apply` (a new policy, exactly one change), `Display`, serde; unit tests per change \u2014 crates/procage-policy/src/suggest.rs, crates/procage-policy/src/lib.rs"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-005] [US1] [US2] macOS kernel tests: each row denied, suggested, applied, respawned; a sibling stays denied; diff shows only the change; a waiver shows in the receipt \u2014 crates/procage/tests/suggest_macos.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/suggest.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/suggest_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.midrun-widening",
+    "threat.overbroad",
+    "threat.provoked-prompt",
+    "threat.secret-suggested",
+    "threat.unmarked-weakening",
+    "threat.unrecorded"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 6,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 6
+    },
+    "threats_by_severity": {
+      "medium": 1,
+      "high": 4,
+      "low": 1
+    },
+    "mitigations": 5,
+    "requirements": 5,
+    "requirements_with_tasks": 5,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 3,
+      "medium": 2
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

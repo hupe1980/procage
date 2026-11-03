@@ -106,6 +106,23 @@ Notes:
 - If your process dies, the kernel answers refused calls with `ENOSYS`: they still fail.
 - `Cage::exec` has no supervisor; there the kernel answers with `EPERM` as without reporting.
 
+## From a denial to a grant
+
+`procage::suggest(&policy, &violation)` turns a denial into the narrowest policy change that would allow that operation on the next spawn, or `None`. procage never asks the user and never remembers an answer: the harness shows the suggestion, decides, and spawns again with `suggestion.apply(&policy)`, a new policy. A running child is never widened.
+
+| Denied by | Suggestion |
+|---|---|
+| nothing (not granted), a file read, write or exec | a literal rule on that path with that access (`Suggestion::Allow`); never its directory, a subpath or a glob |
+| nothing, a Unix socket connect | the socket path (`Suggestion::UnixSocket`) |
+| a protect or hide rule | leaving out that rule, when exactly one covers the path (`Suggestion::LeaveOut`, weakening) |
+| a hard-deny class | its waiver (`Suggestion::Waive`, weakening), except `secrets`: none |
+| nothing, a signal (macOS) | `Suggestion::SignalsSameUser` (weakening) |
+| the raw layer, `Lifetime::Run`, the older-kernel guard, the proxy | none |
+
+`suggestion.weakens()` is true for every change that lifts a protection rather than granting a path; a suggestion displays as a sentence naming the path and the access. The child chooses what it attempts, so it can provoke denials meant to draw an approval (a shell start-up file, a hook directory): show the suggestion as it is and treat a weakening one as such.
+
+`explain::diff(&old, &new, …)` shows exactly the applied rule (with the base's metadata reads on the way to its path), and the next run's receipt carries the new policy digest and any waiver. On Linux only seccomp refusals are reported, so file suggestions come from macOS; a lossy macOS record loses the suggestions of the denials it lost. Tested on the kernel for each row: the respawn performs the operation and a neighbouring one stays denied.
+
 ## Diagnostic, not enforcement
 
 Reporting never changes what the sandbox allows. The escape suite runs with reporting off and on.

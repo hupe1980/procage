@@ -1642,6 +1642,32 @@ fn reporting_is_off_by_default_on_linux() {
     assert!(child.violation_receiver().is_none());
 }
 
+/// From a refused call to a suggestion: a hard-deny class gives its
+/// waiver, marked as weakening, and the respawn with it is no longer
+/// refused; `setsid` under `Lifetime::Run` and a refused socket family give
+/// none (Landlock's file denials are not reported on Linux).
+#[test]
+fn a_refused_call_suggests_its_class_waiver() {
+    use procage::{Suggestion, suggest};
+    for tier in tiers() {
+        let p = refusing();
+        let (_, record) = reported(
+            &reporting(p.clone(), tier),
+            "syscall:ptrace;socket;syscall:setsid",
+        );
+        assert!(record.complete(), "{tier:?} {record:#?}");
+        let of = |op: &str| suggest(&p, by_op(&record, op)[0]);
+        let waiver = of("ptrace").expect("a waiver");
+        assert_eq!(waiver, Suggestion::Waive(HardDenyClass::ProcessAccess));
+        assert!(waiver.weakens());
+        assert_eq!(of("socket"), None, "{tier:?}");
+        assert_eq!(of("setsid"), None, "{tier:?}");
+        let (line, record) = reported(&reporting(waiver.apply(&p), tier), "syscall:ptrace");
+        assert_ne!(line, EPERM.to_string(), "{tier:?}: still refused");
+        assert!(by_op(&record, "ptrace").is_empty(), "{tier:?} {record:#?}");
+    }
+}
+
 /// The receiver yields while the child runs, the record stays open
 /// while a process of the run is left, and kill_all completes it.
 #[test]

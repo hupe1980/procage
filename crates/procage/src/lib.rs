@@ -286,6 +286,12 @@ pub mod receipt;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use pty::Pty;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod suggest;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use procage_policy::Suggestion;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use suggest::suggest;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use receipt::{

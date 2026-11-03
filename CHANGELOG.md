@@ -16,6 +16,13 @@ All notable changes to procage are listed here. The format follows
   `/dev/tty` (on macOS also the listing of `/dev`), under any base;
   `TIOCSTI` stays denied (R-22). Tested on every lane with an interactive
   shell, `python3 -i` and a full-screen program.
+- `procage::suggest(&Policy, &Violation)`: the narrowest change that
+  would allow a reported denial on the next spawn, as a
+  `procage_policy::Suggestion` (a literal grant, a Unix socket, leaving out
+  the covering protect or hide rule, a class waiver or wider signals) with
+  `weakens()` and `apply()`, which returns a new policy. Never for the
+  `secrets` class, the raw layer, `Lifetime::Run`, the older-kernel guard
+  or the proxy.
 - `Construct::TtyNewPty` (`tty-new-pty`), `procage_policy::PTY_EXTENSION_CLASS`
   and `procage_policy::linux::TERMINAL_ACCESS`.
 
