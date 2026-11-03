@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -32,6 +32,17 @@ function cage(policy, options = {}) {
 }
 
 const preset = (ws) => Policy.preset("agent_workspace", 3, { workspace: ws });
+
+/**
+ * `policy` that may also run this Node binary, wherever it is installed (a
+ * version manager or CI's tool cache is outside every preset), as a user
+ * whose tools run Node would write it.
+ */
+function withNode(policy) {
+  const doc = policy.toJSON();
+  doc.fs.push({ access: "exec", target: { subpath: dirname(realpathSync(process.execPath)) } });
+  return Policy.fromJSON(doc);
+}
 
 function gone(pid, within = 5000) {
   const end = Date.now() + within;
@@ -93,7 +104,7 @@ describe("escape subset", () => {
 
   it("the network is refused", async () => {
     const script = "require('net').connect(53, '1.1.1.1').on('connect', () => process.exit(0)).on('error', (e) => { console.error(e.code); process.exit(1) })";
-    const done = await run(c, [process.execPath, "-e", script], { timeout: 30_000 });
+    const done = await run(cage(withNode(preset(ws))), [process.execPath, "-e", script], { cwd: ws, timeout: 30_000 });
     assert.notEqual(done.exitCode, 0, done.stderr);
   });
 
@@ -241,14 +252,14 @@ describe("records", () => {
     const ws = workspace();
     const outside = workspace();
     writeFileSync(join(outside, "f"), "x");
-    const c = cage(preset(ws), { violations: true });
+    const c = cage(withNode(preset(ws)), { violations: true });
     let done;
     if (MACOS) {
-      done = await run(c, ["/bin/cat", join(outside, "f")]);
+      done = await run(c, ["/bin/cat", join(outside, "f")], { cwd: ws });
       assert.ok(done.violations.some((v) => v.target === join(outside, "f")), JSON.stringify(done.violations));
     } else {
       // Linux reports refused system calls: leaving the run's session.
-      done = await run(c, [process.execPath, "-e", "try { require('child_process').execFileSync('/usr/bin/setsid', ['true']) } catch {}"]);
+      done = await run(c, [process.execPath, "-e", "try { require('child_process').execFileSync('/usr/bin/setsid', ['true']) } catch {}"], { cwd: ws });
       assert.ok(done.violations.some((v) => v.operation === "setsid"), JSON.stringify(done.violations));
     }
     assert.ok(done.violations.every((v) => v.message));

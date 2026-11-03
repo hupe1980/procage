@@ -32,6 +32,10 @@ console.log(done.exitCode, done.stdout, done.violations);
 
 Spawning, waiting and reading run on the libuv thread pool: many runs proceed at once and the event loop stays free. No JavaScript runs in the child; the child sequence is procage's own system calls. A run ends, and every process it started is killed, on `kill()`, `close()`, disposal, an aborted signal, a timeout, garbage collection of the `Run`, or the exit of the Node process. A process killed with `SIGKILL` runs no exit hook: on Linux the child still dies with its parent; on macOS it does not.
 
+## Running Node inside the cage
+
+The presets let the child run the system's programs (`/usr`, `/bin`, Homebrew). A Node installed elsewhere (nvm, Volta, a CI tool cache) needs an exec rule for its directory: add `{ access: "exec", target: { subpath: path.dirname(fs.realpathSync(process.execPath)) } }` to the preset's `toJSON().fs` and load it with `Policy.fromJSON`. Without it the spawn is refused with `SpawnError` (`Operation not permitted`).
+
 ## Errors
 
 All extend `ProcageError`: `PolicyError`, `CapabilityGapError` (`.gaps`), `UnsupportedError` (also: no addon for this platform), `AlreadySandboxedError`, `GrantError`, `SpawnError`, `TimeoutError` and `ExitError` (both with `.result`).

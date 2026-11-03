@@ -63,6 +63,18 @@ const { exitCode, stdout } = await run.output();
 killed, on `kill()`, `close()`, disposal, an aborted signal, a timeout,
 garbage collection, or the exit of the Node process.
 
+## Running Node inside the cage
+
+The presets let the child run the system's programs (`/usr`, `/bin`,
+Homebrew). A Node installed elsewhere (nvm, Volta, a CI tool cache) needs
+an exec rule for its directory:
+
+```ts
+const doc = Policy.preset("agent_workspace", 3, { workspace }).toJSON();
+doc.fs.push({ access: "exec", target: { subpath: path.dirname(fs.realpathSync(process.execPath)) } });
+const policy = Policy.fromJSON(doc);
+```
+
 ## Errors
 
 All extend `ProcageError`: `PolicyError`, `CapabilityGapError`,
