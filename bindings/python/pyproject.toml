@@ -28,4 +28,6 @@ Documentation = "https://hupe1980.github.io/procage/docs/python/"
 [tool.maturin]
 python-source = "python"
 module-name = "procage._native"
+# Never ship bytecode a checkout happens to hold.
+exclude = ["**/__pycache__/**", "**/*.pyc"]
 features = []

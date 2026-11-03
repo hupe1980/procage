@@ -26,6 +26,14 @@ rustc-ice-*.txt
 # macOS
 .DS_Store
 
+# Python: bytecode caches, virtual environments, and the native module a
+# local `maturin develop` builds into the package.
+__pycache__/
+*.pyc
+.venv/
+/bindings/python/python/procage/*.so
+/bindings/python/python/procage/*.dSYM/
+
 # Private design notes and agent configuration. The design records
 # (specs/, .specify/) are public; they never point here.
 /concepts/

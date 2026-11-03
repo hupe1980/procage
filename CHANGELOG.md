@@ -6,6 +6,19 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Python wheels: the 0.6.0 wheels carried a stray bytecode file
+  (`procage/__pycache__/__init__.cpython-313.pyc`) from a build checkout.
+  Python never used it (it checks bytecode against the source and found it
+  stale), but a wheel now holds exactly the package sources, its stub and
+  marker and one native module, and the build fails otherwise.
+
+### Changed
+
+- Release: the GitHub release is created last, once crates.io and PyPI
+  both have the version.
+
 ## [0.6.0] - 2026-11-03
 
 ### Added

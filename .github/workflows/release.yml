@@ -1,10 +1,11 @@
 name: release
 
-# Publishes the crates to crates.io and creates the GitHub release when a tag
-# `vX.Y.Z` matching procage's version is pushed. Publishing uses crates.io
-# Trusted Publishing: a short-lived token is exchanged for this job's OIDC
-# identity (repository, workflow `release.yml`, environment `crates-io`) and
-# revoked when the job ends. No long-lived secret is stored.
+# When a tag `vX.Y.Z` matching procage's version is pushed: publishes the
+# crates to crates.io, builds and tests the Python wheels and publishes them
+# to PyPI, and only then creates the GitHub release. Both registries use
+# Trusted Publishing: a short-lived token is exchanged for the job's OIDC
+# identity (repository, workflow `release.yml`, environment `crates-io` or
+# `pypi`). No long-lived secret is stored.
 on:
   push:
     tags: ["v*"]
@@ -26,7 +27,7 @@ jobs:
     timeout-minutes: 30
     environment: crates-io
     permissions:
-      contents: write
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,10 +61,6 @@ jobs:
               cargo publish --locked -p "$crate"
             fi
           done
-      - name: GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "procage $GITHUB_REF_NAME"
 
   # The Python wheels: built from the tag as CI builds them, tested from the
   # exact file that is uploaded, after the crates are on crates.io.
@@ -122,3 +119,18 @@ jobs:
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: dist
+
+  # Last: the GitHub release announces a version only once crates.io and
+  # PyPI both have it.
+  github-release:
+    needs: [publish, pypi]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "procage $GITHUB_REF_NAME"

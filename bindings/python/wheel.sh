@@ -27,6 +27,23 @@ build() {
     fi
     # maturin looks for zig through the tools' Python on PATH.
     (cd "$here" && PATH="$tools/bin:$PATH" maturin build --release --strip --out "$out" "$@")
+    contents "$out"
+}
+
+# The wheel holds exactly the package's sources, its stub and marker, one
+# native module and the metadata; anything else (bytecode, a stray build)
+# fails the build.
+contents() {
+    python3 - "$1" <<'PY'
+import sys, zipfile, pathlib
+for wheel in pathlib.Path(sys.argv[1]).glob("procage-*.whl"):
+    names = zipfile.ZipFile(wheel).namelist()
+    package = sorted(n for n in names if not n.startswith("procage-"))
+    want = ["procage/__init__.py", "procage/_native.abi3.so", "procage/_native.pyi", "procage/py.typed"]
+    if package != want:
+        sys.exit(f"{wheel.name}: unexpected contents {package}")
+    print(f"{wheel.name}: {', '.join(package)}")
+PY
 }
 
 check() {
