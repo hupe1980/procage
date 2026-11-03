@@ -19,10 +19,13 @@ use std::path::{Path, PathBuf};
 /// reports, answerback) or to anything that runs them.
 ///
 /// Once every process of the run has exited, reads return end of file or
-/// fail (`EIO` on Linux). Dropping the `Pty` closes the terminal: the
-/// child's session gets `SIGHUP`. Use `&Pty` to read and write from two
-/// threads; for async I/O, set the descriptor non-blocking and register it
-/// with the runtime's reactor.
+/// fail (`EIO` on Linux). Read while the run runs: on macOS, output still
+/// unread when the last process exits is kept for about 0.6 s and then
+/// discarded (measured on macOS 26.6.2); Linux keeps it until read.
+/// Dropping the `Pty` closes the terminal: the child's session gets
+/// `SIGHUP`. Use `&Pty` to read and write from two threads; for async I/O,
+/// set the descriptor non-blocking and register it with the runtime's
+/// reactor.
 #[derive(Debug)]
 pub struct Pty {
     controller: File,

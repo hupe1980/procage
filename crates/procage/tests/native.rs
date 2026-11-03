@@ -26,10 +26,14 @@ fn cage(p: &Policy) -> Cage {
     Cage::with_options(p, &options).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// A directory of its own per call: tests run in parallel, and rewriting a
+/// shared file truncates it under another test's reader.
 fn data_dir() -> std::path::PathBuf {
+    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::fs::canonicalize(std::env::temp_dir())
         .unwrap()
-        .join(format!("procage-native-{}", std::process::id()));
+        .join(format!("procage-native-{}-{n}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("f"), "granted").unwrap();
     dir

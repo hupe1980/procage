@@ -28,7 +28,11 @@ Findings on the way:
 - macOS TIOCSTI also needs `hid-control`; the canary allows it so the
   terminal-injection class alone refuses.
 - On macOS, output the controller has not read when every device
-  descriptor closes is discarded, and the child's exit waits for the drain
-  first; a harness reads while the run runs.
+  descriptor closes is discarded after the exit's drain, about 0.6 s
+  (measured); holding a copy of the device would keep it but block the
+  exit until it is read, so procage does not. A harness reads while the
+  run runs. The R-22 canary read on a thread started after the spawn and
+  lost the output twice in 15 loaded runs (CI run 41675095393); it now
+  reads on the spawning thread.
 - The concurrent test exposed a marker-search race on macOS (plan, step
   11): about one run in three failed before the fix, none in 20 after.

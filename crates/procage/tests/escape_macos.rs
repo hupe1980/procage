@@ -838,26 +838,35 @@ fn in_terminal(action: &str, policy: &Policy) -> (String, String) {
         .spawn(&mut child_command(action), &Grants::new())
         .unwrap_or_else(|e| panic!("spawn: {e}"));
     let mut pty = child.take_pty().expect("a terminal");
-    let reader = std::thread::spawn(move || {
-        let mut out = Vec::new();
-        // The read ends with end of file or an error once the run is over.
-        let _ = pty.read_to_end(&mut out);
-        String::from_utf8_lossy(&out).into_owned()
+    // Read at once, on this thread: macOS discards terminal output not read
+    // within about 0.6 s of the child's exit. A watchdog ends a hung run.
+    let pid = child.id();
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watch = done.clone();
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        while !watch.load(std::sync::atomic::Ordering::SeqCst) {
+            if start.elapsed() > Duration::from_secs(20) {
+                kill_now(pid);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
     });
-    let start = Instant::now();
-    while child.try_wait().unwrap().is_none() {
-        assert!(start.elapsed() < Duration::from_secs(20), "child hung");
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    let mut out = Vec::new();
+    // The read ends with end of file once the run is over.
+    let _ = pty.read_to_end(&mut out);
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+    let status = child.wait().unwrap();
     drop(child);
-    let text = reader.join().unwrap();
+    let text = String::from_utf8_lossy(&out).into_owned();
     let result = text
         .lines()
         .find_map(|l| {
             l.split_once("procage-result: ")
                 .map(|(_, r)| r.trim_end().to_string())
         })
-        .unwrap_or_else(|| panic!("no result in {text:?}"));
+        .unwrap_or_else(|| panic!("no result ({status}) in {text:?}"));
     (result, text)
 }
 
