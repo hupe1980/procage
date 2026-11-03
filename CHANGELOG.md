@@ -6,6 +6,20 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Python bindings: the `procage` package on PyPI (wheels for macOS arm64
+  and Linux x86_64 and aarch64, manylinux_2_28, CPython 3.11+). Presets and
+  the versioned JSON format, `Cage` with violations and named relaxations,
+  `spawn` with pipes, explicit environment and grants, `Run` with `wait`,
+  `communicate`, `kill`, violations and the receipt, `procage.run` in the
+  manner of `subprocess.run` (`text`, `check`, `shell`), asyncio twins
+  (`run_async`, `communicate_async`, `wait_async`) whose cancellation ends
+  the run, typed exceptions whose gaps name the accepting option, and runs that end when their object is collected or the
+  interpreter exits. Built from `bindings/python` (crate `procage-py`, not
+  published to crates.io); published by the release workflow with PyPI Trusted
+  Publishing. A framework-neutral shell tool example.
+
 ## [0.5.0] - 2026-11-03
 
 ### Added

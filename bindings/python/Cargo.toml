@@ -1,0 +1,27 @@
+[package]
+name = "procage-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Python bindings of procage (the `procage` package on PyPI, built by maturin)"
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+# The extension links against the interpreter that loads it; it is tested
+# from Python (tests/).
+test = false
+doctest = false
+
+[dependencies]
+procage = { path = "../../crates/procage" }
+procage-policy = { workspace = true, features = ["serde"] }
+pyo3 = { version = "0.30", features = ["abi3-py311"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

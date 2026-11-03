@@ -245,6 +245,23 @@ linux tier="T2":
         -v "$PWD":/src:ro -w /src {{rust_image}} \
         sh -c 'cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle --test pty && PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_linux && PROCAGE_ASYNC=1 cargo test --locked -p procage --features tokio,proxy --test escape_linux --test tokio --test proxy'
 
+# The Python wheel, built as the release builds it, and its tests (macOS host).
+python:
+    @echo "==> gate: python"
+    bindings/python/wheel.sh all
+
+# The Python wheel on Linux in a container: built as root (the image lacks
+# venv), tested as an unprivileged user; tier T1 or T2 as for `linux`.
+python-linux tier="T1":
+    @echo "==> gate: python-linux ({{tier}})"
+    docker run --rm \
+        {{ if tier == "T1" { "--security-opt seccomp=unconfined --security-opt apparmor=unconfined" } else { "" } }} \
+        -e CARGO_TARGET_DIR=/tmp/target -e PROCAGE_EXPECT_TIER={{tier}} \
+        -v "$PWD":/src:ro -w /src {{rust_image}} \
+        sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y python3-venv >/dev/null \
+            && bindings/python/wheel.sh build /tmp/wheels && chmod -R a+rX /tmp/wheels \
+            && setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp bindings/python/wheel.sh test /tmp/wheels'
+
 # The Linux backend's tests with seccomp and AppArmor unconfined, so user namespaces work (tier T1).
 linux-t1 tier="T1":
     @echo "==> gate: linux-t1 ({{tier}})"

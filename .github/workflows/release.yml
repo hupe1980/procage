@@ -64,3 +64,61 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "procage $GITHUB_REF_NAME"
+
+  # The Python wheels: built from the tag as CI builds them, tested from the
+  # exact file that is uploaded, after the crates are on crates.io.
+  wheels:
+    name: wheel ${{ matrix.os }}
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos-26, ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      - name: Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: The wheel names the tag's version
+        run: |
+          version=$(cargo pkgid -p procage-py | sed 's/.*[#@]//')
+          test "$GITHUB_REF_NAME" = "v$version" \
+            || { echo "tag $GITHUB_REF_NAME does not match procage-py $version" >&2; exit 1; }
+      - name: Build
+        run: bindings/python/wheel.sh build "$PWD/dist"
+      - name: Test the built wheel (escape subset and example)
+        run: bindings/python/wheel.sh test "$PWD/dist"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  # PyPI Trusted Publishing: the upload is authorised by this job's OIDC
+  # identity (workflow release.yml, environment pypi); no token is stored.
+  pypi:
+    needs: wheels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist

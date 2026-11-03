@@ -98,6 +98,12 @@ jobs:
           PROCAGE_ESCAPE_VIOLATIONS: "1"
       - name: Lowered profiles compile (well-formedness only)
         run: cargo test --locked -p procage-kernel-facts --test policy_compiles
+      - name: Python for the wheel
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Python wheel, built as the release builds it (escape subset and example)
+        run: bindings/python/wheel.sh all
       - name: Spawn benchmark (indicative; never fails on timing)
         run: cargo bench --locked -p procage --bench spawn -- --quick
 
@@ -151,6 +157,12 @@ jobs:
           PROCAGE_ESCAPE_VIOLATIONS: "1"
       - name: Spawn benchmark (indicative; never fails on timing)
         run: cargo bench --locked -p procage --bench spawn -- --quick
+      - name: Python for the wheel
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Python wheel, built as the release builds it (escape subset and example)
+        run: bindings/python/wheel.sh all
 
   kernels:
     name: kernel ${{ matrix.kernel }}

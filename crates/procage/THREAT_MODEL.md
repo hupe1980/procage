@@ -34,6 +34,10 @@ started the helper.
 
 It does **not**:
 
+- end the runs of a Python process killed with `SIGKILL` on macOS: the
+  Python package ends runs when their objects are collected and at
+  interpreter exit, which `SIGKILL` skips (Linux children die with their
+  parent);
 - protect a helper program from replacement (R-26): procage installs none,
   and a `Cage::exec` helper is the caller's own binary, to be kept outside
   every writable path;

@@ -24,6 +24,15 @@ let status = cage
     .wait()?;
 ```
 
+From Python (`pip install procage`, macOS arm64 and Linux):
+
+```python
+import procage
+
+policy = procage.Policy.preset("agent_readonly", 3, workspace="/Users/me/project")
+done = procage.run(policy, ["make"])  # runs in the workspace
+```
+
 📖 [Documentation](https://hupe1980.github.io/procage) ·
 🔐 [Threat model](crates/procage/THREAT_MODEL.md) ·
 📐 [Design records](specs/README.md) ·

@@ -1,0 +1,461 @@
+{
+  "feature": "020-python",
+  "commit": "4928124",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "The binding MUST NOT copy the caller environment into the command; only variables passed in env= are set explicitly, and the policy environment rules decide the rest.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a secret variable in os.environ and a preset policy",
+          "then": "the secret is absent",
+          "when": "a caged command prints its environment"
+        },
+        {
+          "given": "the same and env= naming one variable",
+          "then": "that variable is present and the secret absent",
+          "when": "the command prints its environment"
+        }
+      ],
+      "mitigations": [
+        "mitigation.explicit-env"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-007] [US1] `Run`: pid, poll, wait with timeout, kill from any thread, communicate, violations as dicts, receipt; dropping ends the run; `procage.run`, `wait_async`, the atexit hook \u2014 bindings/python/src/lib.rs, bindings/python/python/procage/__init__.py"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [US1] The escape subset and API tests through the installed wheel \u2014 bindings/python/tests/"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-001.2026-11-03",
+          "requirement": "SR-001",
+          "method": "test",
+          "evidence": "bindings/python/tests/test_procage.py::EscapeSubset::test_the_callers_environment_is_not_copied",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "With a secret in os.environ and env= naming one variable, a caged env prints that variable and not the secret, on macOS 26.6.2 and Linux T1 and T2 from the built wheel; spawn sets only env= entries (bindings/python/src/lib.rs, Cage::spawn).",
+          "verified_at": "2026-11-03T18:52:17Z",
+          "commit": "4928124"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/python/python/procage/__init__.py",
+            "exists": true
+          },
+          {
+            "path": "bindings/python/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The binding MUST NOT run Python code in the child between fork and exec.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "Python threads holding locks while the binding spawns",
+          "then": "every spawn completes",
+          "when": "many commands are spawned from several threads"
+        }
+      ],
+      "mitigations": [
+        "mitigation.rust-spawn"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-007] [US1] `Cage` (violations, relax by name, spawn snapshot) and `spawn` with args, cwd, explicit env, grants and stdio modes, the interpreter lock released, no hook in the child \u2014 bindings/python/src/lib.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [US1] The escape subset and API tests through the installed wheel \u2014 bindings/python/tests/"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-002.2026-11-03",
+          "requirement": "SR-002",
+          "method": "test",
+          "evidence": "bindings/python/tests/test_procage.py::Concurrency::test_spawns_from_several_threads_complete",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "80 spawns from four Python threads complete; the binding spawns through procage's Rust child sequence and registers no hook that runs in the child (no preexec option exists in the API).",
+          "verified_at": "2026-11-03T18:52:17Z",
+          "commit": "4928124"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/python/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "A policy MUST reach the cage only through the presets or the versioned format, an unknown field or invalid value MUST raise PolicyError, a gap MUST raise CapabilityGapError with the gaps, and the binding MUST add no default the Rust API does not have.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a JSON policy with an unknown field",
+          "then": "PolicyError is raised",
+          "when": "Policy.from_json is called"
+        },
+        {
+          "given": "a policy the host cannot enforce",
+          "then": "CapabilityGapError is raised with the gaps",
+          "when": "a Cage is made"
+        }
+      ],
+      "mitigations": [
+        "mitigation.same-semantics"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-003] `Policy` (presets by name and version with a workspace; `from_json`, `to_json`) and the exception classes with the Rust messages \u2014 bindings/python/src/lib.rs, bindings/python/python/procage/__init__.py"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-007] [US1] `Cage` (violations, relax by name, spawn snapshot) and `spawn` with args, cwd, explicit env, grants and stdio modes, the interpreter lock released, no hook in the child \u2014 bindings/python/src/lib.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [US1] The escape subset and API tests through the installed wheel \u2014 bindings/python/tests/"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-003.2026-11-03",
+          "requirement": "SR-003",
+          "method": "test",
+          "evidence": "bindings/python/tests/test_procage.py::Policies::test_a_gap_raises_with_the_gaps",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "An unknown JSON field, an unknown preset, a bad version or relative workspace and an unknown relaxation raise PolicyError; a gap raises CapabilityGapError with the gaps on both systems; the accept hints name options without applying them (test_a_gap_says_which_option_accepts_it).",
+          "verified_at": "2026-11-03T18:52:17Z",
+          "commit": "4928124"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/python/python/procage/__init__.py",
+            "exists": true
+          },
+          {
+            "path": "bindings/python/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Every process of a run MUST be killed when the Run object is collected or the interpreter exits.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a running command whose Run is deleted",
+          "then": "its processes are dead",
+          "when": "the object is collected"
+        },
+        {
+          "given": "a running command when the interpreter exits",
+          "then": "its processes are dead",
+          "when": "the interpreter exits"
+        }
+      ],
+      "mitigations": [
+        "mitigation.end-on-release"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-007] [US1] `Run`: pid, poll, wait with timeout, kill from any thread, communicate, violations as dicts, receipt; dropping ends the run; `procage.run`, `wait_async`, the atexit hook \u2014 bindings/python/src/lib.rs, bindings/python/python/procage/__init__.py"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [US1] The escape subset and API tests through the installed wheel \u2014 bindings/python/tests/"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-004.2026-11-03",
+          "requirement": "SR-004",
+          "method": "test",
+          "evidence": "bindings/python/tests/test_procage.py::Lifetime::test_interpreter_exit_kills_live_runs",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "A sleep started by a child interpreter is dead after that interpreter exits; test_collecting_a_run_kills_it shows the same for a collected Run; kill ends a run.",
+          "verified_at": "2026-11-03T18:52:17Z",
+          "commit": "4928124"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/python/python/procage/__init__.py",
+            "exists": true
+          },
+          {
+            "path": "bindings/python/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "Wheels MUST be built from the tagged commit by actions pinned to full SHAs and published with PyPI Trusted Publishing from a protected environment, with no stored token.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the release workflow",
+          "then": "every action is SHA-pinned and the publish job uses OIDC in the pypi environment",
+          "when": "the workflows gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.trusted-publishing"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-005] Release: wheel jobs (macOS arm64, manylinux_2_28 x86_64 and aarch64) and a PyPI job with Trusted Publishing in the `pypi` environment, full-SHA pins \u2014 .github/workflows/release.yml"
+        },
+        {
+          "id": "T011",
+          "done": false,
+          "text": "[SR-005] Add a test for SR-005 (Wheels MUST be built from the tagged commit by actions pinned to full SHAs and published with PyPI Trusted Publishing from a protected environment, with no stored token) \u2014 touchpoints: .github/workflows/release.yml [converge: implemented-unverified; The wheel and pypi jobs use actions pinned to full SHAs (workflows gate passes), test the built wheel before upload and publish with pypa/gh-action-pypi-publish in the pypi environment with id-token write and no secret; not yet run, and PyPI's trusted publisher must name release.yml and the pypi environment.]"
+        }
+      ],
+      "all_tasks_done": false,
+      "existing_verification": [
+        {
+          "id": "verification.sr-005.2026-11-03",
+          "requirement": "SR-005",
+          "method": "review",
+          "evidence": ".github/workflows/release.yml:73",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The wheel and pypi jobs use actions pinned to full SHAs (workflows gate passes), test the built wheel before upload and publish with pypa/gh-action-pypi-publish in the pypi environment with id-token write and no secret; not yet run, and PyPI's trusted publisher must name release.yml and the pypi environment.",
+          "verified_at": "2026-11-03T18:52:17Z",
+          "commit": "4928124"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/release.yml",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Every published wheel platform MUST run the binding escape subset and the shell tool example from the built wheel on its CI lane, and the docs MUST claim no platform beyond them.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "each wheel platform lane",
+          "then": "reads and writes outside the workspace, secrets and the network are refused and the example runs",
+          "when": "the Python tests run against the installed wheel"
+        }
+      ],
+      "mitigations": [
+        "mitigation.tested-wheels"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [US1] The escape subset and API tests through the installed wheel \u2014 bindings/python/tests/"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-006] [US2] The framework-neutral shell tool example, run by the tests \u2014 bindings/python/examples/shell_tool.py"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[SR-006] `just python` and a CI step on every facts lane: build the wheel as the release does, install it fresh, run the tests and the example \u2014 justfile, .github/workflows/ci.yml"
+        },
+        {
+          "id": "T012",
+          "done": false,
+          "text": "[SR-006] Add a test for SR-006 (Every published wheel platform MUST run the binding escape subset and the shell tool example from the built wheel on its CI lane, and the docs MUST claim no platform beyond them) \u2014 touchpoints: .github/workflows/ci.yml, bindings/python/tests/test_procage.py, bindings/python/wheel.sh [converge: implemented-unverified; Every facts lane runs bindings/python/wheel.sh all (build as released, install fresh, 26 tests and the example); passed locally on macOS and Linux T1 and T2, not yet on the CI lanes.]"
+        }
+      ],
+      "all_tasks_done": false,
+      "existing_verification": [
+        {
+          "id": "verification.sr-006.2026-11-03",
+          "requirement": "SR-006",
+          "method": "review",
+          "evidence": ".github/workflows/ci.yml:106",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "Every facts lane runs bindings/python/wheel.sh all (build as released, install fresh, 26 tests and the example); passed locally on macOS and Linux T1 and T2, not yet on the CI lanes.",
+          "verified_at": "2026-11-03T18:52:17Z",
+          "commit": "4928124"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "bindings/python/tests/test_procage.py",
+            "exists": true
+          },
+          {
+            "path": "bindings/python/wheel.sh",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Spawn, wait and the reading of output MUST release the interpreter lock.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "one thread waiting on a long command",
+          "then": "it makes progress",
+          "when": "another Python thread runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.release-gil"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-007] [US1] `Cage` (violations, relax by name, spawn snapshot) and `spawn` with args, cwd, explicit env, grants and stdio modes, the interpreter lock released, no hook in the child \u2014 bindings/python/src/lib.rs"
+        },
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-001] [SR-004] [SR-007] [US1] `Run`: pid, poll, wait with timeout, kill from any thread, communicate, violations as dicts, receipt; dropping ends the run; `procage.run`, `wait_async`, the atexit hook \u2014 bindings/python/src/lib.rs, bindings/python/python/procage/__init__.py"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [US1] The escape subset and API tests through the installed wheel \u2014 bindings/python/tests/"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-007.2026-11-03",
+          "requirement": "SR-007",
+          "method": "test",
+          "evidence": "bindings/python/tests/test_procage.py::Concurrency::test_waiting_releases_the_interpreter",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "While one thread waits on a one-second run, the main thread ticks more than 100 times; spawn, wait, communicate and violations run inside py.detach.",
+          "verified_at": "2026-11-03T18:52:17Z",
+          "commit": "4928124"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/python/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.untested-wheel",
+    "threat.wheel-tampering"
+  ],
+  "decisions": [],
+  "check_findings": [],
+  "metrics": {
+    "threats": 7,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "mitigated": 5,
+      "open": 2
+    },
+    "threats_by_severity": {
+      "high": 2,
+      "low": 1,
+      "medium": 4
+    },
+    "mitigations": 7,
+    "requirements": 7,
+    "requirements_with_tasks": 7,
+    "requirements_verified": 5,
+    "decisions": 0,
+    "findings": {}
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}
