@@ -2323,6 +2323,9 @@ fn r34_an_abstract_bus_is_scoped() {
 /// spawn is out of reach, because the directory is covered as a whole.
 #[test]
 fn r34_a_socket_bound_later_is_refused() {
+    // Below ABI 6 the abstract bus another canary binds would make every
+    // cage here a gap.
+    let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
     let d = scratch("r34-later");
     std::fs::create_dir_all(d.join("systemd")).unwrap();
     let mut p = policy();
