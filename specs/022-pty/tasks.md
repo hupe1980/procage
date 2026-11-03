@@ -19,10 +19,10 @@
 ## Phase 3: Polish
 
 - [X] T011 [SR-008] Docs: README limits, THREAT_MODEL (does-not list, R-22 evidence), site macOS/Linux terminal sections, CHANGELOG 0.5.0 Unreleased entry; `just` recipes include the new tests — README.md, crates/procage/THREAT_MODEL.md, site/content/docs/{macos,linux}.md, CHANGELOG.md, justfile
-- [ ] T012 `just ci`, `just linux-t1`, `just linux`, `just kernel`; quickstart; status Implemented; commit on `main` — specs/022-pty/{spec,quickstart}.md
+- [X] T012 `just ci`, `just linux-t1`, `just linux`, `just kernel`; quickstart; status Implemented; commit on `main` — specs/022-pty/{spec,quickstart}.md
 
 ## Phase 4: Security Convergence
 
 **Purpose**: Close security gaps found by ThreatSpec converge on 2026-11-03 (commit 50c8ab6).
 
-- [ ] T013 [SR-008] Add a test for SR-008 (An interactive shell, a REPL and a full-screen program MUST run caged through Tty::NewPty in tests on every macOS and Linux lane, and the docs MUST claim no more than those tests show) — touchpoints: README.md, crates/procage/THREAT_MODEL.md, crates/procage/tests/pty.rs [converge: implemented-unverified; The shell, REPL and full-screen tests pass on macOS 26.6.2 and in containers on Linux 7.0 (T1, T2), and ci.yml and kernel-lane.sh run them on every lane, but no CI lane has run this commit yet.]
+- [X] T013 [SR-008] Add a test for SR-008 (An interactive shell, a REPL and a full-screen program MUST run caged through Tty::NewPty in tests on every macOS and Linux lane, and the docs MUST claim no more than those tests show) — touchpoints: README.md, crates/procage/THREAT_MODEL.md, crates/procage/tests/pty.rs [converge: implemented-unverified; The shell, REPL and full-screen tests pass on macOS 26.6.2 and in containers on Linux 7.0 (T1, T2), and ci.yml and kernel-lane.sh run them on every lane, but no CI lane has run this commit yet.]

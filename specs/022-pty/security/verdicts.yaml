@@ -42,8 +42,8 @@ verdicts:
     result: pass
     justification: The Pty rustdoc says the bytes are the cage's untrusted output, escape sequences included, unfiltered, and must not reach a terminal or anything that runs them; the site and THREAT_MODEL repeat it.
   - requirement: SR-008
-    verdict: implemented-unverified
-    method: review
-    evidence: crates/procage/tests/pty.rs:1
-    result: inconclusive
-    justification: The shell, REPL and full-screen tests pass on macOS 26.6.2 and in containers on Linux 7.0 (T1, T2), and ci.yml and kernel-lane.sh run them on every lane, but no CI lane has run this commit yet.
+    verdict: verified
+    method: test
+    evidence: crates/procage/tests/pty.rs::a_full_screen_program_runs_through_its_terminal
+    result: pass
+    justification: CI run 41685514406 (ad62c07, released as 0.5.0) ran pty.rs (shell, python3 -i, full-screen, run end, no base, exec refusal, concurrency) green on macOS 26 and 27, Ubuntu 24.04 x86_64 and arm64 and 26.04 on both tiers and the eight kernel lanes; the docs claim only what those tests show.

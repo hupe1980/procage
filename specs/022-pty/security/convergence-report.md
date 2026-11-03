@@ -1,22 +1,20 @@
 ## Security Convergence — 022-pty
 
-Commit `50c8ab6` · 2026-11-03T15:10:59Z
+Commit `ad62c07` · 2026-11-03T18:00:53Z
 
 | Metric | Value |
 |---|---|
 | Threats (active) | 8 |
 | Open blocking threats | 0  |
 | Security requirements | 8 |
-| verified | 7 |
-| implemented, unverified | 1 SR-008 |
+| verified | 8 |
+| implemented, unverified | 0  |
 | partial | 0  |
 | missing | 0  |
 | Expired decisions | 0  |
 | Source drift | none |
 
-**Status: NOT CONVERGED**
-
-Appended tasks: T013
+**Status: CONVERGED**
 
 | Requirement | Verdict | Method | Evidence | Justification |
 |---|---|---|---|---|
@@ -27,4 +25,4 @@ Appended tasks: T013
 | SR-005 | verified | test | `crates/procage/tests/pty.rs::the_run_end_closes_the_terminal_and_kills_its_jobs` | An interactive shell starts sleep in the background; dropping the handle kills it within five seconds and the controller read ends, on macOS and Linux T1 and T2. |
 | SR-006 | verified | test | `crates/procage/tests/pty.rs::exec_refuses_a_new_terminal` | Cage::exec and Cage::exec_session return Unsupported::Setting for Tty::NewPty and the test process continues; spawn_macos.rs::refusals_before_any_child and native.rs::errors_explain_themselves assert the named setting. |
 | SR-007 | verified | review | `crates/procage/src/pty.rs:16` | The Pty rustdoc says the bytes are the cage's untrusted output, escape sequences included, unfiltered, and must not reach a terminal or anything that runs them; the site and THREAT_MODEL repeat it. |
-| SR-008 | implemented-unverified | review | `crates/procage/tests/pty.rs:1` | The shell, REPL and full-screen tests pass on macOS 26.6.2 and in containers on Linux 7.0 (T1, T2), and ci.yml and kernel-lane.sh run them on every lane, but no CI lane has run this commit yet. |
+| SR-008 | verified | test | `crates/procage/tests/pty.rs::a_full_screen_program_runs_through_its_terminal` | CI run 41685514406 (ad62c07, released as 0.5.0) ran pty.rs (shell, python3 -i, full-screen, run end, no base, exec refusal, concurrency) green on macOS 26 and 27, Ubuntu 24.04 x86_64 and arm64 and 26.04 on both tiers and the eight kernel lanes; the docs claim only what those tests show. |

@@ -1,6 +1,6 @@
 # Threat Model: Grant on denial
 
-**Feature**: `017-grant-on-denial` · **Generated**: 2026-11-03T15:26:25Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
+**Feature**: `017-grant-on-denial` · **Generated**: 2026-11-03T18:00:54Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
 
 > Rendered by ThreatSpec. Edit `threat-model.yaml`, not this file.
 
@@ -134,6 +134,7 @@ A suggestion for a denied file operation MUST be a literal rule on the denied pa
 - Mitigations: `mitigation.exact-literal`
 - Tasks: T002 ✓, T003 ✓
 - Verification `verification.sr-001.2026-11-03`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_denied_file_operation_suggests_exactly_that_path`
+- Verification `verification.sr-001.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_denied_file_operation_suggests_exactly_that_path`
 
 ### SR-002 (P1) — verified
 
@@ -143,6 +144,7 @@ A denial by the secrets class, the raw layer, Lifetime::Run, the older-kernel gu
 - Mitigations: `mitigation.never-secrets`
 - Tasks: T002 ✓, T003 ✓, T004 ✓
 - Verification `verification.sr-002.2026-11-03`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_secret_suggests_nothing`
+- Verification `verification.sr-002.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_secret_suggests_nothing`
 
 ### SR-003 (P1) — verified
 
@@ -153,6 +155,7 @@ A suggestion that waives a hard-deny class, leaves out a protect or hide rule, o
 - Mitigations: `mitigation.mark-weakening`
 - Tasks: T002 ✓, T003 ✓, T004 ✓
 - Verification `verification.sr-003.2026-11-03`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_protection_suggests_its_removal_marked_as_weakening`
+- Verification `verification.sr-003.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_protection_suggests_its_removal_marked_as_weakening`
 
 ### SR-004 (P1) — verified
 
@@ -162,6 +165,7 @@ Applying a suggestion MUST return a new policy and MUST NOT change the running c
 - Mitigations: `mitigation.respawn-only`
 - Tasks: T001 ✓, T003 ✓
 - Verification `verification.sr-004.2026-11-03`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_denied_file_operation_suggests_exactly_that_path`
+- Verification `verification.sr-004.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_denied_file_operation_suggests_exactly_that_path`
 
 ### SR-005 (P2) — verified
 
@@ -172,3 +176,4 @@ The policy a suggestion produces MUST differ from the old one only by the sugges
 - Mitigations: `mitigation.exact-apply`
 - Tasks: T001 ✓, T003 ✓
 - Verification `verification.sr-005.2026-11-03`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_protection_suggests_its_removal_marked_as_weakening`
+- Verification `verification.sr-005.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/suggest_macos.rs::a_protection_suggests_its_removal_marked_as_weakening`
