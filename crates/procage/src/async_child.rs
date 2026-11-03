@@ -40,7 +40,9 @@ impl Cage {
             return Err(SpawnError::NoRuntime);
         }
         let launch = self.launch(command.as_std_mut(), grants, fds)?;
-        match command.spawn() {
+        let spawned = command.spawn();
+        launch.release(command.as_std_mut());
+        match spawned {
             Ok(inner) => Ok(AsyncChild(
                 self.adopt(launch, Proc::Tokio(std::panic::AssertUnwindSafe(inner))),
             )),
@@ -108,6 +110,12 @@ impl AsyncChild {
             Proc::Tokio(c) => c.0,
             Proc::Std(_) => unreachable!("an async handle holds a tokio child"),
         }
+    }
+
+    /// The controller side of the run's new terminal (`Tty::NewPty`), once;
+    /// see `Child::take_pty`.
+    pub fn take_pty(&mut self) -> Option<crate::Pty> {
+        self.0.take_pty()
     }
 
     /// Environment names the passthrough denylist dropped for this spawn.

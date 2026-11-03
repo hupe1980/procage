@@ -52,6 +52,8 @@ pub struct Child {
     /// The run's proxy; dropped when the run ends.
     #[cfg(feature = "proxy")]
     proxy: Option<procage_proxy::Run>,
+    /// The controller of the run's new terminal, until taken.
+    pty: Option<crate::Pty>,
 }
 
 impl Child {
@@ -77,7 +79,19 @@ impl Child {
             audit,
             #[cfg(feature = "proxy")]
             proxy: None,
+            pty: None,
         }
+    }
+
+    pub(super) fn set_pty(&mut self, pty: Option<crate::Pty>) {
+        self.pty = pty;
+    }
+
+    /// The controller side of the run's new terminal (`Tty::NewPty`), once:
+    /// `None` without one or after the first call. Until it is taken the
+    /// handle holds it, and ending the run closes it.
+    pub fn take_pty(&mut self) -> Option<crate::Pty> {
+        self.pty.take()
     }
 
     #[cfg(feature = "proxy")]

@@ -156,10 +156,14 @@ pub(crate) fn members(lib: &sys::Libsandbox, run: &Run) -> io::Result<Vec<libc::
         if pid <= 0 || !sys::live_of_user(pid) {
             continue;
         }
-        match (
-            lib.allows_lookup(pid, &run.marker),
-            lib.allows_lookup(pid, &run.probe),
-        ) {
+        // The probe first: a process another run has just forked may apply
+        // its sandbox between the two checks, and unsandboxed it allows the
+        // marker too. A process is only ever sandboxed later, never
+        // unsandboxed, so a denied probe means the marker check sees the
+        // same sandbox (a concurrent run's fresh child was killed otherwise).
+        let probe = lib.allows_lookup(pid, &run.probe);
+        let marker = lib.allows_lookup(pid, &run.marker);
+        match (marker, probe) {
             (Ok(true), Ok(false)) => found.push(pid),
             (Ok(_), Ok(_)) => {}
             // It exited between the listing and the check.

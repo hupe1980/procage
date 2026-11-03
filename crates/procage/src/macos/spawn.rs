@@ -37,6 +37,24 @@ pub(super) fn tokens(
     Ok(out)
 }
 
+/// The extension token for the run's own terminal device.
+pub(super) fn terminal_token(
+    lib: &sys::Libsandbox,
+    device: &std::path::Path,
+) -> Result<CString, SpawnError> {
+    use std::os::unix::ffi::OsStrExt;
+    lib.issue_file(
+        procage_policy::PTY_EXTENSION_CLASS,
+        device.as_os_str().as_bytes(),
+    )
+    .ok_or_else(|| {
+        SpawnError::Io(io::Error::other(format!(
+            "cannot issue the extension for the terminal {}",
+            device.display()
+        )))
+    })
+}
+
 /// Turns a spawn error carrying a step code into [`SpawnError::Apply`].
 pub(super) fn decode(error: io::Error) -> SpawnError {
     if let Some((step, errno)) = error.raw_os_error().and_then(sys::decode_step)

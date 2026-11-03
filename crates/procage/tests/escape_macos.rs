@@ -40,7 +40,7 @@ use procage::macos::{Cage, CageOptions, Child, Grants, SpawnError, testing};
 use procage::policy::seatbelt::{self, Effect, Filter, Operation};
 use procage::policy::{
     AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Lifetime,
-    Network, Policy, Port, Ports, Signals,
+    Network, Policy, Port, Ports, Signals, Tty,
 };
 
 const EPERM: &str = "1";
@@ -292,6 +292,7 @@ fn op(spec: &str) -> String {
             code(testing::procargs_errno(pid))
         }
         "signal-parent" => code(testing::kill_errno(std::os::unix::process::parent_id(), 0)),
+        "tiocsti-own" => code(testing::tiocsti_errno(0, b'#')),
         "tiocsti" => match std::fs::OpenOptions::new().read(true).write(true).open(arg) {
             Ok(f) => {
                 let fd = f.as_raw_fd();
@@ -824,6 +825,63 @@ fn r22_terminal_input_injection_is_refused() {
     assert_eq!(in_child(&attempt, &p), format!("ctty=ok sti={EPERM}"));
     let control = in_child(&attempt, &waived(p, HardDenyClass::TerminalInjection));
     assert_eq!(control, "ctty=ok sti=ok");
+}
+
+/// Runs `action` in a child of `policy` with a new terminal (its standard
+/// streams are the terminal); returns the result and everything the
+/// controller side read.
+fn in_terminal(action: &str, policy: &Policy) -> (String, String) {
+    let mut p = policy.clone();
+    p.tty = Tty::NewPty;
+    let cage = cage_for(&p).unwrap_or_else(|e| panic!("cage: {e}"));
+    let mut child = cage
+        .spawn(&mut child_command(action), &Grants::new())
+        .unwrap_or_else(|e| panic!("spawn: {e}"));
+    let mut pty = child.take_pty().expect("a terminal");
+    let reader = std::thread::spawn(move || {
+        let mut out = Vec::new();
+        // The read ends with end of file or an error once the run is over.
+        let _ = pty.read_to_end(&mut out);
+        String::from_utf8_lossy(&out).into_owned()
+    });
+    let start = Instant::now();
+    while child.try_wait().unwrap().is_none() {
+        assert!(start.elapsed() < Duration::from_secs(20), "child hung");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    drop(child);
+    let text = reader.join().unwrap();
+    let result = text
+        .lines()
+        .find_map(|l| {
+            l.split_once("procage-result: ")
+                .map(|(_, r)| r.trim_end().to_string())
+        })
+        .unwrap_or_else(|| panic!("no result in {text:?}"));
+    (result, text)
+}
+
+/// With a new terminal (`Tty::NewPty`) the child pushes no input into its
+/// own terminal either, and reaches no other terminal. Waived by name, the
+/// pushed byte lands in the run's own terminal (echoed to its controller),
+/// and another terminal stays out of reach.
+#[test]
+fn r22_a_new_terminal_keeps_input_injection_inside_the_run() {
+    let (_other_controller, other) = testing::open_pty().unwrap();
+    let other = format!("tiocsti:{}", other.display());
+    // TIOCSTI also needs `hid-control`; with it allowed, the class alone
+    // refuses.
+    let mut p = policy();
+    raw_allow(&mut p, Operation::HidControl, vec![]);
+    assert_eq!(in_terminal("tiocsti-own", &p).0, EPERM);
+    let open = in_terminal(&other, &p).0;
+    assert!(open.starts_with("open-"), "{open}");
+    let w = waived(p, HardDenyClass::TerminalInjection);
+    let (own, text) = in_terminal("tiocsti-own", &w);
+    assert_eq!(own, "ok");
+    assert!(text.contains('#'), "{text:?}");
+    let open = in_terminal(&other, &w).0;
+    assert!(open.starts_with("open-"), "{open}");
 }
 
 // ---- R-23 Outliving the run ----

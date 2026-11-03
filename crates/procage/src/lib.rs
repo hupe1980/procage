@@ -280,7 +280,11 @@ pub use procage_proxy as proxy;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod explain;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod pty;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod receipt;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use pty::Pty;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;
 #[cfg(any(target_os = "macos", target_os = "linux"))]

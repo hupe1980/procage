@@ -6,6 +6,33 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `Tty::NewPty`: a new pseudo-terminal per run, on macOS and Linux (both
+  tiers). The other end is the child's standard streams and controlling
+  terminal; `Child::take_pty()` and `AsyncChild::take_pty()` return the
+  controller side as `procage::Pty` (read, write, `set_size`, `device`),
+  starting at 80 by 24. The child may use exactly its own device and
+  `/dev/tty` (on macOS also the listing of `/dev`), under any base;
+  `TIOCSTI` stays denied (R-22). Tested on every lane with an interactive
+  shell, `python3 -i` and a full-screen program.
+- `Construct::TtyNewPty` (`tty-new-pty`), `procage_policy::PTY_EXTENSION_CLASS`
+  and `procage_policy::linux::TERMINAL_ACCESS`.
+
+### Fixed
+
+- macOS: ending a forking run could kill a process another run had just
+  forked, before that process applied its sandbox: the marker search
+  checked the run's marker before the probe, and a process sandboxed
+  between the two checks matched. The probe is checked first now. Found by
+  the concurrent new-terminal test (about one run in three before, none in
+  20 after).
+
+### Changed
+
+- `Tty::NewPty` is no longer refused by `Cage::new`; `Cage::exec` and
+  `Cage::exec_session` refuse it with `Unsupported::Setting`.
+
 ## [0.4.1] - 2026-11-03
 
 ### Security

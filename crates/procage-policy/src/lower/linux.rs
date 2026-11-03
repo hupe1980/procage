@@ -11,8 +11,8 @@ use super::{
 use crate::linux::{
     AF_INET, AF_INET6, AF_NETLINK, AF_UNIX, AF_VSOCK, AccessFs, AccessNet, Action, ClassPaths,
     Condition, Landlock, LandlockRule, LinuxNetwork, LinuxPlan, Mount, Namespaces, NetRule,
-    RuleTarget, Scopes, SeccompRule, Syscall, TIOCLINUX, TIOCSTI, handled_fs, handled_net,
-    may_overlap, rights, scopes,
+    RuleTarget, Scopes, SeccompRule, Syscall, TERMINAL_ACCESS, TIOCLINUX, TIOCSTI, handled_fs,
+    handled_net, may_overlap, rights, scopes,
 };
 use crate::name::Port;
 use crate::path::AbsPath;
@@ -618,6 +618,20 @@ pub(super) fn lower(
                 .rules
                 .extend(crate::base::linux_v2(policy.tty, handled));
         }
+    }
+    // A new terminal: `/dev/tty`, which names the controlling terminal,
+    // under every base; each spawn adds its own device. Seccomp still
+    // denies TIOCSTI.
+    if policy.tty == Tty::NewPty {
+        ledger.outcome(Construct::TtyNewPty, Outcome::Exact, None, "");
+        landlock.rules.push(LandlockRule {
+            target: RuleTarget::PathIfExists(
+                AbsPath::new("/dev/tty").unwrap_or_else(|_| unreachable!("absolute and normal")),
+            ),
+            access: TERMINAL_ACCESS
+                .intersect(AccessFs::FILE_RIGHTS)
+                .intersect(handled),
+        });
     }
 
     if policy.seatbelt.is_some() {

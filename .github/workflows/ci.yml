@@ -78,7 +78,7 @@ jobs:
       - name: Secret directories the hard-deny tests check
         run: mkdir -p ~/.ssh ~/.aws ~/.gnupg
       - name: Caged children (spawn tests)
-        run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec --test receipts --test audit --test oracle
+        run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec --test receipts --test audit --test oracle --test pty
       - name: Spelling matrix (the default volume and a case-sensitive APFS image)
         run: cargo test --locked -p procage --test spelling_macos
       - name: Escape suite
@@ -140,7 +140,7 @@ jobs:
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
       - name: Caged children and escape suite
-        run: cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle
+        run: cargo test --locked -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined --test native --test exec --test receipts --test audit --test oracle --test pty
       - name: Escape suite, the async handle and the proxy (tokio, proxy)
         run: cargo test --locked -p procage --features tokio,proxy --test escape_linux --test tokio --test proxy
         env:

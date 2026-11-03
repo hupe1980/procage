@@ -87,7 +87,7 @@ pub(super) fn rule_paths(plan: &LinuxPlan) -> Vec<(PathBuf, bool)> {
 }
 
 /// The Landlock ruleset for `plan`, on descriptors opened for this spawn,
-/// with `grants` bound.
+/// with `grants` bound and, with `Tty::NewPty`, the run's `terminal` device.
 ///
 /// `hidden` (tier T2) are paths kept out piecewise: a rule at or under one
 /// is dropped, and a rule above one is replaced by rules for every entry on
@@ -97,6 +97,7 @@ pub(super) fn rule_paths(plan: &LinuxPlan) -> Vec<(PathBuf, bool)> {
 pub(super) fn ruleset(
     plan: &LinuxPlan,
     grants: &BTreeMap<String, PathBuf>,
+    terminal: Option<&Path>,
     hidden: &[PathBuf],
     limit: usize,
 ) -> Result<OwnedFd, SpawnError> {
@@ -136,6 +137,13 @@ pub(super) fn ruleset(
         for piece in pieces {
             allow_path(&ruleset, &piece, rule.access, true)?;
         }
+    }
+    // The run's own terminal device (`Tty::NewPty`), and no other.
+    if let Some(device) = terminal {
+        let access = procage_policy::linux::TERMINAL_ACCESS
+            .intersect(AccessFs::FILE_RIGHTS)
+            .intersect(ll.handled_fs);
+        allow_path(&ruleset, device, access, false)?;
     }
     for rule in &ll.net_rules {
         sys::landlock_allow_port(&ruleset, rule.port.get(), rule.access.0)

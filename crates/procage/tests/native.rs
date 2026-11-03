@@ -97,7 +97,9 @@ fn kill_all_and_detach_have_the_same_meaning() {
 fn errors_explain_themselves() {
     let mut p = policy();
     p.tty = Tty::NewPty;
-    let err = Cage::new(&p).map(drop).unwrap_err();
+    let cage = Cage::new(&p).unwrap();
+    // No handle would hold the terminal: refused before the process changes.
+    let err = cage.exec(&mut Command::new("/bin/true"), &Grants::new());
     assert!(err.to_string().contains("Tty::NewPty"), "{err}");
 }
 

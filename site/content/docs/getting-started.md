@@ -95,7 +95,7 @@ Every failure is a `SpawnError` with a readable `Display`, and no child runs. Th
 | `Grant(..)` | A binding names an undeclared grant, a missing path or the reserved `tmpdir`, or (Linux T2) binds around a hidden or class path. |
 | `HardLinks(..)` | A protected, hidden or credential file has a second name outside the protected set. See [Audits](@/docs/audits.md). |
 | `AlreadySandboxed` (macOS) | The caller is itself in a Seatbelt sandbox. |
-| `Unsupported(..)` | The host lacks something: a libsandbox symbol on macOS, Landlock or the requested tier on Linux, or a setting this version cannot apply (such as `Tty::NewPty`). |
+| `Unsupported(..)` | The host lacks something: a libsandbox symbol on macOS, Landlock or the requested tier on Linux, or a setting a call cannot apply (such as `Tty::NewPty` with `Cage::exec`). |
 | `Apply { step, errno }` | A step in the child failed before the target ran; `step` names it. |
 
 ## Portable code

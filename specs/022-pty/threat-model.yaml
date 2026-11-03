@@ -1,0 +1,772 @@
+otmVersion: 0.2.0
+project:
+  id: 022-pty
+  name: A fresh pseudo-terminal for interactive runs
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child, including a shell typed into through the terminal
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a harness that runs interactive programs caged and holds the controller side
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the backends, the lowering or the docs
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary; the terminal is a local device pair
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network transit; the terminal stream stays between two descriptors of one host
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no store; the terminal holds no data beyond its kernel buffers
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: no configuration added; the silent-fallback risk of Cage::exec is threat.exec-fallback
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-03T15:10:36Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 746a91fad3f628048a8472fd50da95e4aa402738f3f7aadb9e0ff5fed113c6d6
+  - path: spec.md
+    sha256: 61f09e1393f3016fe19db465e51dcf6c936efd81b2eb4177b3fd4111d6431e47
+  surfaces:
+  - external-input
+  - authorization
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child, its descendants and concurrent caged runs
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The harness process that builds cages and holds controller sides
+  risk:
+    trustRating: 90
+- id: tz.os
+  name: The kernel (pseudo-terminals, Landlock, seccomp, Seatbelt)
+  risk:
+    trustRating: 95
+assets:
+- id: asset.claim
+  name: The published claim that interactive programs run caged, and the escape-class evidence
+  risk:
+    availability: 10
+    confidentiality: 0
+    integrity: 70
+  attributes:
+    type: configuration
+    source: spec.md#SC-001
+    classification: public
+- id: asset.controller
+  name: The controller side of a run's terminal and the harness that reads it
+  risk:
+    availability: 40
+    confidentiality: 50
+    integrity: 70
+  attributes:
+    type: capability
+    source: spec.md#FR-003
+    classification: internal
+- id: asset.host
+  name: The user's files, secrets and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.terminals
+  name: 'Terminals other than the child''s own: the caller''s, the user''s and other runs'''
+  risk:
+    availability: 30
+    confidentiality: 80
+    integrity: 95
+  attributes:
+    type: capability
+    source: spec.md#FR-002
+    classification: internal
+components:
+- id: component.child-session
+  name: Child session step between fork and execve (setsid, controlling terminal)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-004
+- id: component.docs
+  name: Rustdoc, site docs and THREAT_MODEL entries for terminals
+  type: document
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#SC-001
+- id: component.lowering
+  name: Lowering of Tty::NewPty to Seatbelt, Landlock and seccomp rules
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.pty-handle
+  name: The Pty handle returned to the caller
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.pty-setup
+  name: Parent-side terminal pair, stdio hand-over and per-spawn device grant
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-001
+dataflows:
+- id: flow.claims
+  name: The docs tell the consumer what a new terminal allows
+  source: component.docs
+  destination: actor.consumer
+  assets:
+  - asset.claim
+  attributes:
+    crosses: []
+- id: flow.device
+  name: The child opens terminal devices and issues terminal ioctls
+  source: tz.cage
+  destination: tz.os
+  assets:
+  - asset.terminals
+  - asset.host
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.os
+- id: flow.handover
+  name: The parent hands the terminal end and the session plan to the child
+  source: component.pty-setup
+  destination: component.child-session
+  assets:
+  - asset.controller
+  attributes:
+    crosses: []
+- id: flow.input
+  name: The harness writes input to the controller side; the child reads it
+  source: component.pty-handle
+  destination: tz.cage
+  assets:
+  - asset.controller
+  attributes:
+    crosses:
+    - tz.harness
+    - tz.cage
+- id: flow.output
+  name: The child writes to its terminal; the harness reads the controller side
+  source: tz.cage
+  destination: component.pty-handle
+  assets:
+  - asset.controller
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.harness
+threats:
+- id: threat.child-unsafe
+  name: Acquiring the controlling terminal in the child allocates, takes a lock or calls a library function between
+    fork and execve, so a multithreaded parent deadlocks
+  categories:
+  - Denial of Service
+  risk:
+    impact: 60
+    impactComment: hung spawns in a multithreaded harness
+    likelihood: 25
+    likelihoodComment: tcsetsid-style helpers and terminal name lookups are library code
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.controller
+    status: mitigated
+    actor: actor.contributor
+    constitution: IV. Syscalls only between fork and exec
+    disposition: threat
+    elements:
+    - component.child-session
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.claim-overstates
+  name: The docs claim interactive shells, REPLs and full-screen programs run caged, or that other terminals are
+    out of reach, without a caged test on every lane
+  categories:
+  - Repudiation
+  risk:
+    impact: 50
+    impactComment: consumers rely on unmeasured behaviour
+    likelihood: 50
+    likelihoodComment: the feature is easy to demo on one OS only
+  attributes:
+    source: spec.md#SC-001
+    assets:
+    - asset.claim
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.docs
+    - flow.claims
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.descriptor-leak
+  name: The controller side or the parent's copy of the terminal end stays open in the child, or in a child spawned
+    concurrently by another thread, so a run reads or writes another run's terminal
+  categories:
+  - Information Disclosure
+  cwes:
+  - CWE-403
+  risk:
+    impact: 75
+    impactComment: another run's input and output are readable and writable
+    likelihood: 35
+    likelihoodComment: openpty does not set close-on-exec atomically; std::process::Command keeps its Stdio until
+      dropped
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.terminals
+    - asset.controller
+    status: mitigated
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - component.pty-setup
+    - flow.handover
+    profile: stride
+    severity: high
+    technique: cross-tenant-leak
+- id: threat.escape-sequences
+  name: A caged child writes terminal escape sequences that a harness forwards unfiltered to the user's own terminal
+    (clipboard writes, title reports, answerback)
+  categories:
+  - Tampering
+  risk:
+    impact: 50
+    impactComment: the user's terminal emulator acts on bytes from the cage
+    likelihood: 40
+    likelihoodComment: harnesses commonly pipe the controller output to the user terminal
+  attributes:
+    source: spec.md#Out-of-Scope
+    assets:
+    - asset.terminals
+    status: mitigated
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.pty-handle
+    - flow.output
+    profile: stride
+    severity: medium
+    technique: injection
+- id: threat.exec-fallback
+  name: Cage::exec or Cage::exec_session given Tty::NewPty silently runs with the caller's terminal, the injection-prone
+    mode the caller did not ask for
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    impactComment: the child shares the caller's terminal
+    likelihood: 30
+    likelihoodComment: exec has no handle to return a controller through
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.terminals
+    status: mitigated
+    actor: actor.consumer
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.pty-setup
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.other-terminal
+  name: A caged child opens another terminal device (the caller's, the user's or another run's) through a terminal
+    grant broader than its own device, and reads it or pushes input that a shell runs outside the sandbox
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-284
+  risk:
+    impact: 95
+    impactComment: keystrokes run outside the sandbox, or another session is read
+    likelihood: 50
+    likelihoodComment: reusing the Tty::Inherit rules (all of /dev/pts, /dev/ttys*) is the obvious first implementation
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.terminals
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.lowering
+    - flow.device
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.outlive
+  name: A descendant keeps the terminal open, or job control moves it to another session, so it survives the run's
+    end and keeps reading or writing the controller side
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 70
+    impactComment: a process outlives the run with a live terminal
+    likelihood: 30
+    likelihoodComment: shells start background jobs in their own process groups
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.controller
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - component.child-session
+    - flow.output
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.sti-own
+  name: A caged child pushes input into its own new terminal (TIOCSTI), which a harness that echoes or replays the
+    controller side could act on
+  categories:
+  - Tampering
+  risk:
+    impact: 50
+    impactComment: injected bytes reach only the controller the harness reads
+    likelihood: 30
+    likelihoodComment: TIOCSTI on its own controlling terminal is allowed by the kernel without the hard-deny class
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.controller
+    status: mitigated
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.lowering
+    - flow.device
+    profile: stride
+    severity: low
+    technique: injection
+mitigations:
+- id: mitigation.cloexec-handover
+  name: The pair is opened close-on-exec atomically, the fd sweep closes anything else, and the parent drops its
+    copies of the terminal end once the child runs
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.descriptor-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage/src/macos/sys.rs
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/src/pty.rs
+- id: mitigation.exact-device
+  name: The terminal grant names exactly the spawn's device and /dev/tty, independent of the base profile; Tty::Inherit's
+    rules are not reused
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.other-terminal
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/spawn.rs
+- id: mitigation.exec-refuses
+  name: Cage::exec and Cage::exec_session refuse Tty::NewPty with a typed error
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.exec-fallback
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - crates/procage/src/macos/mod.rs
+    - crates/procage/src/linux/mod.rs
+- id: mitigation.lane-tests
+  name: A shell, a REPL and a full-screen program run caged through the terminal on every lane; the docs claim only
+    that
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.claim-overstates
+    status: required
+    kind: detective
+    requirements:
+    - SR-008
+    touchpoints:
+    - crates/procage/tests/pty.rs
+    - crates/procage/THREAT_MODEL.md
+    - README.md
+- id: mitigation.run-end
+  name: Ending the run kills every process of it as before; the child leads its terminal's session, so job control
+    stays in it
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.outlive
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage/src/macos/child.rs
+    - crates/procage/src/linux/child.rs
+- id: mitigation.sti-denied
+  name: The terminal-injection hard-deny class stays in force with Tty::NewPty, so TIOCSTI on the own terminal fails
+    too unless waived by name
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.sti-own
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/tests/escape_macos.rs
+    - crates/procage/tests/escape_linux.rs
+- id: mitigation.syscall-session
+  name: The session step is setsid then ioctl(TIOCSCTTY) on descriptor 0, both system calls; a multithreaded spawn
+    test covers it
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.child-unsafe
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage/src/macos/sys.rs
+    - crates/procage/src/linux/sys.rs
+- id: mitigation.untrusted-output
+  name: The Pty documentation states that its output is the cage's untrusted bytes and must not reach a terminal
+    unfiltered
+  riskReduction: 40
+  attributes:
+    threats:
+    - threat.escape-sequences
+    status: verified
+    kind: deterrent
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage/src/pty.rs
+requirements:
+- id: SR-001
+  statement: With Tty::NewPty the child MUST reach only its own terminal device and /dev/tty, under every base version
+    including none; opening any other terminal device MUST fail.
+  priority: P1
+  mitigations:
+  - mitigation.exact-device
+  acceptance:
+  - given: a caged child with Tty::NewPty and a second terminal the test opened
+    then: both opens fail
+    when: the child opens the second terminal's device for reading and writing
+  - given: a policy without a base profile and Tty::NewPty
+    then: all succeed
+    when: the child reads and writes its terminal and sets its attributes
+  tasks: []
+- id: SR-002
+  statement: With Tty::NewPty, TIOCSTI on the child's own terminal MUST fail unless the terminal-injection class
+    is waived by name.
+  priority: P2
+  mitigations:
+  - mitigation.sti-denied
+  acceptance:
+  - given: a caged child with Tty::NewPty
+    then: the call fails with EPERM
+    when: it pushes a byte into its own terminal
+  - given: the same policy with the terminal-injection class waived
+    then: the byte reaches only the controller side
+    when: it pushes a byte
+  tasks: []
+- id: SR-003
+  statement: The controller side and the parent's copy of the terminal end MUST NOT be open in any caged child;
+    the parent MUST hold no copy of the terminal end after the spawn.
+  priority: P1
+  mitigations:
+  - mitigation.cloexec-handover
+  acceptance:
+  - given: two runs with Tty::NewPty spawned concurrently from different threads
+    then: none is either run's controller or the other run's terminal
+    when: each child lists its open descriptors
+  - given: a run whose child exited
+    then: the read ends (EOF or EIO) instead of blocking
+    when: the caller reads the controller side
+  tasks: []
+- id: SR-004
+  statement: The child MUST acquire its controlling terminal with system calls only (setsid, ioctl TIOCSCTTY), and
+    spawns with Tty::NewPty from a multithreaded parent MUST succeed.
+  priority: P2
+  mitigations:
+  - mitigation.syscall-session
+  acceptance:
+  - given: a parent with several threads allocating and locking
+    then: every child starts with its terminal as controlling terminal
+    when: it spawns many children with Tty::NewPty
+  tasks: []
+- id: SR-005
+  statement: When a run with Tty::NewPty ends, every process of the run, including background jobs a shell started
+    in the terminal, MUST be dead.
+  priority: P1
+  mitigations:
+  - mitigation.run-end
+  acceptance:
+  - given: a shell in a new terminal that started a background job
+    then: the shell and the job are dead
+    when: the run ends
+  tasks: []
+- id: SR-006
+  statement: Cage::exec and Cage::exec_session MUST refuse Tty::NewPty with a typed error before anything is changed.
+  priority: P1
+  mitigations:
+  - mitigation.exec-refuses
+  acceptance:
+  - given: a cage with Tty::NewPty
+    then: it returns the unsupported-setting error and the process is unchanged
+    when: exec or exec_session is called
+  tasks: []
+- id: SR-007
+  statement: The Pty documentation MUST state that the controller side carries the cage's untrusted bytes, including
+    escape sequences, and that procage does not filter them.
+  priority: P3
+  mitigations:
+  - mitigation.untrusted-output
+  acceptance:
+  - given: the rustdoc of Pty
+    then: it says the bytes are untrusted and unfiltered
+    when: a reader looks for how to treat output
+  tasks: []
+- id: SR-008
+  statement: An interactive shell, a REPL and a full-screen program MUST run caged through Tty::NewPty in tests
+    on every macOS and Linux lane, and the docs MUST claim no more than those tests show.
+  priority: P2
+  mitigations:
+  - mitigation.lane-tests
+  acceptance:
+  - given: each CI lane
+    then: the shell answers a command, the REPL evaluates an expression and the full-screen program draws and quits
+    when: the terminal tests run
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-03
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r22_a_new_terminal_keeps_input_injection_inside_the_run
+  result: pass
+  verdict: verified
+  justification: A child with Tty::NewPty opens a second terminal the test made for read and write and gets an open
+    error, also with terminal injection waived (escape_macos and escape_linux on T1 and T2); pty.rs::without_a_base_the_terminal_works_and_resizes
+    reads and resizes the own terminal with no base on Linux and base V1 (no terminal rule) on macOS; procage-policy
+    tests/base.rs::terminals_by_tty_mode shows exactly the extension class and /dev/tty with and without a base.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+- id: verification.sr-002.2026-11-03
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r22_a_new_terminal_keeps_input_injection_inside_the_run
+  result: pass
+  verdict: verified
+  justification: TIOCSTI on the child's own new terminal returns EPERM on macOS (hid-control allowed, so the class
+    alone refuses) and on Linux T1 and T2; waived, it succeeds and the byte is echoed only on the run's own controller.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+- id: verification.sr-003.2026-11-03
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/pty.rs::concurrent_runs_from_a_busy_parent_get_only_their_own_terminal
+  result: pass
+  verdict: verified
+  justification: 200 runs from four threads list their open descriptors through ls /dev/fd and see only 0 to 3 (no
+    controller, no other run's terminal); pty.rs::the_run_end_closes_the_terminal_and_kills_its_jobs shows the controller
+    read ending once the run ends, so the parent holds no copy of the device.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+- id: verification.sr-004.2026-11-03
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/pty.rs::concurrent_runs_from_a_busy_parent_get_only_their_own_terminal
+  result: pass
+  verdict: verified
+  justification: Four threads allocating and locking run beside four spawning threads; every child opens /dev/tty,
+    so each got its terminal as controlling terminal from the setsid and TIOCSCTTY step; 20 consecutive passes on
+    macOS after the marker-search fix, and on Linux T1 and T2.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+- id: verification.sr-005.2026-11-03
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/pty.rs::the_run_end_closes_the_terminal_and_kills_its_jobs
+  result: pass
+  verdict: verified
+  justification: An interactive shell starts sleep in the background; dropping the handle kills it within five seconds
+    and the controller read ends, on macOS and Linux T1 and T2.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+- id: verification.sr-006.2026-11-03
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/pty.rs::exec_refuses_a_new_terminal
+  result: pass
+  verdict: verified
+  justification: Cage::exec and Cage::exec_session return Unsupported::Setting for Tty::NewPty and the test process
+    continues; spawn_macos.rs::refusals_before_any_child and native.rs::errors_explain_themselves assert the named
+    setting.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+- id: verification.sr-007.2026-11-03
+  requirement: SR-007
+  method: review
+  evidence: crates/procage/src/pty.rs:16
+  result: pass
+  verdict: verified
+  justification: The Pty rustdoc says the bytes are the cage's untrusted output, escape sequences included, unfiltered,
+    and must not reach a terminal or anything that runs them; the site and THREAT_MODEL repeat it.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+- id: verification.sr-008.2026-11-03
+  requirement: SR-008
+  method: review
+  evidence: crates/procage/tests/pty.rs:1
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The shell, REPL and full-screen tests pass on macOS 26.6.2 and in containers on Linux 7.0 (T1,
+    T2), and ci.yml and kernel-lane.sh run them on every lane, but no CI lane has run this commit yet.
+  verified_at: '2026-11-03T15:10:59Z'
+  commit: 50c8ab6
+decisions: []

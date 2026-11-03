@@ -31,7 +31,7 @@ for line in sys.stdin:
 }
 build facts -p procage-kernel-facts --test kernel_facts
 build suites -p procage --lib --test spawn_linux --test escape_linux --test unsafe_confined \
-    --test native --test exec --test receipts --test audit --test oracle
+    --test native --test exec --test receipts --test audit --test oracle --test pty
 build reporting -p procage --test escape_linux
 build async -p procage --features tokio,proxy --test escape_linux --test tokio --test proxy
 

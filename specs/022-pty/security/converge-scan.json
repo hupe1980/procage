@@ -1,0 +1,512 @@
+{
+  "feature": "022-pty",
+  "commit": "50c8ab6",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "With Tty::NewPty the child MUST reach only its own terminal device and /dev/tty, under every base version including none; opening any other terminal device MUST fail.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a caged child with Tty::NewPty and a second terminal the test opened",
+          "then": "both opens fail",
+          "when": "the child opens the second terminal's device for reading and writing"
+        },
+        {
+          "given": "a policy without a base profile and Tty::NewPty",
+          "then": "all succeed",
+          "when": "the child reads and writes its terminal and sets its attributes"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exact-device"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-001] [SR-002] Lowering: with `Tty::NewPty`, independent of the base, macOS allows read, write-data and ioctl on `(extension \"procage.tty\")` and `/dev/tty`; Linux allows `/dev/tty` read, write, `IOCTL_DEV`; the terminal-injection class stays; lowering fixtures \u2014 crates/procage-policy/src/lower/macos.rs, crates/procage-policy/src/lower/linux.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-006] [US1] macOS spawn: remove the refusal; open the pair, stdio to the device, the `procage.tty` extension for the device, `Session::Terminal`; parent copies closed after spawn; `Child::take_pty`; exec and exec_session refuse \u2014 crates/procage/src/macos/mod.rs, crates/procage/src/macos/child.rs"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-006] [US1] Linux spawn: the same, with a Landlock rule for exactly the device next to the bound grants \u2014 crates/procage/src/linux/mod.rs, crates/procage/src/linux/spawn.rs, crates/procage/src/linux/child.rs"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-001] [SR-005] [SR-006] [SR-008] [US1] Caged tests on every lane: shell (`sh -i`, isatty, controlling terminal), REPL (`python3 -i`), full-screen (`vi` or `top`), run end kills a background job and the controller reads EOF/EIO, no base still usable, exec/exec_session refused \u2014 crates/procage/tests/pty.rs"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[SR-001] [SR-002] R-22 canaries with `Tty::NewPty`: TIOCSTI on the own terminal fails, waived reaches only the controller; another terminal cannot be opened \u2014 crates/procage/tests/escape_macos.rs, crates/procage/tests/escape_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "With Tty::NewPty, TIOCSTI on the child's own terminal MUST fail unless the terminal-injection class is waived by name.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a caged child with Tty::NewPty",
+          "then": "the call fails with EPERM",
+          "when": "it pushes a byte into its own terminal"
+        },
+        {
+          "given": "the same policy with the terminal-injection class waived",
+          "then": "the byte reaches only the controller side",
+          "when": "it pushes a byte"
+        }
+      ],
+      "mitigations": [
+        "mitigation.sti-denied"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-001] [SR-002] Lowering: with `Tty::NewPty`, independent of the base, macOS allows read, write-data and ioctl on `(extension \"procage.tty\")` and `/dev/tty`; Linux allows `/dev/tty` read, write, `IOCTL_DEV`; the terminal-injection class stays; lowering fixtures \u2014 crates/procage-policy/src/lower/macos.rs, crates/procage-policy/src/lower/linux.rs"
+        },
+        {
+          "id": "T009",
+          "done": true,
+          "text": "[SR-001] [SR-002] R-22 canaries with `Tty::NewPty`: TIOCSTI on the own terminal fails, waived reaches only the controller; another terminal cannot be opened \u2014 crates/procage/tests/escape_macos.rs, crates/procage/tests/escape_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage-policy/src/lower/linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage-policy/src/lower/macos.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/escape_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The controller side and the parent's copy of the terminal end MUST NOT be open in any caged child; the parent MUST hold no copy of the terminal end after the spawn.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "two runs with Tty::NewPty spawned concurrently from different threads",
+          "then": "none is either run's controller or the other run's terminal",
+          "when": "each child lists its open descriptors"
+        },
+        {
+          "given": "a run whose child exited",
+          "then": "the read ends (EOF or EIO) instead of blocking",
+          "when": "the caller reads the controller side"
+        }
+      ],
+      "mitigations": [
+        "mitigation.cloexec-handover"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-003] `open_terminal()` in both `sys` modules: `posix_openpt` close-on-exec, `grantpt`, `unlockpt`, the device name, the device opened close-on-exec, the size set to 80 by 24; `set_size`; `testing::open_pty` moves onto it \u2014 crates/procage/src/macos/sys.rs, crates/procage/src/linux/sys.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-006] [US1] macOS spawn: remove the refusal; open the pair, stdio to the device, the `procage.tty` extension for the device, `Session::Terminal`; parent copies closed after spawn; `Child::take_pty`; exec and exec_session refuse \u2014 crates/procage/src/macos/mod.rs, crates/procage/src/macos/child.rs"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-006] [US1] Linux spawn: the same, with a Landlock rule for exactly the device next to the bound grants \u2014 crates/procage/src/linux/mod.rs, crates/procage/src/linux/spawn.rs, crates/procage/src/linux/child.rs"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[SR-003] [SR-004] Two concurrent runs from two threads: neither child holds a controller or the other's terminal; a spawn test from a busy multithreaded parent uses `Tty::NewPty` on both OSes \u2014 crates/procage/tests/pty.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/pty.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "The child MUST acquire its controlling terminal with system calls only (setsid, ioctl TIOCSCTTY), and spawns with Tty::NewPty from a multithreaded parent MUST succeed.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a parent with several threads allocating and locking",
+          "then": "every child starts with its terminal as controlling terminal",
+          "when": "it spawns many children with Tty::NewPty"
+        }
+      ],
+      "mitigations": [
+        "mitigation.syscall-session"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-004] `Session::Terminal`: `setsid` then `ioctl(0, TIOCSCTTY, 0)` in both child sequences \u2014 crates/procage/src/macos/sys.rs, crates/procage/src/linux/sys.rs"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[SR-003] [SR-004] Two concurrent runs from two threads: neither child holds a controller or the other's terminal; a spawn test from a busy multithreaded parent uses `Tty::NewPty` on both OSes \u2014 crates/procage/tests/pty.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "When a run with Tty::NewPty ends, every process of the run, including background jobs a shell started in the terminal, MUST be dead.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a shell in a new terminal that started a background job",
+          "then": "the shell and the job are dead",
+          "when": "the run ends"
+        }
+      ],
+      "mitigations": [
+        "mitigation.run-end"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-001] [SR-005] [SR-006] [SR-008] [US1] Caged tests on every lane: shell (`sh -i`, isatty, controlling terminal), REPL (`python3 -i`), full-screen (`vi` or `top`), run end kills a background job and the controller reads EOF/EIO, no base still usable, exec/exec_session refused \u2014 crates/procage/tests/pty.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/child.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/child.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Cage::exec and Cage::exec_session MUST refuse Tty::NewPty with a typed error before anything is changed.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a cage with Tty::NewPty",
+          "then": "it returns the unsupported-setting error and the process is unchanged",
+          "when": "exec or exec_session is called"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exec-refuses"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-006] [US1] macOS spawn: remove the refusal; open the pair, stdio to the device, the `procage.tty` extension for the device, `Session::Terminal`; parent copies closed after spawn; `Child::take_pty`; exec and exec_session refuse \u2014 crates/procage/src/macos/mod.rs, crates/procage/src/macos/child.rs"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-001] [SR-003] [SR-006] [US1] Linux spawn: the same, with a Landlock rule for exactly the device next to the bound grants \u2014 crates/procage/src/linux/mod.rs, crates/procage/src/linux/spawn.rs, crates/procage/src/linux/child.rs"
+        },
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-001] [SR-005] [SR-006] [SR-008] [US1] Caged tests on every lane: shell (`sh -i`, isatty, controlling terminal), REPL (`python3 -i`), full-screen (`vi` or `top`), run end kills a background job and the controller reads EOF/EIO, no base still usable, exec/exec_session refused \u2014 crates/procage/tests/pty.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/mod.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "The Pty documentation MUST state that the controller side carries the cage's untrusted bytes, including escape sequences, and that procage does not filter them.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "the rustdoc of Pty",
+          "then": "it says the bytes are untrusted and unfiltered",
+          "when": "a reader looks for how to treat output"
+        }
+      ],
+      "mitigations": [
+        "mitigation.untrusted-output"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-007] Public `Pty` handle (Read/Write, also on `&Pty`; AsFd, AsRawFd, `From<Pty> for OwnedFd`, `device`, `set_size`), rustdoc stating the output is untrusted and unfiltered \u2014 crates/procage/src/pty.rs, crates/procage/src/lib.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/pty.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "An interactive shell, a REPL and a full-screen program MUST run caged through Tty::NewPty in tests on every macOS and Linux lane, and the docs MUST claim no more than those tests show.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "each CI lane",
+          "then": "the shell answers a command, the REPL evaluates an expression and the full-screen program draws and quits",
+          "when": "the terminal tests run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.lane-tests"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-001] [SR-005] [SR-006] [SR-008] [US1] Caged tests on every lane: shell (`sh -i`, isatty, controlling terminal), REPL (`python3 -i`), full-screen (`vi` or `top`), run end kills a background job and the controller reads EOF/EIO, no base still usable, exec/exec_session refused \u2014 crates/procage/tests/pty.rs"
+        },
+        {
+          "id": "T011",
+          "done": true,
+          "text": "[SR-008] Docs: README limits, THREAT_MODEL (does-not list, R-22 evidence), site macOS/Linux terminal sections, CHANGELOG 0.5.0 Unreleased entry; `just` recipes include the new tests \u2014 README.md, crates/procage/THREAT_MODEL.md, site/content/docs/{macos,linux}.md, CHANGELOG.md, justfile"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "README.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/pty.rs",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.child-unsafe",
+    "threat.claim-overstates",
+    "threat.descriptor-leak",
+    "threat.escape-sequences",
+    "threat.exec-fallback",
+    "threat.other-terminal",
+    "threat.outlive",
+    "threat.sti-own"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 8,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 8
+    },
+    "threats_by_severity": {
+      "low": 2,
+      "medium": 4,
+      "high": 2
+    },
+    "mitigations": 8,
+    "requirements": 8,
+    "requirements_with_tasks": 8,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 2,
+      "medium": 6
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

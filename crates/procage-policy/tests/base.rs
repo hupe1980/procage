@@ -112,32 +112,48 @@ fn base_allows_come_before_every_deny() {
     assert!(tty < tiocsti);
 }
 
+/// No terminal without one; the caller's terminals with `Tty::Inherit`;
+/// with `Tty::NewPty` only `/dev/tty` and the run's own device (an
+/// extension class on macOS, a per-spawn rule on Linux), under any base.
 #[test]
-fn a_terminal_only_with_inherit() {
-    for tty in [Tty::None, Tty::NewPty] {
-        assert!(
-            allows(&base(tty)).iter().all(|l| !l.contains("/dev/tty")),
-            "{tty:?}"
-        );
+fn terminals_by_tty_mode() {
+    let terminal_lines = |p: &Policy| -> Vec<String> {
+        allows(p)
+            .into_iter()
+            .filter(|l| l.contains("/dev/tty") || l.contains(PTY_EXTENSION_CLASS))
+            .collect()
+    };
+    assert!(terminal_lines(&base(Tty::None)).is_empty());
+    let mut bare = Policy::default();
+    bare.tty = Tty::NewPty;
+    for p in [base(Tty::NewPty), bare.clone()] {
+        let lines = terminal_lines(&p);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains(&format!("(extension \"{PTY_EXTENSION_CLASS}\")")));
+        assert!(lines[0].contains("(literal \"/dev/tty\")"));
+        assert!(!lines[0].contains("ttys"), "{lines:?}");
     }
     let target = Target::Linux {
         tier: Tier::T1,
         landlock_abi: 8,
     };
-    let tty_rules = |tty| match lower(&base(tty), target, &LowerOptions::default()) {
+    let tty_rules = |p: &Policy| match lower(p, target, &LowerOptions::default()) {
         Ok(Plan::Linux(plan)) => plan
             .landlock
             .rules
             .iter()
-            .filter(|r| {
-                format!("{:?}", r.target).contains("/dev/pts")
-                    || format!("{:?}", r.target).contains("/dev/tty")
-            })
-            .count(),
+            .map(|r| format!("{:?}", r.target))
+            .filter(|t| t.contains("/dev/pts") || t.contains("/dev/tty"))
+            .collect::<Vec<_>>(),
         other => panic!("{other:?}"),
     };
-    assert_eq!(tty_rules(Tty::None), 0);
-    assert_eq!(tty_rules(Tty::Inherit), 2);
+    assert!(tty_rules(&base(Tty::None)).is_empty());
+    assert_eq!(tty_rules(&base(Tty::Inherit)).len(), 2);
+    for p in [base(Tty::NewPty), bare] {
+        let rules = tty_rules(&p);
+        assert_eq!(rules.len(), 1, "{rules:?}");
+        assert!(rules[0].contains("/dev/tty"), "{rules:?}");
+    }
 }
 
 #[test]

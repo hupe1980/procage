@@ -24,7 +24,6 @@
 //!
 //! **Limits:**
 //!
-//! - there are no pseudo-terminals (`Tty::NewPty`);
 //! - the base profiles are curated for macOS 26.6.2;
 //!   [`Base::V1`](procage_policy::Base::V1) does not run Xcode's tool shims
 //!   (`/usr/bin/git`, `/usr/bin/python3`): use
@@ -40,6 +39,7 @@ mod lifetime;
 mod probe;
 mod spawn;
 mod sys;
+pub(crate) use sys::{open_terminal, set_window};
 mod violations;
 
 use std::collections::HashMap;
@@ -706,11 +706,6 @@ impl Cage {
     /// Prepares `policy`. Fails with [`SpawnError::AlreadySandboxed`] in a
     /// process that is itself sandboxed.
     pub fn with_options(policy: &Policy, options: &CageOptions) -> Result<Cage, SpawnError> {
-        if policy.tty == Tty::NewPty {
-            return Err(SpawnError::Unsupported(Unsupported::Setting {
-                setting: "Tty::NewPty",
-            }));
-        }
         let lib = libsandbox()?;
         // A sandboxed process cannot cage a child (the kernel refuses or
         // ignores a second profile); say so before anything else fails.
@@ -865,7 +860,9 @@ impl Cage {
         fds: &[BorrowedFd<'_>],
     ) -> Result<Child, SpawnError> {
         let launch = self.launch(command, grants, fds)?;
-        match command.spawn() {
+        let spawned = command.spawn();
+        launch.release(command);
+        match spawned {
             Ok(inner) => Ok(self.adopt(launch, crate::unix::Proc::Std(inner))),
             Err(e) => Err(launch.abandon(e)),
         }
@@ -879,10 +876,10 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
     ) -> Result<Launch, SpawnError> {
-        let session = if self.plan.hygiene.tty == Tty::Inherit {
-            sys::Session::Group
-        } else {
-            sys::Session::New
+        let session = match self.plan.hygiene.tty {
+            Tty::Inherit => sys::Session::Group,
+            Tty::NewPty => sys::Session::Terminal,
+            Tty::None => sys::Session::New,
         };
         #[cfg(feature = "proxy")]
         let (listeners, overrides) = self.proxy_listeners(command)?;
@@ -960,7 +957,6 @@ impl Cage {
             .proxied
             .as_ref()
             .and_then(|p| p.serve(listeners, report.clone()));
-        #[cfg_attr(not(feature = "proxy"), allow(unused_mut))]
         let mut child = Child::new(
             inner,
             prepared.dropped,
@@ -975,6 +971,7 @@ impl Cage {
         );
         #[cfg(feature = "proxy")]
         child.set_proxy(proxy_run);
+        child.set_pty(prepared.pty);
         child
     }
 
@@ -1079,6 +1076,12 @@ impl Cage {
         session: sys::Session,
     ) -> SpawnError {
         use std::os::unix::process::CommandExt;
+        if self.plan.hygiene.tty == Tty::NewPty {
+            // No handle would hold the terminal's controller side.
+            return SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Cage::exec with Tty::NewPty",
+            });
+        }
         if self.grant_slot(TMPDIR_GRANT).is_some() {
             return SpawnError::Grant(GrantError::TmpdirWithExec);
         }
@@ -1134,7 +1137,15 @@ impl Cage {
                 command.env("TMPDIR", dir);
             }
         }
-        let tokens = spawn::tokens(lib, self, &grants)?;
+        let mut tokens = spawn::tokens(lib, self, &grants)?;
+        let pty = if session == sys::Session::Terminal {
+            let (pty, device) = crate::Pty::open().map_err(SpawnError::Io)?;
+            tokens.push(spawn::terminal_token(lib, pty.device())?);
+            crate::unix::terminal_stdio(command, &device).map_err(SpawnError::Io)?;
+            Some(pty)
+        } else {
+            None
+        };
         let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
             .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
         if matches!(session, sys::Session::Keep | sys::Session::Lead) {
@@ -1155,6 +1166,7 @@ impl Cage {
             dropped,
             tmpdir: removal,
             run,
+            pty,
         })
     }
 
@@ -1201,6 +1213,14 @@ pub(crate) struct Launch {
 impl Launch {
     /// The spawn failed: no process is left behind, but the run's slot is
     /// retired (dropped) rather than freed, to stay on the safe side.
+    /// Closes the parent's copies of the terminal on `command`'s standard
+    /// streams once the child has them, so the controller sees the run end.
+    pub(crate) fn release(&self, command: &mut Command) {
+        if self.prepared.pty.is_some() {
+            crate::unix::release_stdio(command);
+        }
+    }
+
     pub(crate) fn abandon(self, e: std::io::Error) -> SpawnError {
         if let Some(run) = &self.prepared.run {
             violations::unregister(run.marker());
@@ -1214,6 +1234,8 @@ struct Prepared {
     dropped: Vec<String>,
     tmpdir: TmpdirGuard,
     run: Option<lifetime::Run>,
+    /// The controller of the run's new terminal (`Tty::NewPty`).
+    pty: Option<crate::Pty>,
 }
 
 /// The descriptors to hand over: those above the standard three, each of

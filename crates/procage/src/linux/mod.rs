@@ -117,6 +117,7 @@ mod seccomp;
 mod services;
 mod spawn;
 mod sys;
+pub(crate) use sys::{open_terminal, set_window};
 mod violations;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -816,11 +817,6 @@ impl Cage {
     /// Prepares `policy` for the strongest tier the host allows, or for
     /// `options.tier`.
     pub fn with_options(policy: &Policy, options: &CageOptions) -> Result<Cage, SpawnError> {
-        if policy.tty == Tty::NewPty {
-            return Err(SpawnError::Unsupported(Unsupported::Setting {
-                setting: "Tty::NewPty",
-            }));
-        }
         let host = probe();
         let tier = match options.tier {
             Some(Tier::T1) if host.tier != Some(Tier::T1) => {
@@ -1035,7 +1031,9 @@ impl Cage {
         fds: &[BorrowedFd<'_>],
     ) -> Result<Child, SpawnError> {
         let launch = self.launch(command, grants, fds)?;
-        match command.spawn() {
+        let spawned = command.spawn();
+        launch.release(command);
+        match spawned {
             Ok(inner) => Ok(self.adopt(launch, crate::unix::Proc::Std(inner))),
             Err(e) => Err(launch.abandon(e)),
         }
@@ -1049,10 +1047,10 @@ impl Cage {
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
     ) -> Result<Launch, SpawnError> {
-        let session = if self.plan.hygiene.tty == Tty::Inherit {
-            sys::Session::Group
-        } else {
-            sys::Session::New
+        let session = match self.plan.hygiene.tty {
+            Tty::Inherit => sys::Session::Group,
+            Tty::NewPty => sys::Session::Terminal,
+            Tty::None => sys::Session::New,
         };
         let (parent_end, notify) = match &self.notifying {
             Some(filter) => {
@@ -1083,7 +1081,7 @@ impl Cage {
         };
         #[cfg(not(feature = "proxy"))]
         let bridge = None;
-        let (dropped, removal, proc, mounts) =
+        let (dropped, removal, proc, mounts, pty) =
             self.prepare(command, grants, fds, session, notify, bridge)?;
         // The link check is the last step before the fork.
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
@@ -1096,6 +1094,7 @@ impl Cage {
             run_audit,
             names,
             mounts,
+            pty,
             #[cfg(feature = "proxy")]
             bridge_end,
         })
@@ -1110,6 +1109,7 @@ impl Cage {
             proc,
             run_audit,
             mut names,
+            pty,
             #[cfg(feature = "proxy")]
             bridge_end,
             ..
@@ -1147,10 +1147,10 @@ impl Cage {
                 note: procage_policy::linux::PROC_OTHER_PROCESSES_NOTE.into(),
             });
         }
-        #[cfg_attr(not(feature = "proxy"), allow(unused_mut))]
         let mut child = Child::new(inner, dropped, tmpdir, reporting, facts, run_audit);
         #[cfg(feature = "proxy")]
         child.set_proxy(proxy_run);
+        child.set_pty(pty);
         child
     }
 
@@ -1268,6 +1268,12 @@ impl Cage {
         session: sys::Session,
     ) -> SpawnError {
         use std::os::unix::process::CommandExt;
+        if self.plan.hygiene.tty == Tty::NewPty {
+            // No handle would hold the terminal's controller side.
+            return SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Cage::exec with Tty::NewPty",
+            });
+        }
         if self.declared().contains(TMPDIR_GRANT) {
             return SpawnError::Grant(GrantError::TmpdirWithExec);
         }
@@ -1284,7 +1290,7 @@ impl Cage {
             });
         }
         match self.prepare(command, grants, fds, session, None, None) {
-            Ok((.., mounts)) => match self.audit.before_spawn() {
+            Ok((.., mounts, _)) => match self.audit.before_spawn() {
                 Ok(_) => mounts.decode(command.exec()),
                 Err(found) => SpawnError::HardLinks(found),
             },
@@ -1305,7 +1311,7 @@ impl Cage {
         session: sys::Session,
         notify: Option<sys::Notify>,
         bridge: Option<sys::Bridge>,
-    ) -> Result<(Vec<String>, TmpdirGuard, bool, Mounts), SpawnError> {
+    ) -> Result<Prepared, SpawnError> {
         let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
         if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
             return Err(SpawnError::Grant(GrantError::Reserved {
@@ -1328,9 +1334,17 @@ impl Cage {
         }
         let bound = self.bind(&grants, &declared)?;
         let service_covers = self.service_covers()?;
+        let pty = if session == sys::Session::Terminal {
+            let (pty, device) = crate::Pty::open().map_err(SpawnError::Io)?;
+            crate::unix::terminal_stdio(command, &device).map_err(SpawnError::Io)?;
+            Some(pty)
+        } else {
+            None
+        };
         let ruleset = spawn::ruleset(
             &self.plan,
             &bound,
+            pty.as_ref().map(crate::Pty::device),
             &self.hidden_piecewise(),
             self.walk_limit,
         )?;
@@ -1387,7 +1401,7 @@ impl Cage {
         }
         .install(command);
         let proc = bound.values().any(|p| proc_gap(&self.plan, p).is_some());
-        Ok((dropped, removal, proc, mounts))
+        Ok((dropped, removal, proc, mounts, pty))
     }
 
     /// The paths kept out piecewise on tier T2: hidden rules, and the
@@ -1593,17 +1607,33 @@ pub(crate) struct Launch {
     run_audit: crate::audit::RunAudit,
     names: Vec<String>,
     mounts: Mounts,
+    /// The controller of the run's new terminal (`Tty::NewPty`).
+    pty: Option<crate::Pty>,
     /// The parent's end of the proxy listeners' socket pair.
     #[cfg(feature = "proxy")]
     bridge_end: Option<std::os::fd::OwnedFd>,
 }
 
 impl Launch {
+    /// Closes the parent's copies of the terminal on `command`'s standard
+    /// streams once the child has them, so the controller sees the run end.
+    pub(crate) fn release(&self, command: &mut Command) {
+        if self.pty.is_some() {
+            crate::unix::release_stdio(command);
+        }
+    }
+
     /// The spawn failed: no process is left behind.
     pub(crate) fn abandon(self, e: std::io::Error) -> SpawnError {
         self.mounts.decode(e)
     }
 }
+
+/// What [`Cage::prepare`] made for one spawn: the names dropped from the
+/// environment, the temporary directory's removal, whether a grant reaches
+/// other processes' `/proc` entries, the T1 mount plan and the new
+/// terminal's controller.
+type Prepared = (Vec<String>, TmpdirGuard, bool, Mounts, Option<crate::Pty>);
 
 /// The T1 mount plan a spawn handed to its child, kept to name the path
 /// when the child refuses a moved mount.

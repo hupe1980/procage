@@ -11,7 +11,7 @@ use super::{
 };
 use crate::explain::Decider;
 use crate::policy::{
-    Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Ports, Signals,
+    Access, Base, Exec, FsTarget, HardDenyClass, Lifetime, Network, Policy, Ports, Signals, Tty,
 };
 use crate::sbpl::{self, DenyReason, Filter, Rule};
 use crate::seatbelt::{self, Effect};
@@ -498,6 +498,34 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
                 crate::base::macos_v2_ancestors(paths).into_iter().collect(),
             ));
         }
+    }
+    // A new terminal: the run's own device (an extension each spawn issues),
+    // `/dev/tty`, which names the controlling terminal, and the listing of
+    // `/dev`, under every base. The terminal-injection tier still denies
+    // TIOCSTI.
+    if policy.tty == Tty::NewPty {
+        ledger.outcome(Construct::TtyNewPty, Outcome::Exact, None, "");
+        allow.push((
+            Rule::new(
+                Effect::Allow,
+                &["file-read*", "file-write-data", "file-ioctl"],
+                vec![
+                    Filter::Extension(super::PTY_EXTENSION_CLASS.to_string()),
+                    Filter::Literal(b"/dev/tty".to_vec()),
+                ],
+            ),
+            Decider::Setting("tty"),
+        ));
+        // `ttyname` lists `/dev` to name the terminal (measured on macOS
+        // 26.6.2: `tty` fails without it); the listing opens no device.
+        allow.push((
+            Rule::new(
+                Effect::Allow,
+                &["file-read*"],
+                vec![Filter::Literal(b"/dev".to_vec())],
+            ),
+            Decider::Setting("tty"),
+        ));
     }
 
     if let Some(layer) = &policy.seatbelt {

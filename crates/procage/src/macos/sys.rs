@@ -412,6 +412,9 @@ pub(crate) enum Session {
     /// `setsid()` unless the process leads its session already
     /// (`Cage::exec_session`).
     Lead,
+    /// `setsid()`, then `ioctl(0, TIOCSCTTY)`: a new session whose
+    /// controlling terminal is the one on standard input (`Tty::NewPty`).
+    Terminal,
 }
 
 /// Everything the child needs between `fork` and `execve`, prepared in the
@@ -704,6 +707,13 @@ impl ChildPlan {
                     setsid().map_err(|e| fail(steps::SESSION, e))?;
                 }
             }
+            Session::Terminal => {
+                setsid().map_err(|e| fail(steps::SESSION, e))?;
+                match ioctl_errno(0, libc::TIOCSCTTY as _) {
+                    0 => {}
+                    e => return Err(fail(steps::SESSION, e)),
+                }
+            }
         }
         for &(resource, cur, max) in &self.limits {
             setrlimit(resource, cur, max).map_err(|e| fail(steps::RLIMIT, e))?;
@@ -912,39 +922,80 @@ pub(crate) fn kill_errno(pid: libc::pid_t, sig: c_int) -> i32 {
     }
 }
 
-/// A new pseudo-terminal: the controller and the device path of the other
-/// end.
-pub(crate) fn open_pty() -> std::io::Result<(std::os::fd::OwnedFd, std::path::PathBuf)> {
-    use std::os::fd::FromRawFd;
+/// A new pseudo-terminal: the controller, the other end (the device) and
+/// the device's path. Every descriptor is close-on-exec from the start, and
+/// the window is 80 columns by 24 rows.
+pub(crate) fn open_terminal() -> std::io::Result<(
+    std::os::fd::OwnedFd,
+    std::os::fd::OwnedFd,
+    std::path::PathBuf,
+)> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::os::unix::ffi::OsStrExt;
-    let (mut controller, mut device) = (-1, -1);
+    let last = std::io::Error::last_os_error;
+    // SAFETY: a plain call with flags; the descriptor is ours.
+    let fd = unsafe { libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(last());
+    }
+    // SAFETY: a fresh descriptor we own.
+    let controller = unsafe { OwnedFd::from_raw_fd(fd) };
     let mut name = [0 as c_char; 128];
-    // SAFETY: out-parameters on this frame; `name` holds the 128 bytes
-    // openpty may write; no termios or window size.
+    // SAFETY: plain calls on our descriptor; TIOCPTYGNAME writes at most
+    // 128 bytes, the size of `name`, NUL-terminated.
     let rc = unsafe {
-        libc::openpty(
-            &raw mut controller,
-            &raw mut device,
-            name.as_mut_ptr(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        )
+        if libc::grantpt(fd) != 0 || libc::unlockpt(fd) != 0 {
+            -1
+        } else {
+            libc::ioctl(fd, libc::TIOCPTYGNAME as _, name.as_mut_ptr())
+        }
     };
     if rc != 0 {
-        return Err(std::io::Error::last_os_error());
+        return Err(last());
     }
-    // SAFETY: both descriptors are fresh and owned here; the device end is
-    // closed (the caller opens it by path).
-    let controller = unsafe {
-        drop(std::os::fd::OwnedFd::from_raw_fd(device));
-        std::os::fd::OwnedFd::from_raw_fd(controller)
-    };
-    // SAFETY: openpty wrote a NUL-terminated name.
+    // SAFETY: the name is NUL-terminated within the buffer.
     let name = unsafe { CStr::from_ptr(name.as_ptr()) };
+    // SAFETY: open with a NUL-terminated path; the descriptor is ours.
+    let device = unsafe {
+        libc::open(
+            name.as_ptr(),
+            libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC,
+        )
+    };
+    if device < 0 {
+        return Err(last());
+    }
+    // SAFETY: a fresh descriptor we own.
+    let device = unsafe { OwnedFd::from_raw_fd(device) };
+    set_window(controller.as_raw_fd(), 24, 80)?;
     Ok((
         controller,
+        device,
         std::ffi::OsStr::from_bytes(name.to_bytes()).into(),
     ))
+}
+
+/// A new pseudo-terminal: the controller and the device path of the other
+/// end (closed).
+pub(crate) fn open_pty() -> std::io::Result<(std::os::fd::OwnedFd, std::path::PathBuf)> {
+    let (controller, _, path) = open_terminal()?;
+    Ok((controller, path))
+}
+
+/// Sets a terminal's window size (`TIOCSWINSZ`).
+pub(crate) fn set_window(fd: c_int, rows: u16, cols: u16) -> std::io::Result<()> {
+    let size = libc::winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // SAFETY: the ioctl reads the structure on this frame.
+    if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &raw const size) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 /// `ioctl(fd, request)` without an argument; the errno, or 0.

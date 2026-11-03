@@ -346,6 +346,12 @@ pub const CLONE_NEW_ANY: u32 = 0x0002_0000 // NEWNS
     | 0x4000_0000; // NEWNET
 /// `CLONE_THREAD`.
 pub const CLONE_THREAD: u32 = 0x0001_0000;
+/// The rights on a terminal device the child may use (`Tty::Inherit`'s
+/// terminals, `Tty::NewPty`'s own device and `/dev/tty`): read, write and
+/// device ioctls.
+pub const TERMINAL_ACCESS: AccessFs = AccessFs::READ_FILE
+    .union(AccessFs::WRITE_FILE)
+    .union(AccessFs::IOCTL_DEV);
 /// `TIOCSTI`.
 pub const TIOCSTI: u64 = 0x5412;
 /// `TIOCLINUX`.

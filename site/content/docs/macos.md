@@ -59,7 +59,6 @@ Seatbelt cannot filter `setsid`, so a descendant can leave the child's session a
 ## Limits
 
 - **Process introspection (R-25).** Unsandboxed, any process of the same user can read another's arguments and environment through `KERN_PROCARGS2`. The `process-access` hard-deny class refuses it on every base: it denies the argument sysctls by prefix (`kern.procargs`) and other processes' information, the only rule shapes the query honours (measured on 26.6.2), and keeps the run's own processes readable (`(target same-sandbox)`). `ps` cannot list them: it is setuid, and setuid programs are refused in any cage; `pgrep` needs `sysmond` and fails in any cage. Signals to other processes and task ports are refused too. Waiving `process-access` lifts all of it.
-- No pseudo-terminals (`Tty::NewPty` is refused).
 - The base profiles are curated for macOS 26.6.2. A later release may need a new base version.
 - Apple may change or remove the private libsandbox interface in any release. procage reports a missing symbol or a failed probe as `Unsupported`, naming the macOS build.
 

@@ -133,6 +133,7 @@ constructs! {
     BaseV1 => "base-v1",
     BaseV2 => "base-v2",
     BaseV3 => "base-v3",
+    TtyNewPty => "tty-new-pty",
     ProcOtherProcesses => "proc-other-processes",
     HdFcntlModify => "hd-fcntl-modify",
     HdPrivilege => "hd-privilege",
@@ -515,6 +516,11 @@ pub const RUN_PREFIX_PARAM: &str = "procage-run-prefix";
 /// profile allows looking up. No service registers it; a process's sandbox
 /// allowing it marks the process as one of the run's.
 pub const RUN_MARKER_PARAM: &str = "procage-run-marker";
+
+/// The sandbox-extension class of a run's own terminal device
+/// (`Tty::NewPty`): each spawn issues it for its device. Grant classes are
+/// `procage.<name>` without a dot in the name, so none can equal it.
+pub const PTY_EXTENSION_CLASS: &str = "procage.pty.device";
 
 /// The parameter for the address a `Network::Proxy` profile allows for HTTP
 /// (`localhost:<port>`). The plan's `params` give the policy's port; a spawn

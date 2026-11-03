@@ -574,6 +574,9 @@ pub(crate) enum Session {
     /// `setsid()` unless the process leads its session already
     /// (`Cage::exec_session`).
     Lead,
+    /// `setsid()`, then `ioctl(0, TIOCSCTTY)`: a new session whose
+    /// controlling terminal is the one on standard input (`Tty::NewPty`).
+    Terminal,
 }
 
 /// Everything the child needs between `fork` and `execve`, prepared in the
@@ -956,10 +959,17 @@ impl ChildPlan {
                 Session::Group => libc::setpgid(0, 0),
                 Session::Keep => 0,
                 Session::Lead if libc::getsid(0) == libc::getpid() => 0,
-                Session::Lead => libc::setsid(),
+                Session::Lead | Session::Terminal => libc::setsid(),
             }
         };
         check_int(rc).map_err(|e| fail(steps::SESSION, e))?;
+        if self.session == Session::Terminal {
+            // The request type is `c_ulong` on glibc and `c_int` on musl.
+            #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
+            // SAFETY: TIOCSCTTY takes an integer argument.
+            let rc = unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) };
+            check_int(rc).map_err(|e| fail(steps::SESSION, e))?;
+        }
         let parent = self.parent;
         let death = move || -> std::io::Result<()> {
             prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as c_ulong)
@@ -1260,38 +1270,70 @@ fn c_path(p: &std::path::Path) -> std::io::Result<CString> {
     CString::new(p.as_os_str().as_bytes()).map_err(std::io::Error::other)
 }
 
-/// A new pseudo-terminal: the controller and the device path of the other
-/// end (for procage's tests).
-pub(crate) fn open_pty() -> std::io::Result<(OwnedFd, std::path::PathBuf)> {
-    use std::os::unix::ffi::OsStrExt;
-    let (mut controller, mut device) = (-1, -1);
-    let mut name = [0 as libc::c_char; 128];
-    // SAFETY: out-parameters on this frame; `name` holds the 128 bytes
-    // openpty may write; no termios or window size.
+/// A new pseudo-terminal: the controller, the other end (the device) and
+/// the device's path. Every descriptor is close-on-exec from the start, and
+/// the window is 80 columns by 24 rows.
+pub(crate) fn open_terminal() -> std::io::Result<(OwnedFd, OwnedFd, std::path::PathBuf)> {
+    let last = std::io::Error::last_os_error;
+    // SAFETY: a plain call with flags; the descriptor is ours.
+    let fd = unsafe { libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(last());
+    }
+    // SAFETY: a fresh descriptor we own.
+    let controller = unsafe { OwnedFd::from_raw_fd(fd) };
+    let mut number: c_int = 0;
+    // The request type is `c_ulong` on glibc and `c_int` on musl.
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
+    // SAFETY: plain calls on our descriptor; TIOCGPTN writes one integer on
+    // this frame.
     let rc = unsafe {
-        libc::openpty(
-            &raw mut controller,
-            &raw mut device,
-            name.as_mut_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
-        )
+        if libc::grantpt(fd) != 0 || libc::unlockpt(fd) != 0 {
+            -1
+        } else {
+            libc::ioctl(fd, libc::TIOCGPTN as _, &raw mut number)
+        }
     };
     if rc != 0 {
-        return Err(std::io::Error::last_os_error());
+        return Err(last());
     }
-    // SAFETY: both descriptors are fresh and owned here; the device end is
-    // closed (the caller opens it by path).
-    let controller = unsafe {
-        drop(OwnedFd::from_raw_fd(device));
-        OwnedFd::from_raw_fd(controller)
+    let path = std::path::PathBuf::from(format!("/dev/pts/{number}"));
+    let c = c_path(&path)?;
+    // SAFETY: open with a NUL-terminated path; the descriptor is ours.
+    let device = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC) };
+    if device < 0 {
+        return Err(last());
+    }
+    // SAFETY: a fresh descriptor we own.
+    let device = unsafe { OwnedFd::from_raw_fd(device) };
+    set_window(controller.as_raw_fd(), 24, 80)?;
+    Ok((controller, device, path))
+}
+
+/// A new pseudo-terminal: the controller and the device path of the other
+/// end, closed (for procage's tests).
+pub(crate) fn open_pty() -> std::io::Result<(OwnedFd, std::path::PathBuf)> {
+    let (controller, _, path) = open_terminal()?;
+    Ok((controller, path))
+}
+
+/// Sets a terminal's window size (`TIOCSWINSZ`).
+pub(crate) fn set_window(fd: c_int, rows: u16, cols: u16) -> std::io::Result<()> {
+    let size = libc::winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
     };
-    // SAFETY: openpty wrote a NUL-terminated name.
-    let name = unsafe { CStr::from_ptr(name.as_ptr()) };
-    Ok((
-        controller,
-        std::ffi::OsStr::from_bytes(name.to_bytes()).into(),
-    ))
+    // The request type is `c_ulong` on glibc and `c_int` on musl.
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
+    // SAFETY: the ioctl reads the structure on this frame.
+    let rc = unsafe { libc::ioctl(fd, libc::TIOCSWINSZ as _, &raw const size) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 /// `ioctl(fd, TIOCSCTTY, 0)`, or with `byte`, `ioctl(fd, TIOCSTI, &byte)`;

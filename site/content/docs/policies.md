@@ -85,7 +85,7 @@ The order of rules never changes the result. `AbsPath` is an absolute path held 
 
 - `EnvPolicy::Allowlist(names)` (default, empty) passes only the named variables of the caller; `EnvPolicy::Passthrough { deny }` passes everything except `deny` and a built-in denylist of secret-looking names. See [Environment](@/docs/lifetime-and-hygiene.md#environment).
 - `Rlimits` sets `nproc`, `cpu_seconds`, `fsize_bytes`, `nofile` and `core_bytes` (0 by default: no core dumps).
-- `Tty::None` (default), `Tty::Inherit` or `Tty::NewPty` (refused: no pseudo-terminals). See [The terminal](@/docs/lifetime-and-hygiene.md#the-terminal).
+- `Tty::None` (default), `Tty::Inherit` or `Tty::NewPty` (a new pseudo-terminal). See [The terminal](@/docs/lifetime-and-hygiene.md#the-terminal).
 
 ## Base profiles
 

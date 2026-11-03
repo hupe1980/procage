@@ -56,7 +56,7 @@ A variable set explicitly on the `Command` is always kept; `Child::dropped_env()
 
 - `Tty::None` (default): no controlling terminal; the child leads its own session.
 - `Tty::Inherit`: the child shares the caller's terminal in its own process group, so its reads stop with `SIGTTIN` like a background job; keystroke injection with `TIOCSTI` (and `TIOCLINUX` on Linux) is denied (R-22).
-- `Tty::NewPty`: refused; procage has no pseudo-terminals.
+- `Tty::NewPty`: a new pseudo-terminal. procage creates the pair, makes the other end the child's standard input, output and error (replacing whatever the `Command` had) and its controlling terminal, in a session of its own. `Child::take_pty()` hands over the controller side as a `procage::Pty`: write the child's input, read its output, `set_size(rows, cols)` (it starts at 80 by 24), `device()`. The child may use exactly its own device and `/dev/tty` (read, write, terminal ioctls; on macOS also the listing of `/dev`, which `ttyname` needs), under any base and nothing else; pushing input with `TIOCSTI` stays denied (R-22). When the run ends the terminal closes and every process of the run, background jobs included, is killed. `Cage::exec` and `Cage::exec_session` refuse it: no handle would hold the controller. What the controller reads is the cage's untrusted output, escape sequences included; do not pass it unfiltered to a terminal that acts on them. Tested on every lane with an interactive shell, `python3 -i` and a full-screen program (`vi`, or `top` where no `vi` ships).
 
 ## A private temporary directory
 

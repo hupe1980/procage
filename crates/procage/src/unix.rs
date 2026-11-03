@@ -3,8 +3,9 @@
 
 use std::ffi::OsString;
 use std::io;
+use std::os::fd::OwnedFd;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use procage_policy::{EnvPolicy, Rlimits};
 
@@ -180,6 +181,25 @@ pub(crate) fn limits(limits: &Rlimits) -> Vec<(libc::c_int, u64, u64)> {
         }
     }
     out
+}
+
+/// Makes `device` (a new terminal's other end) the command's standard
+/// input, output and error, each a close-on-exec duplicate.
+pub(crate) fn terminal_stdio(command: &mut Command, device: &OwnedFd) -> io::Result<()> {
+    command
+        .stdin(Stdio::from(device.try_clone()?))
+        .stdout(Stdio::from(device.try_clone()?))
+        .stderr(Stdio::from(device.try_clone()?));
+    Ok(())
+}
+
+/// Drops the command's standard streams (closing the parent's copies of a
+/// terminal set by [`terminal_stdio`]).
+pub(crate) fn release_stdio(command: &mut Command) {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 }
 
 /// The grant name procage binds to a private temporary directory.

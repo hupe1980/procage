@@ -946,10 +946,12 @@ fn refusals_before_any_child() {
     let mut p = base();
     p.tty = Tty::NewPty;
     assert!(matches!(
-        Cage::new(&p),
-        Err(SpawnError::Unsupported(Unsupported::Setting {
-            setting: "Tty::NewPty"
-        }))
+        Cage::new(&p)
+            .unwrap()
+            .exec(&mut Command::new("/bin/true"), &Grants::new()),
+        SpawnError::Unsupported(Unsupported::Setting {
+            setting: "Cage::exec with Tty::NewPty"
+        })
     ));
     let mut p = base();
     p.linux = Some(linux::Layer::default());
