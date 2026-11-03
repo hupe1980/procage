@@ -6,6 +6,14 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-03
+
+### Fixed
+
+- Release: the npm package is published (0.7.0's upload read the tarball
+  path as a GitHub repository and failed; crates.io and PyPI have 0.7.0).
+  No code change.
+
 ## [0.7.0] - 2026-11-03
 
 ### Added
@@ -306,7 +314,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/hupe1980/procage/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/hupe1980/procage/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/hupe1980/procage/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/hupe1980/procage/compare/v0.5.0...v0.6.0

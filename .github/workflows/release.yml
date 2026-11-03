@@ -191,7 +191,8 @@ jobs:
       - name: Pack (the contents are checked)
         run: bindings/nodejs/build.sh pack "$PWD/npm"
       - name: Publish to npm with provenance
-        run: npm publish --provenance --access public npm/procage-*.tgz
+        # A path, not "owner/repo": npm reads a bare a/b as a GitHub repository.
+        run: npm publish --provenance --access public ./npm/procage-*.tgz
 
   # Last: the GitHub release announces a version only once crates.io, PyPI
   # and npm all have it.

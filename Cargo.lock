@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "procage"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "futures-core",
  "libc",
@@ -331,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "procage-kernel-facts"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "libc",
  "procage-policy",
@@ -340,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "procage-node"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "napi",
  "napi-build",
@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "procage-policy"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -360,11 +360,11 @@ dependencies = [
 
 [[package]]
 name = "procage-proxy"
-version = "0.7.0"
+version = "0.7.1"
 
 [[package]]
 name = "procage-py"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "procage",
  "procage-policy",
