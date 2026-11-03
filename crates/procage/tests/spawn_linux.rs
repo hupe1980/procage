@@ -18,6 +18,7 @@ use scratch_support::Scratch;
 
 use std::io::Read;
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -1796,6 +1797,39 @@ fn reporting_spawns_from_many_threads() {
     for t in threads {
         t.join().unwrap();
     }
+}
+
+/// A class name the caller cannot reach (a GitHub runner's root-only
+/// `/run/podman`) is not covered and does not fail the spawn: the child,
+/// the same user without capabilities over the host's files, cannot reach
+/// it either. As root the name is reachable and covered as usual.
+#[test]
+fn a_cover_the_caller_cannot_reach_does_not_fail_the_spawn() {
+    if !t1("a_cover_the_caller_cannot_reach_does_not_fail_the_spawn") {
+        return;
+    }
+    let d = scratch("unreachable-runtime");
+    let dir = d.join("run");
+    std::fs::create_dir_all(&dir).unwrap();
+    let _listener = std::os::unix::net::UnixListener::bind(dir.join("docker.sock")).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+    // The socket classes are in force with the network on; both are
+    // accepted as covered at spawn.
+    let mut p = base();
+    p.net = Network::All;
+    let lower = masked()
+        .allow(Construct::of_class(HardDenyClass::ServiceHandoff))
+        .allow(Construct::of_class(HardDenyClass::ContainerEngines))
+        .accept_spawn_snapshot();
+    let opts = options(Tier::T1).with_runtime_dir(&dir).with_lower(lower);
+    let result = Cage::with_options(&p, &opts).and_then(|cage| {
+        let mut cmd = Command::new("/bin/true");
+        cage.spawn(&mut cmd, &Grants::new())
+    });
+    // Restored before asserting, so the scratch directory can be removed.
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut child = result.unwrap_or_else(|e| panic!("spawn: {e}"));
+    assert!(child.wait().unwrap().success());
 }
 
 /// On T1 the foreign sockets found at spawn are masked in the child. A

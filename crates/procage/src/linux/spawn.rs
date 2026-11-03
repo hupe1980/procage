@@ -424,10 +424,13 @@ pub(super) fn mounts(
     // Covers come from the file system at spawn (class names, foreign
     // sockets): one whose file is removed before it is mounted, here or in
     // the child, has nothing left to cover and is skipped, as a file created
-    // after the spawn is never covered. Each holds its object, so the child
-    // tells a removed file from a moved one.
+    // after the spawn is never covered. A name the caller cannot reach (a
+    // root-only `/run/podman`) is skipped too: the child runs as the same
+    // user and holds no capability over the host's files, so it cannot
+    // reach it either. Each holds its object, so the child tells a removed
+    // file from a moved one.
     for (path, cover) in covers {
-        let gone = |e: &SpawnError| matches!(e, SpawnError::Path { error, .. } if error.raw_os_error() == Some(libc::ENOENT));
+        let gone = |e: &SpawnError| matches!(e, SpawnError::Path { error, .. } if matches!(error.raw_os_error(), Some(libc::ENOENT | libc::EACCES)));
         let mut p = match planned(path) {
             Ok(p) => p,
             Err(e) if gone(&e) => continue,
@@ -435,7 +438,7 @@ pub(super) fn mounts(
         };
         let held = match sys::hold(&p.c) {
             Ok(fd) => fd,
-            Err(libc::ENOENT) => continue,
+            Err(libc::ENOENT | libc::EACCES) => continue,
             Err(e) => return Err(path_error(&p.path, e)),
         };
         // The object held is the one planned: the name may have passed to

@@ -40,7 +40,11 @@
    A removed cover (no name left) is skipped whatever its old name leads
    to now (`ENOENT`, `ESTALE` or `ELOOP`: a socket removed and bound
    again at the same path is a new file, never covered); a cover still
-   named elsewhere was moved and refuses the spawn. A cover beneath a hidden directory is dropped from the
+   named elsewhere was moved and refuses the spawn. A cover the caller
+   cannot reach (`EACCES`: a GitHub runner's root-only `/run/podman`) is
+   skipped, as 0.4.0 did: the child is the same user with no capability
+   over the host's files, so it cannot reach it either (found by CI run
+   41628757579; `a_cover_the_caller_cannot_reach_does_not_fail_the_spawn`). A cover beneath a hidden directory is dropped from the
    plan: the empty tmpfs shadows it already.
 3. **Child sequence.** Only system calls, on buffers prepared in the parent.
    - After `unshare` and the id maps, the one path-based mount call stays:
