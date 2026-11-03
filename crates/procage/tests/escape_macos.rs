@@ -1235,3 +1235,119 @@ fn r36_a_proxy_only_child_has_no_other_route() {
     );
     assert!(got.split(' ').all(|r| r != "ok"), "{got}");
 }
+
+// ---- R-37 Case variants of an allow ----
+
+/// A case-sensitive APFS disk image attached at a scratch directory,
+/// detached on drop. A lane that cannot create one fails the canary.
+struct CaseSensitive {
+    mount: PathBuf,
+    _dir: Scratch,
+}
+
+impl CaseSensitive {
+    fn new(tag: &str) -> CaseSensitive {
+        let dir = scratch(tag).canonical();
+        let (image, mount) = (dir.join("vol.dmg"), dir.join("mnt"));
+        std::fs::create_dir(&mount).unwrap();
+        for args in [
+            vec![
+                "create",
+                "-quiet",
+                "-size",
+                "16m",
+                "-fs",
+                "Case-sensitive APFS",
+            ],
+            vec!["attach", "-quiet", "-nobrowse", "-mountpoint"],
+        ] {
+            let mut cmd = Command::new("/usr/bin/hdiutil");
+            cmd.args(&args);
+            if args[0] == "attach" {
+                cmd.arg(&mount);
+            }
+            let out = cmd.arg(&image).output().unwrap();
+            assert!(
+                out.status.success(),
+                "hdiutil {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        CaseSensitive { mount, _dir: dir }
+    }
+}
+
+impl Drop for CaseSensitive {
+    fn drop(&mut self) {
+        let _ = Command::new("/usr/bin/hdiutil")
+            .args(["detach", "-quiet", "-force"])
+            .arg(&self.mount)
+            .status();
+    }
+}
+
+/// Seatbelt matches paths case-insensitively on every volume, so on a
+/// case-sensitive one an allow for `work` would also allow `WORK`, another
+/// file. Allow rules, an allowed socket, a Seatbelt-layer allow and a grant
+/// there refuse the cage; a deny for `a` is kept and covers `A` too, while
+/// `b` stays readable (the control).
+#[test]
+fn r37_an_allow_on_a_case_sensitive_volume_is_refused() {
+    let vol = CaseSensitive::new("r37");
+    let m = &vol.mount;
+    std::fs::create_dir(m.join("work")).unwrap();
+    for (name, text) in [("a", "lower"), ("A", "upper"), ("b", "other")] {
+        std::fs::write(m.join(name), text).unwrap();
+    }
+    assert_eq!(
+        std::fs::read(m.join("A")).unwrap(),
+        b"upper",
+        "not case-sensitive"
+    );
+    let refused = |p: &Policy, what: &str| match cage_for(p) {
+        Err(SpawnError::CaseSensitive { path }) => {
+            assert!(path.starts_with(&*m.to_string_lossy()), "{what}: {path}");
+        }
+        Err(e) => panic!("{what}: refused for another reason: {e}"),
+        Ok(_) => panic!("{what}: accepted"),
+    };
+    for access in [Access::Read, Access::Write, Access::Exec] {
+        let mut p = policy();
+        p.fs.push(rule(access, m.join("work")));
+        refused(&p, &format!("{access:?}"));
+    }
+    let mut p = policy();
+    p.fs.push(rule(Access::Write, m.join("work/not/yet")));
+    refused(&p, "missing leaf");
+    let mut p = policy();
+    p.ipc.unix_sockets = vec![abs(m.join("work/s.sock"))];
+    refused(&p, "socket");
+    let mut p = policy();
+    raw_allow(
+        &mut p,
+        Operation::FileReadAll,
+        vec![Filter::Subpath(abs(m.join("work")))],
+    );
+    refused(&p, "seatbelt allow");
+    let mut p = policy();
+    p.grants.push(procage::policy::Grant {
+        name: procage::policy::GrantName::new("scratch").unwrap(),
+        access: Access::Write,
+    });
+    let cage = cage_for(&p).unwrap();
+    let mut cmd = child_command("write:/dev/null");
+    match cage.spawn(&mut cmd, &Grants::new().bind("scratch", m.join("work"))) {
+        Err(SpawnError::CaseSensitive { .. }) => {}
+        Err(e) => panic!("grant: refused for another reason: {e}"),
+        Ok(_) => panic!("grant: accepted"),
+    }
+    let mut p = policy();
+    p.fs.push(rule(Access::Read, m.parent().unwrap()));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Literal(abs(m.join("a"))),
+    ));
+    let d = m.display();
+    let got = in_child(&format!("read:{d}/a;read:{d}/A;read:{d}/b"), &p);
+    assert_eq!(got, format!("{EPERM} {EPERM} ok"));
+}

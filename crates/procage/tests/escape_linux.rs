@@ -1582,6 +1582,255 @@ fn r32_the_seccomp_listener_stays_out_of_reach() {
     }
 }
 
+// ---- R-33 Setup that follows a planted link ----
+
+/// What replaces a planned path between the plan and the child's mounts.
+#[derive(Clone, Copy, Debug)]
+enum Plant {
+    /// A symbolic link to the decoy.
+    Link,
+    /// The decoy directory itself, renamed into place.
+    Dir,
+}
+
+fn moved(p: &Path) -> PathBuf {
+    let mut s = p.as_os_str().to_owned();
+    s.push(".moved");
+    PathBuf::from(s)
+}
+
+/// Spawns `action` under `cage`. In the child, before the cage's own steps
+/// (the window between the parent's plan and the mounts), a hook renames
+/// `planned` to `<planned>.moved` and puts `plant` of `decoy` in its place,
+/// as another process with write access could.
+fn planted(
+    cage: &Cage,
+    action: &str,
+    planned: &Path,
+    decoy: &Path,
+    plant: Plant,
+) -> Result<String, SpawnError> {
+    let mut cmd = child_command(action);
+    testing::plant_before_spawn(
+        &mut cmd,
+        planned,
+        &moved(planned),
+        decoy,
+        matches!(plant, Plant::Link),
+    )
+    .unwrap();
+    let child = cage.spawn(&mut cmd, &Grants::new())?;
+    Ok(result(&finish(child, Duration::from_secs(20))))
+}
+
+/// The refusal a moved mount must get: the spawn fails, naming a planned
+/// path at or under `planned`. Returns what went wrong otherwise.
+fn moved_refusal(plant: Plant, planned: &Path, got: &Result<String, SpawnError>) -> Option<String> {
+    match got {
+        Err(SpawnError::MountMoved { path, link }) => {
+            let link_ok = match plant {
+                Plant::Link => link.as_deref() == Some(planned),
+                Plant::Dir => link.is_none(),
+            };
+            (!path.starts_with(planned) || !link_ok).then(|| format!("named {path:?} {link:?}"))
+        }
+        other => Some(format!("{other:?}")),
+    }
+}
+
+/// On T1 each kind of mount, with its planned path replaced by a link or by
+/// another directory after the plan, fails the spawn: the protected,
+/// hidden or covered object never stays reachable under its moved name,
+/// and the decoy is not covered.
+#[test]
+fn r33_a_planted_link_or_directory_cannot_move_a_mount() {
+    if !t1("r33") {
+        return;
+    }
+    let mut wrong = Vec::new();
+    for plant in [Plant::Link, Plant::Dir] {
+        let w = scratch(&format!("r33-{plant:?}"));
+        let ws = w.join("ws");
+        for dir in [
+            "p",
+            "pdecoy",
+            "h",
+            "hdecoy",
+            "f",
+            "fdecoy",
+            ".git/hooks",
+            "gdecoy/hooks",
+            "sub/.vscode",
+            "sub/vdecoy",
+        ] {
+            std::fs::create_dir_all(ws.join(dir)).unwrap();
+        }
+        std::fs::write(ws.join("p/c"), "original").unwrap();
+        std::fs::write(ws.join("h/secret"), "secret").unwrap();
+        std::fs::write(ws.join("f/secret"), "secret").unwrap();
+        std::fs::write(ws.join("fdecoy/secret"), "decoy").unwrap();
+        let d = ws.display();
+        let mut base = policy();
+        base.fs.push(rule(Access::Write, &ws));
+        let cases: [(&str, Policy, &str, &str, String); 5] = [
+            (
+                "protect",
+                {
+                    let mut p = base.clone();
+                    p.fs.push(rule(Access::Protect, ws.join("p")));
+                    p
+                },
+                "p",
+                "pdecoy",
+                format!("write:{d}/p.moved/c"),
+            ),
+            (
+                "hide-dir",
+                {
+                    let mut p = base.clone();
+                    p.fs.push(rule(Access::Hide, ws.join("h")));
+                    p
+                },
+                "h",
+                "hdecoy",
+                format!("read:{d}/h.moved/secret"),
+            ),
+            (
+                "hide-file",
+                {
+                    let mut p = base.clone();
+                    p.fs.push(FsRule::new(
+                        Access::Hide,
+                        FsTarget::Literal(abs(ws.join("f/secret"))),
+                    ));
+                    p
+                },
+                "f",
+                "fdecoy",
+                format!("read:{d}/f.moved/secret"),
+            ),
+            (
+                "cover-and-pin",
+                base.clone(),
+                ".git",
+                "gdecoy",
+                format!("write:{d}/.git.moved/hooks/x"),
+            ),
+            (
+                "cover",
+                base.clone(),
+                "sub/.vscode",
+                "sub/vdecoy",
+                format!("write:{d}/sub/.vscode.moved/x"),
+            ),
+        ];
+        for (kind, p, planned, decoy, action) in cases {
+            let cage = cage(&p, Tier::T1);
+            let got = planted(&cage, &action, &ws.join(planned), &ws.join(decoy), plant);
+            println!("r33 {kind} {plant:?}: {got:?}");
+            if let Some(w) = moved_refusal(plant, &ws.join(planned), &got) {
+                wrong.push(format!("{kind} {plant:?}: {w}"));
+            }
+        }
+        // A foreign socket's cover (Landlock ABI 9 refuses the connect by
+        // itself, so below it the cover is what keeps the socket out).
+        let s = w.join("s");
+        std::fs::create_dir_all(&s).unwrap();
+        std::fs::create_dir_all(w.join("sdecoy")).unwrap();
+        let sock = s.join("daemon.sock");
+        let _daemon = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let mut p = policy();
+        p.fs.push(rule(Access::Read, &w));
+        p.fs.push(rule(Access::Write, &ws));
+        p.ipc.unix_sockets = vec![abs(&ws)];
+        let snapshot = CageOptions::default()
+            .with_tier(Tier::T1)
+            .with_lower(LowerOptions::default().accept_spawn_snapshot());
+        let cage = Cage::with_options(&for_tier(p, Tier::T1), &snapshot).unwrap();
+        let action = format!("unix:{}", moved(&s).join("daemon.sock").display());
+        let got = planted(&cage, &action, &s, &w.join("sdecoy"), plant);
+        println!("r33 socket-cover {plant:?}: {got:?}");
+        // Where Landlock refuses pathname connects itself (ABI 9 and later)
+        // or the plan needs no cover, there is no cover to move: the
+        // socket must stay out of reach either way.
+        let refused_connect = matches!(&got, Ok(r) if r != "ok");
+        if !refused_connect && let Some(w) = moved_refusal(plant, &s, &got) {
+            wrong.push(format!("socket-cover {plant:?}: {w}"));
+        }
+    }
+    assert!(wrong.is_empty(), "moved mounts not refused: {wrong:#?}");
+}
+
+/// A concurrent writer in the shared tree swaps the protected directory for
+/// a symbolic link to a decoy during spawns (`PROCAGE_RACE_ATTEMPTS`,
+/// default 1,000). The protected file (held by an fd opened before the
+/// race, so renames cannot fool the check) keeps its contents: the cage
+/// found the object when it was made and mounts only that, or refuses.
+#[test]
+fn r33_racing_a_planted_link_never_moves_a_mount() {
+    use std::io::{Read, Seek};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    if !t1("r33-race") {
+        return;
+    }
+    let attempts: usize = std::env::var("PROCAGE_RACE_ATTEMPTS")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(1_000);
+    let w = scratch("r33-race");
+    let (p_dir, real, decoy) = (w.join("p"), w.join("p.moved"), w.join("decoy"));
+    std::fs::create_dir_all(&p_dir).unwrap();
+    std::fs::create_dir_all(&decoy).unwrap();
+    std::fs::write(p_dir.join("c"), "original").unwrap();
+    // A handle to the protected file itself: it follows the inode across
+    // every rename, so reading it is immune to the swap the checker races.
+    let mut guard = std::fs::File::open(p_dir.join("c")).unwrap();
+    let mut p = policy();
+    p.fs.push(rule(Access::Write, &w));
+    p.fs.push(rule(Access::Protect, &p_dir));
+    let cage = cage(&p, Tier::T1);
+    let stop = std::sync::Arc::new(AtomicBool::new(false));
+    let swapper = {
+        let (stop, p_dir, real, decoy) = (stop.clone(), p_dir.clone(), real.clone(), decoy.clone());
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                let _ = std::fs::rename(&p_dir, &real);
+                let _ = std::os::unix::fs::symlink(&decoy, &p_dir);
+                std::thread::yield_now();
+                let _ = std::fs::remove_file(&p_dir);
+                let _ = std::fs::rename(&real, &p_dir);
+                std::thread::yield_now();
+            }
+        })
+    };
+    // The child writes the protected path and its renamed-away name; both
+    // must leave the protected file untouched.
+    let action = format!("write:{}/c;write:{}/c", p_dir.display(), real.display());
+    let (mut ran, mut refused) = (0, 0);
+    for _ in 0..attempts {
+        match cage.spawn(&mut child_command(&action), &Grants::new()) {
+            Ok(child) => {
+                let _ = finish(child, Duration::from_secs(20));
+                ran += 1;
+            }
+            Err(_) => refused += 1,
+        }
+    }
+    stop.store(true, Ordering::Relaxed);
+    swapper.join().unwrap();
+    let mut content = String::new();
+    guard.rewind().unwrap();
+    guard.read_to_string(&mut content).unwrap();
+    println!(
+        "r33 race: {attempts} attempts, {ran} ran, {refused} refused, protected file {content:?}"
+    );
+    assert_eq!(
+        content, "original",
+        "a racing swap exposed the protected file"
+    );
+    assert!(ran > 0, "no spawn ran: the race left no window to test");
+}
+
 // ---- R-34 Service handoff over Unix sockets ----
 
 /// A scratch runtime directory with the given sockets bound, and the
@@ -1794,12 +2043,10 @@ fn r34_fit_waives_by_name() {
 /// without a cover, so a T2 cage with the network on exists beside them.
 #[test]
 fn r34_the_ip_network_keeps_every_unix_socket_out() {
-    use std::os::linux::net::SocketAddrExt;
     let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
     let (d, _listeners) = runtime_with("r34-ip", &["bus", "docker.sock"]);
     let name = format!("/tmp/dbus-procage-r34-ip-{}", std::process::id());
-    let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
-    let _bus = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+    let _bus = AbstractBus::bind(&name);
     let tcp = TcpListener::bind("127.0.0.1:0").unwrap();
     let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
     let attempt = format!(
@@ -1903,15 +2150,46 @@ fn r34_fit_keeps_unix_sockets_out_of_a_networked_command() {
 /// other's cage.
 static ABSTRACT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// An abstract listener that, when dropped, waits until its name has left
+/// `/proc/net/unix`: a child another test forks meanwhile holds a copy
+/// until its exec, and the next canary must not see the name.
+struct AbstractBus {
+    listener: Option<std::os::unix::net::UnixListener>,
+    name: String,
+}
+
+impl AbstractBus {
+    fn bind(name: &str) -> AbstractBus {
+        use std::os::linux::net::SocketAddrExt;
+        let addr = std::os::unix::net::SocketAddr::from_abstract_name(name).unwrap();
+        AbstractBus {
+            listener: Some(std::os::unix::net::UnixListener::bind_addr(&addr).unwrap()),
+            name: name.to_owned(),
+        }
+    }
+}
+
+impl Drop for AbstractBus {
+    fn drop(&mut self) {
+        drop(self.listener.take());
+        let entry = format!(" @{}", self.name);
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(5)
+            && std::fs::read_to_string("/proc/net/unix")
+                .is_ok_and(|t| t.lines().any(|l| l.ends_with(&entry)))
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
 #[test]
 fn r34_an_abstract_bus_is_scoped() {
-    use std::os::linux::net::SocketAddrExt;
     let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
     // Below ABI 6, with no bus, the class adds no scope of its own: an
     // unrelated abstract socket stays reachable.
     let other = format!("procage-r34-unrelated-{}", std::process::id());
-    let other_addr = std::os::unix::net::SocketAddr::from_abstract_name(&other).unwrap();
-    let unrelated = std::os::unix::net::UnixListener::bind_addr(&other_addr).unwrap();
+    let unrelated = AbstractBus::bind(&other);
     let empty = scratch("r34-abstract-empty");
     for tier in tiers() {
         let mut p = for_tier(policy(), tier);
@@ -1932,8 +2210,7 @@ fn r34_an_abstract_bus_is_scoped() {
     }
     drop(unrelated);
     let name = format!("/tmp/dbus-procage-r34-{}", std::process::id());
-    let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
-    let _bus = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+    let _bus = AbstractBus::bind(&name);
     let d = scratch("r34-abstract");
     let attempt = format!("abstract:{name}");
     for tier in tiers() {
@@ -2038,7 +2315,6 @@ fn r34_a_socket_bound_later_is_refused() {
 /// made refuses the spawn.
 #[test]
 fn r34_an_abstract_bus_bound_later_refuses_the_spawn() {
-    use std::os::linux::net::SocketAddrExt;
     let _turn = ABSTRACT.lock().unwrap_or_else(|e| e.into_inner());
     let d = scratch("r34-abstract-later");
     let mut p = policy();
@@ -2054,8 +2330,7 @@ fn r34_an_abstract_bus_bound_later_refuses_the_spawn() {
     }
     let cage = Cage::with_options(&p, &opts).unwrap();
     let name = format!("/tmp/dbus-procage-r34-later-{}", std::process::id());
-    let addr = std::os::unix::net::SocketAddr::from_abstract_name(&name).unwrap();
-    let _bus = std::os::unix::net::UnixListener::bind_addr(&addr).unwrap();
+    let _bus = AbstractBus::bind(&name);
     match cage.spawn(&mut child_command("unix:/"), &Grants::new()) {
         Err(SpawnError::Lower(LowerError::Gaps(gaps))) => assert!(
             gaps.iter()

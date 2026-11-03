@@ -19,9 +19,9 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use procage_policy::seatbelt::{Effect, Filter, Layer, Operation, Rule};
-use procage_policy::{AbsPath, FsTarget, Glob, Policy};
+use procage_policy::{AbsPath, Access, FsTarget, Glob, Policy};
 
-use super::{PathRewrite, SpawnError};
+use super::{PathRewrite, SpawnError, sys};
 
 const DATA_VOLUME: &[u8] = b"/System/Volumes/Data";
 
@@ -109,6 +109,52 @@ pub(crate) fn resolve_existing(path: &Path) -> io::Result<AbsPath> {
     let resolved = visible(std::fs::canonicalize(path)?);
     AbsPath::new(resolved.into_os_string().into_vec())
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+/// Refuses an allow at `path` when the volume of its longest existing
+/// prefix tells names apart by case: Seatbelt matches every path case- and
+/// normalization-insensitively, so it would also allow the case variants,
+/// which are other files there. Denies need no check: covering the variants
+/// too only denies more.
+pub(crate) fn exact_allow(path: &AbsPath) -> Result<(), SpawnError> {
+    let mut existing = as_path(path).to_path_buf();
+    while std::fs::symlink_metadata(&existing).is_err() {
+        if !existing.pop() {
+            return Ok(());
+        }
+    }
+    let c = std::ffi::CString::new(existing.into_os_string().into_vec()).map_err(|e| {
+        SpawnError::Path {
+            path: path.to_string(),
+            error: io::Error::new(io::ErrorKind::InvalidInput, e),
+        }
+    })?;
+    // A file system with no answer (devfs: `/dev/tty…`) has names the
+    // kernel fixes, so the child cannot create a case variant there.
+    if sys::case_sensitive(&c) == Some(true) {
+        return Err(SpawnError::CaseSensitive {
+            path: path.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// The fixed leading directory of a glob, before its first wildcard
+/// component.
+fn glob_prefix(glob: &Glob) -> Option<AbsPath> {
+    let fixed: Vec<String> = glob.as_str()[1..]
+        .split('/')
+        .take_while(|c| !has_wildcard(c))
+        .map(unescape)
+        .collect();
+    AbsPath::new(format!("/{}", fixed.join("/"))).ok()
+}
+
+fn exact_allow_target(target: &FsTarget) -> Result<(), SpawnError> {
+    match target {
+        FsTarget::Literal(p) | FsTarget::Subpath(p) => exact_allow(p),
+        FsTarget::Glob(g) => glob_prefix(g).map_or(Ok(()), |p| exact_allow(&p)),
+    }
 }
 
 fn escape_glob(text: &str) -> String {
@@ -260,8 +306,14 @@ pub(crate) fn resolve_policy(policy: &Policy) -> Result<(Policy, Vec<PathRewrite
             FsTarget::Glob(g) => FsTarget::Glob(r.glob(g)?),
         };
     }
+    for rule in &out.fs {
+        if matches!(rule.access, Access::Read | Access::Write | Access::Exec) {
+            exact_allow_target(&rule.target)?;
+        }
+    }
     for p in &mut out.ipc.unix_sockets {
         *p = r.path(p)?;
+        exact_allow(p)?;
     }
     if let Some(layer) = &mut out.seatbelt {
         for rule in &mut layer.rules {
@@ -273,6 +325,19 @@ pub(crate) fn resolve_policy(policy: &Policy) -> Result<(Policy, Vec<PathRewrite
                     Filter::Glob(g) => Filter::Glob(r.glob(g)?),
                     other => other.clone(),
                 };
+                if rule.effect == Effect::Allow {
+                    match &*filter {
+                        Filter::Literal(p) | Filter::Subpath(p) | Filter::UnixSocket(p) => {
+                            exact_allow(p)?;
+                        }
+                        Filter::Glob(g) => {
+                            if let Some(p) = glob_prefix(g) {
+                                exact_allow(&p)?;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
     }

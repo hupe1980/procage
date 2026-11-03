@@ -1,0 +1,619 @@
+{
+  "feature": "040-path-resolution",
+  "commit": "412ed89",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "An escape canary MUST, for each T1 mount kind (protect, hide, data-class cover, socket cover, pin), replace a target component with a symbolic link or another directory between plan and mount, both at a deterministic hook and in racing attempts (10,000 in CI), and MUST record the outcome before and after the change.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the build before the change and the deterministic hook",
+          "then": "the canary records whether the mount was redirected",
+          "when": "the link is planted for each mount kind"
+        },
+        {
+          "given": "the build after the change",
+          "then": "no spawn runs with a redirected mount",
+          "when": "10,000 racing attempts run per mount kind"
+        }
+      ],
+      "mitigations": [
+        "mitigation.race-canary"
+      ],
+      "tasks": [
+        {
+          "id": "T001",
+          "done": true,
+          "text": "[SR-001] [US1] R-33 canaries: a deterministic `pre_exec` hook that replaces a planned component (link, or another directory moved in) for protect, a hidden directory, a hidden file, a data-class cover, a socket cover and a pin; a racing test over `PROCAGE_RACE_ATTEMPTS` spawns; record the outcome before the change \u2014 crates/procage/tests/escape_linux.rs, specs/040-path-resolution/quickstart.md"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-006] [US1] Canaries assert the refusal and `MountMoved`; racing test with zero redirected mounts; `just linux-t1`, `just linux`, `just kernel` green; T1 latency before and after (`just bench` in Docker) \u2014 crates/procage/tests/escape_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-001.2026-11-03",
+          "requirement": "SR-001",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount, crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "The deterministic hook plants a link and a renamed directory for protect, hidden directory, hidden file, pin, class cover and socket cover; on 0.4.0 all 12 were redirected (quickstart.md), on 0.4.1 all refused. The race ran 10,000 attempts on T1 with the protected file read back unchanged through a pre-opened fd.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/tests/escape_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "On T1 every mount source and target MUST be resolved beneath its planned root without following a symbolic link in any component; a link MUST fail the spawn with a typed error naming the path, even when the link points into a path the child may write.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a protected directory replaced by a link to another directory before the child mounts",
+          "then": "it fails with an error naming the path and the link target is unchanged",
+          "when": "the spawn runs"
+        },
+        {
+          "given": "a hidden file whose parent directory became a link",
+          "then": "it fails the same way",
+          "when": "the spawn runs"
+        },
+        {
+          "given": "a pin whose path was replaced by a link into the writable workspace",
+          "then": "it fails the same way",
+          "when": "the spawn runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.no-follow-resolution"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-005] [US1] Child sequence by identity: `openat2` with `RESOLVE_NO_SYMLINKS`, `fstat` against the planned `(dev, ino)`, `open_tree`/`fsopen`+`fsmount`, `mount_setattr` before attaching, `move_mount` onto the descriptor; the remount step and `locked_flags` removed \u2014 crates/procage/src/linux/sys.rs"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-006] [US1] Plan: identities from `lstat`, canonical socket-cover and `/dev/shm` paths; `SpawnError::MountMoved { path, link }` from a walk of the plan after `ELOOP`/`ESTALE` \u2014 crates/procage/src/linux/{spawn,mod}.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-002.2026-11-03",
+          "requirement": "SR-002",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "For each link plant (protect dir, hidden file's parent, .git pin into the writable workspace) the test asserts SpawnError::MountMoved with the planned path and link; the spawn fails before any mount, so the link target is untouched. The child resolves with openat2 RESOLVE_NO_SYMLINKS (linux/sys.rs open_planned).",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "The mount MUST apply to exactly the object planned: the child MUST check the resolved object's device and inode against the plan and attach by descriptor, and no step MUST resolve the path name again afterwards.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a hook that renames a planned directory away and moves another real directory into its place",
+          "then": "the spawn fails and the moved-in directory is not covered",
+          "when": "the child mounts"
+        }
+      ],
+      "mitigations": [
+        "mitigation.mount-by-descriptor"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-005] [US1] Child sequence by identity: `openat2` with `RESOLVE_NO_SYMLINKS`, `fstat` against the planned `(dev, ino)`, `open_tree`/`fsopen`+`fsmount`, `mount_setattr` before attaching, `move_mount` onto the descriptor; the remount step and `locked_flags` removed \u2014 crates/procage/src/linux/sys.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-003.2026-11-03",
+          "requirement": "SR-003",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "The Dir plant renames the planned directory away and a real directory into place; the test asserts MountMoved with no link, so the moved-in directory is not covered. open_planned checks dev/ino by fstat and bind_planned/tmpfs_planned attach by descriptor (open_tree/fsmount, mount_setattr, move_mount with empty paths).",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "If the kernel lacks a call needed to resolve without following links or to mount by descriptor, T1 MUST be unavailable (the probe makes the same calls): the default is T2 with its typed gaps, a cage that asks for T1 MUST fail with Unsupported::Tier, and no mount MUST fall back to a path name.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the T1 probe",
+          "then": "it mounts its tmpfs with fsopen, fsmount, openat2 and move_mount, so a host without them reports no T1",
+          "when": "it runs"
+        },
+        {
+          "given": "the child sequence",
+          "then": "no mount call takes a path name except the propagation change of the root",
+          "when": "it is reviewed"
+        }
+      ],
+      "mitigations": [
+        "mitigation.no-fallback"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-004] [US1] The T1 probe makes the same calls \u2014 crates/procage/src/linux/sys.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-004.2026-11-03",
+          "requirement": "SR-004",
+          "method": "review",
+          "evidence": "crates/procage/src/linux/sys.rs probe_userns (open_planned, bind_planned, tmpfs_planned); crates/procage/src/linux/sys.rs ChildPlan::run (only mount() call is MS_REC|MS_PRIVATE on /)",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "Both acceptance scenarios are review scenarios. The probe makes the child's descriptor-mount calls on /tmp, so a host without them reports no T1; in the child the only path-taking mount call is the root propagation change. Reviewed in this session.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/probe.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/sys.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "The child's mount sequence MUST issue system calls only, with every path and buffer prepared in the parent, and MUST be covered by the multithreaded spawn test.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a parent whose other threads allocate and lock continuously",
+          "then": "all complete and the child sequence contains no allocation (review of the sys module)",
+          "when": "1,000 T1 spawns run with the new sequence"
+        }
+      ],
+      "mitigations": [
+        "mitigation.syscalls-only"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-002] [SR-003] [SR-005] [US1] Child sequence by identity: `openat2` with `RESOLVE_NO_SYMLINKS`, `fstat` against the planned `(dev, ino)`, `open_tree`/`fsopen`+`fsmount`, `mount_setattr` before attaching, `move_mount` onto the descriptor; the remount step and `locked_flags` removed \u2014 crates/procage/src/linux/sys.rs"
+        },
+        {
+          "id": "T010",
+          "done": true,
+          "text": "[SR-005] [US1] Multithreaded T1 test: 1,000 spawns of a policy with every mount kind while other threads allocate and lock \u2014 crates/procage/tests/spawn_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-005.2026-11-03",
+          "requirement": "SR-005",
+          "method": "test",
+          "evidence": "crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "1,000 T1 spawns of a policy with protect, hidden directory, hidden file and class covers from four threads while four others allocate and lock; passed in the T1 container. The new child code (open_planned, make, bind_planned, tmpfs_planned) uses stack structs and parent-built CStrings only.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/sys.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/spawn_linux.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "A spawn refused for a moved mount MUST return SpawnError::MountMoved naming the planned path and, if there is one, the link; vanished snapshot covers MUST keep being skipped and declared mounts MUST stay strict.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "a planted link",
+          "then": "the error names the planned path and the link",
+          "when": "the spawn fails"
+        },
+        {
+          "given": "the existing spawn and escape suites",
+          "then": "they pass unchanged",
+          "when": "they run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.named-failure"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-002] [SR-006] [US1] Plan: identities from `lstat`, canonical socket-cover and `/dev/shm` paths; `SpawnError::MountMoved { path, link }` from a walk of the plan after `ELOOP`/`ESTALE` \u2014 crates/procage/src/linux/{spawn,mod}.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-006] [US1] Canaries assert the refusal and `MountMoved`; racing test with zero redirected mounts; `just linux-t1`, `just linux`, `just kernel` green; T1 latency before and after (`just bench` in Docker) \u2014 crates/procage/tests/escape_linux.rs"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-006.2026-11-03",
+          "requirement": "SR-006",
+          "method": "test",
+          "evidence": "crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount, crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "The canary asserts the named path and link; a socket removed and rebound during 300 spawns never fails one; the full T1 and T2 suites pass unchanged.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/linux/mod.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/linux/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "On macOS a rule whose spelling differs from the on-disk name (case on a case-insensitive volume, Unicode form) MUST enforce on the file under every spelling the volume treats as the same name, or the cage MUST be refused with a typed error naming the rule; it MUST NOT silently match nothing.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a case-insensitive APFS volume and a read deny spelled in another case than on disk",
+          "then": "it is denied, or the cage was refused",
+          "when": "the child reads the file by its on-disk spelling"
+        },
+        {
+          "given": "a name decomposed on disk and composed in the rule",
+          "then": "the result equals that of the on-disk spelling, or the cage was refused",
+          "when": "the child accesses it"
+        }
+      ],
+      "mitigations": [
+        "mitigation.exact-or-refuse"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[SR-007] [SR-008] [SR-009] [US2] Spelling matrix: default volume (case, NFC/NFD, nested links, missing leaf, firmlink) and a case-sensitive APFS image (deny covers variants, allow and grant refused); fails when the image cannot be created; on every macOS lane \u2014 crates/procage/tests/spelling_macos.rs, .github/workflows/ci.yml, justfile"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-007.2026-11-03",
+          "requirement": "SR-007",
+          "method": "test",
+          "evidence": "crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "On the default APFS volume a deny spelled in another case and one composed while the disk name is decomposed both deny the file, with a readable control; passed on macOS 26.6.2.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/macos/canon.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/spelling_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "No allow MUST be widened by case folding or normalisation: an allow rule, an allowed Unix socket or a grant on a case-sensitive volume MUST refuse the cage with SpawnError::CaseSensitive naming the path, since Seatbelt would also allow its case variants.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a case-sensitive APFS disk image with a write rule for a",
+          "then": "it fails with CaseSensitive naming the path",
+          "when": "the cage is built"
+        },
+        {
+          "given": "a grant bound to a path on that image",
+          "then": "it fails the same way",
+          "when": "the spawn runs"
+        },
+        {
+          "given": "a deny for a on that image",
+          "then": "it is denied",
+          "when": "the child reads A"
+        }
+      ],
+      "mitigations": [
+        "mitigation.no-widening"
+      ],
+      "tasks": [
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-008] [US2] `SpawnError::CaseSensitive { path }`: allow rules, allowed sockets, Seatbelt-layer allows and bound grants on a case-sensitive volume (`pathconf(_PC_CASE_SENSITIVE)` of the longest existing prefix) \u2014 crates/procage/src/macos/{canon,spawn,mod,sys}.rs"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[SR-007] [SR-008] [SR-009] [US2] Spelling matrix: default volume (case, NFC/NFD, nested links, missing leaf, firmlink) and a case-sensitive APFS image (deny covers variants, allow and grant refused); fails when the image cannot be created; on every macOS lane \u2014 crates/procage/tests/spelling_macos.rs, .github/workflows/ci.yml, justfile"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-008.2026-11-03",
+          "requirement": "SR-008",
+          "method": "test",
+          "evidence": "crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies, crates/procage/tests/escape_macos.rs::r37_an_allow_on_a_case_sensitive_volume_is_refused",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "On a case-sensitive APFS image Read/Write/Exec allows, a socket, a Seatbelt-layer allow and a bound grant fail with CaseSensitive naming the path; a deny for a also denies A while b stays readable.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/src/macos/canon.rs",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/src/macos/spawn.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-009",
+      "statement": "The spelling matrix MUST run as caged tests on the default volume and on a case-sensitive APFS image with case and Unicode variants, nested links, missing leaves and firmlinks; a macOS lane that cannot create the image MUST fail, not skip. Linux case-folding directories are untested and the docs MUST say so.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "each macOS lane",
+          "then": "every case enforces as intended or is refused",
+          "when": "the matrix runs"
+        },
+        {
+          "given": "a macOS lane where the disk image cannot be created",
+          "then": "it fails",
+          "when": "the matrix runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.spelling-matrix"
+      ],
+      "tasks": [
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[SR-007] [SR-008] [SR-009] [US2] Spelling matrix: default volume (case, NFC/NFD, nested links, missing leaf, firmlink) and a case-sensitive APFS image (deny covers variants, allow and grant refused); fails when the image cannot be created; on every macOS lane \u2014 crates/procage/tests/spelling_macos.rs, .github/workflows/ci.yml, justfile"
+        },
+        {
+          "id": "T011",
+          "done": false,
+          "text": "[SR-009] Add a test for SR-009 (The spelling matrix MUST run as caged tests on the default volume and on a case-sensitive APFS image with case and Unicode variants, nested links, missing leaves and firmlinks; a macOS lane that cannot create the image MUST fail, not skip. Linux case-folding directories are untested and the docs MUST say so) \u2014 touchpoints: .github/workflows/ci.yml, crates/procage/tests/spelling_macos.rs [converge: implemented-unverified; The matrix passes locally on macOS 26.6.2 and fails if the image cannot be made, and CI runs it on the macOS 15, 26 and 27 lanes, but those lanes have not run this commit yet.]"
+        }
+      ],
+      "all_tasks_done": false,
+      "existing_verification": [
+        {
+          "id": "verification.sr-009.2026-11-03",
+          "requirement": "SR-009",
+          "method": "review",
+          "evidence": ".github/workflows/ci.yml (Spelling matrix step in the macOS job); crates/procage/tests/spelling_macos.rs Image::new asserts",
+          "result": "inconclusive",
+          "verdict": "implemented-unverified",
+          "justification": "The matrix passes locally on macOS 26.6.2 and fails if the image cannot be made, and CI runs it on the macOS 15, 26 and 27 lanes, but those lanes have not run this commit yet.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "crates/procage/tests/spelling_macos.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-010",
+      "statement": "The published canonicalisation claim MUST list exactly the cases the matrix covers and say where Linux case-folding is untested, and the threat model MUST carry the escape class for setup that follows a planted link with the race canary as evidence.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "the claim and the matrix",
+          "then": "every claimed case has a test and every test a claim",
+          "when": "they are compared"
+        },
+        {
+          "given": "the threat model",
+          "then": "it lists the class with the race canary",
+          "when": "it is read"
+        }
+      ],
+      "mitigations": [
+        "mitigation.claim-from-matrix"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-010] R-33 and R-37 in the threat model with their canaries; canonicalisation claim from the matrix, Linux case-folding untested; changelog Security entries; README known limits \u2014 crates/procage/THREAT_MODEL.md, site/content/docs/{macos,linux,threat-model}.md, CHANGELOG.md"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [
+        {
+          "id": "verification.sr-010.2026-11-03",
+          "requirement": "SR-010",
+          "method": "test",
+          "evidence": "crates/procage/tests/threat_model.rs::gate",
+          "result": "pass",
+          "verdict": "verified",
+          "justification": "THREAT_MODEL.md lists R-33 and R-37 with their canaries and the gate passes; site/content/docs/macos.md lists exactly the matrix cases and linux.md says case-folding directories are untested.",
+          "verified_at": "2026-11-03T08:37:53Z",
+          "commit": "412ed89"
+        }
+      ],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "crates/procage/THREAT_MODEL.md",
+            "exists": true
+          },
+          {
+            "path": "site/content/docs/macos.md",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.case-miss",
+    "threat.unicode-miss",
+    "threat.vacuous-canary"
+  ],
+  "decisions": [],
+  "check_findings": [],
+  "metrics": {
+    "threats": 12,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 3,
+      "mitigated": 9
+    },
+    "threats_by_severity": {
+      "high": 6,
+      "low": 1,
+      "medium": 5
+    },
+    "mitigations": 10,
+    "requirements": 10,
+    "requirements_with_tasks": 10,
+    "requirements_verified": 9,
+    "decisions": 0,
+    "findings": {}
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

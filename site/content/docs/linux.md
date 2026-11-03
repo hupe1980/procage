@@ -12,11 +12,11 @@ Linux has no single sandbox call. procage combines kernel features into a **tier
 
 | Tier | Uses | Needs | Typical hosts |
 |---|---|---|---|
-| **T1** | User, mount, IPC, UTS and (unless the policy allows all networking) network namespaces, mounts, Landlock, seccomp | Unprivileged user namespaces and Landlock ABI 1+ | Most desktop distributions |
+| **T1** | User, mount, IPC, UTS and (unless the policy allows all networking) network namespaces, mounts, Landlock, seccomp | Unprivileged user namespaces, mounts by descriptor (`openat2`, `open_tree`, `fsmount`, `mount_setattr`, `move_mount`) and Landlock ABI 1+ | Most desktop distributions |
 | **T2** | Landlock and seccomp only | Landlock ABI 1+ | A Docker container with default settings; hosts that restrict user namespaces (for example Ubuntu's AppArmor restriction) |
 | none | | | Preparing a cage fails with `Unsupported`; procage never runs a child unsandboxed |
 
-`procage::linux::probe()` measures the host once per process: the Landlock ABI (asked of the kernel, since distributions backport Landlock) and whether a user namespace with mounts works, tried in a throwaway child. `Cage::with_options` picks the strongest tier unless `CageOptions::with_tier` asks for one; asking for T1 where it is unavailable is `Unsupported`.
+`procage::linux::probe()` measures the host once per process: the Landlock ABI (asked of the kernel, since distributions backport Landlock) and whether a user namespace with mounts works, tried in a throwaway child with the same calls the T1 child makes. `Cage::with_options` picks the strongest tier unless `CageOptions::with_tier` asks for one; asking for T1 where it is unavailable is `Unsupported`.
 
 ## Spawning
 
@@ -64,6 +64,10 @@ let cage = Cage::with_options(&Policy::default(), &CageOptions::default().with_l
 assert_eq!(cage.landlock_abi(), 2);
 ```
 
+## Mounts that cannot be moved
+
+On T1 the child mounts after the parent planned the mounts, and another process with write access to the tree could replace a planned path with a symbolic link or rename another directory into its place in between (R-33). procage fixes the object of each protect, hide and pin when the cage is made, and of each cover when the spawn plans it. The child opens every path from `/` without following any link (`openat2` with `RESOLVE_NO_SYMLINKS`), checks the device and inode, and mounts on that descriptor with the mount's flags set before it is attached. Otherwise the spawn fails with `SpawnError::MountMoved`, naming the path and the link, if any. A cover whose file was removed is skipped, as a file created after the spawn is never covered. A protected or hidden object replaced after the cage was made (an editor's atomic save, for example) refuses every later spawn: make a new cage.
+
 ## Reading everything except secrets
 
 A policy that reads `/` reaches the paths of the `secrets`, `trust-handoff` and `persistence` classes, and other processes' `/proc` entries.
@@ -88,6 +92,7 @@ The tests (`tests/spawn_linux.rs`, `tests/escape_linux.rs`) run in containers on
 
 - a denied file access fails with "permission denied" (macOS says "operation not permitted");
 - on T1 a protected subtree is a read-only file system that neither `umount` nor a read-write remount undoes;
+- on T1, 1,000 spawns of a policy with every mount kind, from four threads while four others allocate and lock, all run caged;
 - with the Landlock ABI capped at 1, 2, 3 and 5, on both tiers, writes stay in the workspace, the network is off, `ptrace` is refused and no file outside the writable paths can be truncated.
 
 ## Limits
@@ -98,6 +103,7 @@ The tests (`tests/spawn_linux.rs`, `tests/escape_linux.rs`) run in containers on
 - Protect, and hide inside a writable tree, are gaps on T2; glob rules are gaps on both tiers.
 - Below Landlock ABI 2 no file moves or links between directories (`EXDEV`). From ABI 2 they do within the writable trees and the run's `TMPDIR`; Landlock refuses a move that would give a file a right it lacks, or take it out of a read-only tree.
 - The probe is cached per process, not per boot.
+- Case-folding directories (ext4 `casefold`) are untested: no lane has one. Landlock rules and the T1 mounts follow inodes, not spellings; how the data-class names found at spawn match in such a directory is not measured.
 
 ## Options
 

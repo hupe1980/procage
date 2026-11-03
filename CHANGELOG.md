@@ -6,6 +6,37 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-03
+
+### Security
+
+- Linux tier T1: a mount could be moved by a symbolic link or a renamed
+  directory planted in a writable tree between the spawn's plan and the
+  child's mounts (R-33), so a protected path stayed writable, a hidden one
+  readable, and another path was covered. The canary showed it for every
+  mount kind before this release. The objects of protect, hide and pin are
+  now fixed when the cage is made, and of covers when the spawn plans
+  them; the child opens each path without following links, checks its
+  device and inode and mounts on that descriptor. A host whose kernel lacks
+  `openat2`, `open_tree`, `fsmount`, `mount_setattr` or `move_mount` has no
+  tier T1.
+- macOS: Seatbelt matches paths case-insensitively on every volume, so an
+  allow on a case-sensitive volume also allowed the path's case variants,
+  other files there (R-37). An allow rule, an allowed Unix socket, a
+  Seatbelt-layer allow or a grant on such a volume is now refused.
+
+### Added
+
+- `linux::SpawnError::MountMoved { path, link }`: a planned mount path that
+  now passes a link or names another object.
+- `macos::SpawnError::CaseSensitive { path }`.
+
+### Changed
+
+- Linux tier T1: a protected or hidden object replaced after the cage was
+  made (for example by an atomic save) refuses later spawns with
+  `MountMoved`; make a new cage.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added
@@ -184,7 +215,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/hupe1980/procage/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/hupe1980/procage/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/hupe1980/procage/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/hupe1980/procage/compare/v0.3.0...v0.3.1

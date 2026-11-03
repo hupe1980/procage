@@ -433,6 +433,15 @@ pub enum SpawnError {
         /// The limit.
         limit: usize,
     },
+    /// On tier T1, a path the cage mounts over no longer leads to the
+    /// object it planned (a link or another file was put in its place
+    /// after the plan); nothing was mounted and the target did not run.
+    MountMoved {
+        /// The planned path.
+        path: PathBuf,
+        /// The symbolic link on the way, if the path now passes one.
+        link: Option<PathBuf>,
+    },
     /// A step in the child failed; the target did not run.
     Apply {
         /// The step.
@@ -472,6 +481,13 @@ impl fmt::Display for SpawnError {
                 "{} has more than {limit} entries to search for hard-deny paths",
                 root.display()
             ),
+            SpawnError::MountMoved { path, link } => {
+                write!(f, "{} moved after the mount plan", path.display())?;
+                if let Some(link) = link {
+                    write!(f, " (through the link {})", link.display())?;
+                }
+                f.write_str("; nothing was mounted and the target did not run")
+            }
             SpawnError::Apply { step, errno } => write!(
                 f,
                 "the child failed at step `{step}`: {}; the target did not run",
@@ -731,6 +747,8 @@ pub struct Cage {
     exec_filter: Option<Arc<[seccomp::Insn]>>,
     /// The runtime directories searched for service sockets.
     runtime: Vec<PathBuf>,
+    /// The objects the declared T1 mounts name, found when the cage was made.
+    declared: Arc<spawn::Declared>,
     /// The approximations the caller accepts, for sockets found at spawn.
     allowed: BTreeSet<Construct>,
     /// What every run's receipt starts from.
@@ -905,6 +923,7 @@ impl Cage {
                 setting: "Network::Proxy on Linux without CageOptions::with_proxy",
             }));
         }
+        let declared = Arc::new(spawn::declare(&mut plan));
         let facts = Arc::new(facts(policy, options, &plan, &[]));
         let audit = Arc::new(cage_audit(policy, options, &plan, &homes)?);
         let explainer = Arc::new(crate::explain::Lazy::new(
@@ -920,6 +939,7 @@ impl Cage {
             notifying,
             exec_filter,
             runtime,
+            declared,
             allowed: options.lower.allow_degrade.clone(),
             facts,
             audit,
@@ -1063,7 +1083,7 @@ impl Cage {
         };
         #[cfg(not(feature = "proxy"))]
         let bridge = None;
-        let (dropped, removal, proc) =
+        let (dropped, removal, proc, mounts) =
             self.prepare(command, grants, fds, session, notify, bridge)?;
         // The link check is the last step before the fork.
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
@@ -1075,6 +1095,7 @@ impl Cage {
             proc,
             run_audit,
             names,
+            mounts,
             #[cfg(feature = "proxy")]
             bridge_end,
         })
@@ -1091,6 +1112,7 @@ impl Cage {
             mut names,
             #[cfg(feature = "proxy")]
             bridge_end,
+            ..
         } = launch;
         let reporting = match parent_end {
             None => child::Reporting::Off,
@@ -1262,8 +1284,8 @@ impl Cage {
             });
         }
         match self.prepare(command, grants, fds, session, None, None) {
-            Ok(_) => match self.audit.before_spawn() {
-                Ok(_) => spawn::decode(command.exec()),
+            Ok((.., mounts)) => match self.audit.before_spawn() {
+                Ok(_) => mounts.decode(command.exec()),
                 Err(found) => SpawnError::HardLinks(found),
             },
             Err(e) => e,
@@ -1283,7 +1305,7 @@ impl Cage {
         session: sys::Session,
         notify: Option<sys::Notify>,
         bridge: Option<sys::Bridge>,
-    ) -> Result<(Vec<String>, TmpdirGuard, bool), SpawnError> {
+    ) -> Result<(Vec<String>, TmpdirGuard, bool, Mounts), SpawnError> {
         let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
         if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
             return Err(SpawnError::Grant(GrantError::Reserved {
@@ -1333,7 +1355,7 @@ impl Cage {
                     flags: probe::T1_NAMESPACES | net,
                     uid_map: spawn::id_map(uid),
                     gid_map: spawn::id_map(gid),
-                    mounts: spawn::mounts(&self.plan, &covers)?,
+                    mounts: spawn::mounts(&self.plan, &self.declared, &covers)?.into(),
                 })
             }
             None => None,
@@ -1348,6 +1370,7 @@ impl Cage {
         } else {
             sys::pid()
         };
+        let mounts = Mounts(isolate.as_ref().map(|iso| iso.mounts.clone()));
         sys::ChildPlan {
             session,
             parent,
@@ -1364,7 +1387,7 @@ impl Cage {
         }
         .install(command);
         let proc = bound.values().any(|p| proc_gap(&self.plan, p).is_some());
-        Ok((dropped, removal, proc))
+        Ok((dropped, removal, proc, mounts))
     }
 
     /// The paths kept out piecewise on tier T2: hidden rules, and the
@@ -1569,6 +1592,7 @@ pub(crate) struct Launch {
     proc: bool,
     run_audit: crate::audit::RunAudit,
     names: Vec<String>,
+    mounts: Mounts,
     /// The parent's end of the proxy listeners' socket pair.
     #[cfg(feature = "proxy")]
     bridge_end: Option<std::os::fd::OwnedFd>,
@@ -1577,7 +1601,23 @@ pub(crate) struct Launch {
 impl Launch {
     /// The spawn failed: no process is left behind.
     pub(crate) fn abandon(self, e: std::io::Error) -> SpawnError {
-        spawn::decode(e)
+        self.mounts.decode(e)
+    }
+}
+
+/// The T1 mount plan a spawn handed to its child, kept to name the path
+/// when the child refuses a moved mount.
+pub(crate) struct Mounts(Option<std::sync::Arc<[sys::ChildMount]>>);
+
+impl Mounts {
+    fn decode(&self, e: std::io::Error) -> SpawnError {
+        match spawn::decode(e) {
+            SpawnError::Apply {
+                step: Step::Mounts,
+                errno: libc::ELOOP | libc::ESTALE,
+            } if let Some(moved) = self.0.as_deref().and_then(spawn::moved) => moved,
+            other => other,
+        }
     }
 }
 
@@ -1627,6 +1667,19 @@ pub mod testing {
                 == Some("Z")
         });
         !zombie && libc::pid_t::try_from(pid).is_ok_and(sys::alive)
+    }
+
+    /// Makes `cmd`'s child rename `planned` to `aside` and put `replacement`
+    /// in its place (a link to it, or the directory renamed) before the
+    /// cage's own steps.
+    pub fn plant_before_spawn(
+        cmd: &mut std::process::Command,
+        planned: &std::path::Path,
+        aside: &std::path::Path,
+        replacement: &std::path::Path,
+        link: bool,
+    ) -> std::io::Result<()> {
+        sys::plant_before_spawn(cmd, planned, aside, replacement, link)
     }
 
     /// Spawns `/bin/sleep 30`, in a new session when `setsid`.

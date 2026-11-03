@@ -161,33 +161,60 @@ pub(crate) fn open_path(path: &CStr) -> Result<(OwnedFd, bool), i32> {
     Ok((fd, st.st_mode & libc::S_IFMT == libc::S_IFDIR))
 }
 
-/// `ST_RELATIME` (missing from libc's musl bindings).
-const ST_RELATIME: c_ulong = 0x1000;
+/// The device and inode of a planned mount path, taken with `lstat` in the
+/// parent: the child mounts only on the object it planned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Identity {
+    pub(crate) dev: u64,
+    pub(crate) ino: u64,
+}
 
-/// The flags of the mount holding `path` that a bind remount must keep (the
-/// kernel locks them when the mount came from a more privileged namespace).
-pub(crate) fn locked_flags(path: &CStr) -> Result<c_ulong, i32> {
-    // SAFETY: statvfs fills a zeroed struct on our stack.
+/// `path` held as an `O_PATH` descriptor, without following a final link.
+pub(crate) fn hold(path: &CStr) -> Result<OwnedFd, i32> {
+    // SAFETY: open with a NUL-terminated path; the descriptor is ours.
+    let fd = unsafe {
+        libc::open(
+            path.as_ptr(),
+            libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(errno());
+    }
+    // SAFETY: a fresh descriptor we own.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// The identity of the object `fd` holds.
+pub(crate) fn identity_of(fd: &OwnedFd) -> Result<Identity, i32> {
+    // SAFETY: fstat on a descriptor we hold, into a zeroed struct.
     let st = unsafe {
-        let mut st: libc::statvfs = std::mem::zeroed();
-        if libc::statvfs(path.as_ptr(), &raw mut st) != 0 {
+        let mut st: libc::stat = std::mem::zeroed();
+        if libc::fstat(fd.as_raw_fd(), &raw mut st) != 0 {
             return Err(errno());
         }
         st
     };
-    let map = [
-        (libc::ST_RDONLY, libc::MS_RDONLY),
-        (libc::ST_NOSUID, libc::MS_NOSUID),
-        (libc::ST_NODEV, libc::MS_NODEV),
-        (libc::ST_NOEXEC, libc::MS_NOEXEC),
-        (libc::ST_NOATIME, libc::MS_NOATIME),
-        (libc::ST_NODIRATIME, libc::MS_NODIRATIME),
-        (ST_RELATIME, libc::MS_RELATIME),
-    ];
-    Ok(map
-        .iter()
-        .filter(|(st_flag, _)| st.f_flag & st_flag != 0)
-        .fold(0, |acc, (_, ms)| acc | ms))
+    Ok(Identity {
+        dev: st.st_dev as u64,
+        ino: st.st_ino as u64,
+    })
+}
+
+/// The identity of `path` without following a final link.
+pub(crate) fn identity(path: &CStr) -> Result<Identity, i32> {
+    // SAFETY: lstat fills a zeroed struct on our stack.
+    let st = unsafe {
+        let mut st: libc::stat = std::mem::zeroed();
+        if libc::lstat(path.as_ptr(), &raw mut st) != 0 {
+            return Err(errno());
+        }
+        st
+    };
+    Ok(Identity {
+        dev: st.st_dev as u64,
+        ino: st.st_ino as u64,
+    })
 }
 
 /// The real uid and gid.
@@ -246,38 +273,284 @@ pub(crate) fn decode_step(code: i32) -> Option<(u32, i32)> {
         .then_some((((code >> 12) & 0xf) as u32, code & 0xfff))
 }
 
-/// A mount the child makes on tier T1.
+/// A mount the child makes on tier T1. The child resolves every path
+/// without following links, checks it is the planned object and mounts on
+/// that descriptor, with the mount's flags set before it is attached.
 #[derive(Debug)]
 pub(crate) enum ChildMount {
-    /// `mount(source, target, NULL, MS_BIND[|MS_REC])`.
+    /// A clone of `source`'s tree with its submounts (a user namespace may
+    /// clone no less), attached over `target`.
     Bind {
         source: CString,
+        source_id: Identity,
         target: CString,
-        recursive: bool,
-        /// Skipped, with the remounts of the same target that follow, when
-        /// the target no longer exists (see [`ChildMount::Tmpfs`]).
-        optional: bool,
+        target_id: Identity,
+        /// `MOUNT_ATTR_*` flags set on the clone.
+        attrs: u64,
+        /// Skipped when the target no longer exists (see
+        /// [`ChildMount::Tmpfs`]).
+        optional: Option<OwnedFd>,
     },
-    /// `mount(NULL, target, NULL, MS_BIND|MS_REMOUNT|flags)`.
-    Remount {
-        target: CString,
-        flags: c_ulong,
-        /// Skipped when the target no longer exists: the host removed the
-        /// file after the bind, which detaches the bind in this namespace,
-        /// so nothing is left to cover (see [`ChildMount::Tmpfs`]).
-        optional: bool,
-    },
-    /// `mount("tmpfs", target, "tmpfs", flags, data)`.
+    /// A new tmpfs with `mode` over `target`.
     Tmpfs {
         target: CString,
-        flags: c_ulong,
-        data: CString,
-        /// Skipped, with the remounts of the same target that follow, when
-        /// the target no longer exists: a cover made from the file system
-        /// at spawn (a class name, a foreign socket) whose file was removed
-        /// before the child mounts has nothing left to cover.
-        optional: bool,
+        target_id: Identity,
+        attrs: u64,
+        mode: CString,
+        /// A cover made from the file system at spawn (a class name, a
+        /// foreign socket) holds its object here (`O_PATH`), and is skipped
+        /// when the object was removed before the child mounts: nothing is
+        /// left to cover. An object still linked elsewhere was moved, which
+        /// fails the spawn.
+        optional: Option<OwnedFd>,
     },
+}
+
+impl ChildMount {
+    fn optional(&self) -> Option<&OwnedFd> {
+        match self {
+            ChildMount::Bind { optional, .. } | ChildMount::Tmpfs { optional, .. } => {
+                optional.as_ref()
+            }
+        }
+    }
+
+    /// Whether an optional cover's object has no name left (it was
+    /// removed, not moved).
+    pub(crate) fn removed(&self) -> bool {
+        self.optional().is_some_and(|held| {
+            // SAFETY: fstat on a descriptor we hold, into a zeroed struct.
+            unsafe {
+                let mut st: libc::stat = std::mem::zeroed();
+                libc::fstat(held.as_raw_fd(), &raw mut st) == 0 && st.st_nlink == 0
+            }
+        })
+    }
+
+    /// The planned paths with their identities: the target, then a source
+    /// that differs from it.
+    pub(crate) fn planned(&self) -> Vec<(&CStr, Identity)> {
+        match self {
+            ChildMount::Bind {
+                source,
+                source_id,
+                target,
+                target_id,
+                ..
+            } => {
+                let mut out = vec![(target.as_c_str(), *target_id)];
+                if source != target {
+                    out.push((source.as_c_str(), *source_id));
+                }
+                out
+            }
+            ChildMount::Tmpfs {
+                target, target_id, ..
+            } => vec![(target.as_c_str(), *target_id)],
+        }
+    }
+}
+
+pub(crate) const MOUNT_ATTR_RDONLY: u64 = 0x1;
+pub(crate) const MOUNT_ATTR_NOSUID: u64 = 0x2;
+pub(crate) const MOUNT_ATTR_NODEV: u64 = 0x4;
+pub(crate) const MOUNT_ATTR_NOEXEC: u64 = 0x8;
+const OPEN_TREE_CLONE: u64 = 0x1;
+const MOVE_MOUNT_F_EMPTY_PATH: u64 = 0x4;
+const MOVE_MOUNT_T_EMPTY_PATH: u64 = 0x40;
+const FSOPEN_CLOEXEC: u64 = 0x1;
+const FSMOUNT_CLOEXEC: u64 = 0x1;
+const FSCONFIG_SET_STRING: u64 = 1;
+const FSCONFIG_CMD_CREATE: u64 = 6;
+const RESOLVE_NO_SYMLINKS: u64 = 0x4;
+
+/// `struct open_how`.
+#[repr(C)]
+struct OpenHow {
+    flags: u64,
+    mode: u64,
+    resolve: u64,
+}
+
+/// `struct mount_attr`.
+#[repr(C)]
+struct MountAttr {
+    attr_set: u64,
+    attr_clr: u64,
+    propagation: u64,
+    userns_fd: u64,
+}
+
+/// A descriptor the mount sequence closes when it is done with it.
+struct Fd(c_int);
+
+impl Drop for Fd {
+    fn drop(&mut self) {
+        // SAFETY: closing a descriptor this sequence opened.
+        unsafe { libc::close(self.0) };
+    }
+}
+
+fn syscall_fd(rc: c_long) -> Result<Fd, i32> {
+    if rc < 0 {
+        Err(errno())
+    } else {
+        Ok(Fd(rc as c_int))
+    }
+}
+
+/// `path` as an `O_PATH` descriptor, resolved without following a link in
+/// any component (`ELOOP` otherwise), that must be the object `id`
+/// (`ESTALE` otherwise).
+fn open_planned(path: &CStr, id: Identity) -> Result<Fd, i32> {
+    let how = OpenHow {
+        flags: (libc::O_PATH | libc::O_CLOEXEC) as u64,
+        mode: 0,
+        resolve: RESOLVE_NO_SYMLINKS,
+    };
+    // SAFETY: openat2 with a NUL-terminated path and a struct on our stack.
+    let fd = syscall_fd(unsafe {
+        libc::syscall(
+            libc::SYS_openat2,
+            libc::AT_FDCWD,
+            path.as_ptr(),
+            &raw const how,
+            std::mem::size_of::<OpenHow>(),
+        )
+    })?;
+    // SAFETY: fstat fills a zeroed struct on our stack.
+    let st = unsafe {
+        let mut st: libc::stat = std::mem::zeroed();
+        if libc::fstat(fd.0, &raw mut st) != 0 {
+            return Err(errno());
+        }
+        st
+    };
+    if st.st_dev as u64 != id.dev || st.st_ino as u64 != id.ino {
+        return Err(libc::ESTALE);
+    }
+    Ok(fd)
+}
+
+fn set_attrs(mount: &Fd, attrs: u64) -> Result<(), i32> {
+    if attrs == 0 {
+        return Ok(());
+    }
+    let attr = MountAttr {
+        attr_set: attrs,
+        attr_clr: 0,
+        propagation: 0,
+        userns_fd: 0,
+    };
+    let flags = libc::AT_EMPTY_PATH;
+    // SAFETY: mount_setattr on a descriptor we own, an empty path and a
+    // struct on our stack.
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_mount_setattr,
+            mount.0,
+            c"".as_ptr(),
+            flags as c_ulong,
+            &raw const attr,
+            std::mem::size_of::<MountAttr>(),
+        )
+    };
+    check(rc).map(drop)
+}
+
+fn attach(mount: &Fd, target: &Fd) -> Result<(), i32> {
+    // SAFETY: move_mount between two descriptors we own, empty paths.
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_move_mount,
+            mount.0,
+            c"".as_ptr(),
+            target.0,
+            c"".as_ptr(),
+            (MOVE_MOUNT_F_EMPTY_PATH | MOVE_MOUNT_T_EMPTY_PATH) as c_ulong,
+        )
+    };
+    check(rc).map(drop)
+}
+
+/// A clone of the tree at `source`, its top mount's flags set, attached over
+/// `target`.
+fn bind_planned(source: &Fd, target: &Fd, attrs: u64) -> Result<(), i32> {
+    let flags = OPEN_TREE_CLONE as c_ulong
+        | libc::O_CLOEXEC as c_ulong
+        | libc::AT_EMPTY_PATH as c_ulong
+        | libc::AT_RECURSIVE as c_ulong;
+    // SAFETY: open_tree on a descriptor we own and an empty path.
+    let rc = unsafe { libc::syscall(libc::SYS_open_tree, source.0, c"".as_ptr(), flags) };
+    let tree = syscall_fd(rc)?;
+    // The top mount's flags, as a bind remount set them before.
+    set_attrs(&tree, attrs)?;
+    attach(&tree, target)
+}
+
+/// A new tmpfs with `mode` and `attrs`, attached over `target`.
+fn tmpfs_planned(target: &Fd, mode: &CStr, attrs: u64) -> Result<(), i32> {
+    // SAFETY: fsopen, fsconfig and fsmount on strings with static or
+    // parent-allocated storage and descriptors we own.
+    unsafe {
+        let fs = syscall_fd(libc::syscall(
+            libc::SYS_fsopen,
+            c"tmpfs".as_ptr(),
+            FSOPEN_CLOEXEC as c_ulong,
+        ))?;
+        check(libc::syscall(
+            libc::SYS_fsconfig,
+            fs.0,
+            FSCONFIG_SET_STRING as c_ulong,
+            c"mode".as_ptr(),
+            mode.as_ptr(),
+            0 as c_int,
+        ))?;
+        check(libc::syscall(
+            libc::SYS_fsconfig,
+            fs.0,
+            FSCONFIG_CMD_CREATE as c_ulong,
+            std::ptr::null::<libc::c_char>(),
+            std::ptr::null::<libc::c_char>(),
+            0 as c_int,
+        ))?;
+        let mount = syscall_fd(libc::syscall(
+            libc::SYS_fsmount,
+            fs.0,
+            FSMOUNT_CLOEXEC as c_ulong,
+            attrs as c_ulong,
+        ))?;
+        attach(&mount, target)
+    }
+}
+
+/// Makes one planned mount.
+fn make(m: &ChildMount) -> Result<(), i32> {
+    match m {
+        ChildMount::Bind {
+            source,
+            source_id,
+            target,
+            target_id,
+            attrs,
+            ..
+        } => {
+            let target_fd = open_planned(target, *target_id)?;
+            if source == target {
+                bind_planned(&target_fd, &target_fd, *attrs)
+            } else {
+                let source_fd = open_planned(source, *source_id)?;
+                bind_planned(&source_fd, &target_fd, *attrs)
+            }
+        }
+        ChildMount::Tmpfs {
+            target,
+            target_id,
+            attrs,
+            mode,
+            ..
+        } => tmpfs_planned(&open_planned(target, *target_id)?, mode, *attrs),
+    }
 }
 
 /// The namespaces and mounts of a T1 child.
@@ -286,7 +559,7 @@ pub(crate) struct Isolate {
     pub(crate) flags: c_int,
     pub(crate) uid_map: Vec<u8>,
     pub(crate) gid_map: Vec<u8>,
-    pub(crate) mounts: Vec<ChildMount>,
+    pub(crate) mounts: std::sync::Arc<[ChildMount]>,
 }
 
 /// What the session step does.
@@ -710,52 +983,14 @@ impl ChildPlan {
                 .map_err(|e| fail(steps::ID_MAP, e))?;
             mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)
                 .map_err(|e| fail(steps::MOUNTS, e))?;
-            // The target of an optional mount that was skipped: the
-            // remounts of that target that follow are skipped with it, so
-            // none lands on the mount that contains the vanished path.
-            let mut skipped: Option<&CStr> = None;
-            for m in &iso.mounts {
-                let (result, optional, target) = match m {
-                    ChildMount::Bind {
-                        source,
-                        target,
-                        recursive,
-                        optional,
-                    } => {
-                        let rec = if *recursive { libc::MS_REC } else { 0 };
-                        let r = mount(Some(source), target, None, libc::MS_BIND | rec, None);
-                        (r, *optional, target.as_c_str())
+            for m in iso.mounts.iter() {
+                match make(m) {
+                    // A removed cover's name may be gone or taken by
+                    // another file or link: nothing is left to cover.
+                    Err(libc::ENOENT | libc::ESTALE | libc::ELOOP) if m.removed() => {}
+                    Err(libc::ENOENT) if m.optional().is_some() => {
+                        return Err(fail(steps::MOUNTS, libc::ESTALE));
                     }
-                    ChildMount::Remount {
-                        target,
-                        flags,
-                        optional,
-                    } => {
-                        if skipped == Some(target.as_c_str()) {
-                            continue;
-                        }
-                        let r = mount(
-                            None,
-                            target,
-                            None,
-                            libc::MS_BIND | libc::MS_REMOUNT | flags,
-                            None,
-                        );
-                        (r, *optional, target.as_c_str())
-                    }
-                    ChildMount::Tmpfs {
-                        target,
-                        flags,
-                        data,
-                        optional,
-                    } => {
-                        let r = mount(Some(c"tmpfs"), target, Some(c"tmpfs"), *flags, Some(data));
-                        (r, *optional, target.as_c_str())
-                    }
-                };
-                skipped = None;
-                match result {
-                    Err(libc::ENOENT) if optional => skipped = Some(target),
                     r => r.map_err(|e| fail(steps::MOUNTS, e))?,
                 }
             }
@@ -833,8 +1068,9 @@ impl ChildPlan {
         use std::os::unix::process::CommandExt;
         let mut plan = self;
         // SAFETY: `run` issues only system calls (setsid or setpgid, prctl,
-        // getppid, unshare, open/write/close on /proc/self, mount, with a
-        // proxy socket/ioctl/bind/listen/sendmsg/close,
+        // getppid, unshare, open/write/close on /proc/self, mount, openat2,
+        // fstat, open_tree, mount_setattr, fsopen, fsconfig, fsmount,
+        // move_mount and close, with a proxy socket/ioctl/bind/listen/sendmsg/close,
         // capset, setrlimit, close_range or fcntl, getrlimit,
         // landlock_restrict_self, seccomp, and with reporting sendmsg and
         // close). Everything it reads was
@@ -847,11 +1083,13 @@ impl ChildPlan {
 
 // ------------------------------------------------------------------ probe
 
-/// `mount("tmpfs", "/tmp", …)` succeeded after `unshare` with `flags` and
+/// A read-only bind and a tmpfs over `/tmp`, made as the T1 child makes its
+/// mounts (by descriptor), succeeded after `unshare` with `flags` and
 /// self-mapped ids, in a throwaway child. Returns the errno of the first
-/// failure.
+/// failure: a host without these calls has no tier T1.
 pub(crate) fn probe_userns(flags: c_int) -> Result<(), i32> {
     let (uid, gid) = ids();
+    let tmp = identity(c"/tmp")?;
     let uid_map = format!("{uid} {uid} 1\n").into_bytes();
     let gid_map = format!("{gid} {gid} 1\n").into_bytes();
     let mut fds = [0 as c_int; 2];
@@ -873,7 +1111,9 @@ pub(crate) fn probe_userns(flags: c_int) -> Result<(), i32> {
             write_file(c"/proc/self/uid_map", &uid_map)?;
             write_file(c"/proc/self/gid_map", &gid_map)?;
             mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)?;
-            mount(Some(c"tmpfs"), c"/tmp", Some(c"tmpfs"), 0, Some(c""))
+            let target = open_planned(c"/tmp", tmp)?;
+            bind_planned(&target, &target, MOUNT_ATTR_RDONLY)?;
+            tmpfs_planned(&target, c"0700", 0)
         })();
         let code: i32 = result.err().unwrap_or(0);
         // SAFETY: write four bytes from our stack, then leave without
@@ -983,6 +1223,41 @@ pub(crate) fn spawn_sleeper(setsid: bool) -> std::io::Result<u32> {
     }
     let child = cmd.spawn()?;
     Ok(child.id())
+}
+
+/// Makes `cmd`'s child rename `planned` to `aside` and put `replacement` in
+/// its place (a symbolic link to it, or the directory itself renamed), before
+/// any later `pre_exec` step (for procage's tests: the window between a
+/// cage's plan and its mounts).
+pub(crate) fn plant_before_spawn(
+    cmd: &mut std::process::Command,
+    planned: &std::path::Path,
+    aside: &std::path::Path,
+    replacement: &std::path::Path,
+    link: bool,
+) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+    let (from, aside, replacement) = (c_path(planned)?, c_path(aside)?, c_path(replacement)?);
+    // SAFETY: rename and symlink on strings allocated before the fork.
+    unsafe {
+        cmd.pre_exec(move || {
+            let os = std::io::Error::from_raw_os_error;
+            check_int(libc::rename(from.as_ptr(), aside.as_ptr())).map_err(os)?;
+            check_int(if link {
+                libc::symlink(replacement.as_ptr(), from.as_ptr())
+            } else {
+                libc::rename(replacement.as_ptr(), from.as_ptr())
+            })
+            .map_err(os)?;
+            Ok(())
+        });
+    }
+    Ok(())
+}
+
+fn c_path(p: &std::path::Path) -> std::io::Result<CString> {
+    use std::os::unix::ffi::OsStrExt;
+    CString::new(p.as_os_str().as_bytes()).map_err(std::io::Error::other)
 }
 
 /// A new pseudo-terminal: the controller and the device path of the other

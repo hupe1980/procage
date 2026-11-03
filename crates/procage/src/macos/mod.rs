@@ -300,6 +300,14 @@ pub enum SpawnError {
         /// Why.
         error: io::Error,
     },
+    /// An allow rule, an allowed Unix socket or a grant lies on a
+    /// case-sensitive volume. Seatbelt matches every path case- and
+    /// normalization-insensitively, so it would also allow the path's case
+    /// variants there, which are other files.
+    CaseSensitive {
+        /// The path.
+        path: String,
+    },
     /// libsandbox refused the profile.
     Compile {
         /// libsandbox's message.
@@ -351,6 +359,11 @@ impl fmt::Display for SpawnError {
             SpawnError::AlreadySandboxed => f.write_str("the calling process is already sandboxed"),
             SpawnError::Lower(e) => write!(f, "{e}"),
             SpawnError::Path { path, error } => write!(f, "cannot resolve {path}: {error}"),
+            SpawnError::CaseSensitive { path } => write!(
+                f,
+                "{path} is on a case-sensitive volume, where Seatbelt would also allow \
+                 its case variants: allow rules and grants there are refused"
+            ),
             SpawnError::Compile { message } => {
                 write!(f, "libsandbox refused the profile: {message}")
             }

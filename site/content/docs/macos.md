@@ -21,6 +21,12 @@ macOS confines processes with **Seatbelt**, the kernel sandbox behind the App Sa
 
 To look up a path in the caller's spelling, the kernel needs the child to read the *metadata* of each symbolic link a policy path passes through, and of `/etc`, `/tmp` and `/var`: the child can see where those links point, but nothing behind them.
 
+Seatbelt matches every path case- and Unicode-normalization-insensitively, on every volume. The spelling matrix (`tests/spelling_macos.rs` and the R-37 canary, measured on macOS 26.6.2 and run on every macOS lane) shows:
+
+- on the default (case-insensitive) volume, a deny or an allow spelled in another case, or composed where the disk has the name decomposed (and the reverse), covers the file;
+- a rule through nested symbolic links, a rule for a name created later in another case, and a rule spelled with the data-volume firmlink cover the file;
+- on a case-sensitive volume, a deny also covers the name's case variants, and an allow rule, an allowed Unix socket, a Seatbelt-layer allow or a grant is refused with `SpawnError::CaseSensitive`, since Seatbelt would allow the variants too, which are other files there. The volume is the one of the path's longest existing prefix (`pathconf(_PC_CASE_SENSITIVE)`).
+
 libsandbox aborts its caller on very large profiles, so a profile with more rules than `CageOptions::compile_limit` (2,000 by default) is refused with `SpawnError::LimitExceeded`; a profile libsandbox rejects is `SpawnError::Compile`.
 
 ## Spawning

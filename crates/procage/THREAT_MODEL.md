@@ -7,7 +7,7 @@ and in the crate documentation.
 
 ## Release status
 
-This describes procage 0.4.0. The list below states what it does not
+This describes procage 0.4.1. The list below states what it does not
 contain; the catalog states the evidence for every escape class.
 
 Seatbelt is the macOS kernel sandbox. On Linux, Landlock controls files and
@@ -25,7 +25,10 @@ started when it ends. With the network on, the child reaches neither the
 user's service manager nor a container engine (R-34). With the `proxy`
 feature, a proxy-only child reaches the hosts an allowlist names through a
 proxy of its run's own and no other route (R-35, R-36; macOS and Linux
-tier T1). `Cage::exec` lets a
+tier T1). On tier T1 the child mounts only the objects the cage planned,
+by descriptor, and refuses a spawn whose mount path was replaced by a link
+or another directory (R-33); on macOS an allow on a case-sensitive volume
+is refused (R-37). `Cage::exec` lets a
 helper become the caged command; the lifetime then belongs to whoever
 started the helper.
 
@@ -48,6 +51,9 @@ It does **not**:
   networking on tier T2, or Unix-socket rules on tier T2 below Landlock
   ABI 9 (tier T1 masks the listening sockets outside the allowed paths at
   spawn);
+- accept an allow rule or grant on a case-sensitive macOS volume
+  (Seatbelt would also allow its case variants), or claim anything about
+  Linux case-folding directories, which no lane tests;
 - inspect what a proxy-only child sends to an allowed host: the allowlist
   binds host names, not content, so an allowed host that serves other sites
   (shared hosting, domain fronting) is reachable with whatever they serve.
@@ -215,9 +221,11 @@ why the numbering has gaps.
 | R-30 | Landlock rule loss | Landlock rules attach to existing files: replacing a file by rename drops its rule, and paths that do not exist yet cannot be ruled. On a tier without mount isolation this is reported as a capability gap. | Linux | mitigate | mitigated | tests/escape_linux.rs::r30_a_protected_file_cannot_be_replaced | — |
 | R-31 | Truncation without write access | Below Landlock ABI 3 the kernel cannot deny truncation: truncating a file by path, or opening it with `O_TRUNC` but no write access, empties any file the child may read. | Linux | mitigate | mitigated | tests/escape_linux.rs::r31_files_outside_the_writable_paths_cannot_be_truncated | KF-L14 |
 | R-32 | Seccomp listener hijack | With violation reporting on Linux, the filter reports refused calls to a listener; a process holding it could answer its own refused call with `CONTINUE` and run it. The listener goes to the parent before the exec; the child keeps no copy, and the kernel refuses reopening it through `/proc`. | Linux | mitigate | mitigated | tests/escape_linux.rs::r32_the_seccomp_listener_stays_out_of_reach | KF-L15 |
+| R-33 | Setup that follows a planted link | On Linux tier T1 the child makes its mounts after the parent planned them. Another process with write access to the tree (a concurrent caged run on the same workspace) replaces a planned path component with a symbolic link or renames another directory into its place, so a protect, hide, pin or cover mount lands on another object: the protected path stays writable or visible, and an unrelated path is covered. The objects of the declared mounts are fixed when the cage is made, covers when the spawn plans them; the child opens each path without following any link (`openat2` with `RESOLVE_NO_SYMLINKS`), checks its device and inode, and mounts on that descriptor (`open_tree` or `fsmount`, flags set before `move_mount`), or the spawn fails with `SpawnError::MountMoved` naming the path. A host without these calls has no tier T1. | Linux | mitigate | mitigated | tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount, tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount | — |
 | R-34 | Service handoff over Unix sockets | With the network on, the child asks a program outside the sandbox to run code for it: the user's D-Bus bus or the systemd service manager (`systemd-run --user`), or a container engine (Docker, Podman, containerd, Colima, OrbStack, Lima) that starts a container with the home directory mounted. The `service-handoff` class (Linux buses and service managers; on macOS the Mach services) and the `container-engines` class deny them under every network setting. On Linux tier T1 the sockets found at spawn and the classes' directories are covered, an approximation the caller accepts with the spawn snapshot; tier T2 refuses the cage while such a socket exists, unless the network is `Network::Ip`, under which seccomp refuses Unix sockets outside `ipc.unix_sockets` (macOS keeps the resolver's socket only). Engines at unlisted paths (a custom `DOCKER_HOST`) are the caller's to hide. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r34_container_engines_are_unreachable, tests/escape_linux.rs::r34_service_and_engine_sockets_are_unreachable, tests/escape_linux.rs::r34_an_abstract_bus_is_scoped, tests/escape_linux.rs::r34_a_socket_bound_later_is_refused, tests/escape_macos.rs::r34_the_ip_network_keeps_every_unix_socket_out, tests/escape_linux.rs::r34_the_ip_network_keeps_every_unix_socket_out, tests/escape_linux.rs::r34_fit_keeps_unix_sockets_out_of_a_networked_command | — |
 | R-35 | Allowlist parser differential | The proxy's allowlist check and the code that connects read one request's host differently (a NUL byte, percent encoding, a trailing dot or case, an address in another notation, a name that resolves inward), so an allowed name reaches a host the list does not name. `procage-proxy` turns every host into one canonical value that is both checked and connected to, refuses NUL, control bytes, percent encoding, userinfo and non-ASCII names, reads every IPv4 notation as an address that needs an allowlisted range, resolves an allowed name once and connects only to an address it checked, and refuses an empty or too-wide list at construction. Its table-driven suite and a fuzz target back the canary. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r35_a_host_is_read_one_way, tests/escape_linux.rs::r35_a_host_is_read_one_way | — |
 | R-36 | Direct egress around the proxy | A proxy-only child skips the proxy: a direct TCP or UDP connection, IPv6, TCP Fast Open or MPTCP (which Landlock port rules do not see), a raw socket, its own DNS query, another loopback port, or a listener of another run. On macOS the profile allows outbound connections to the run's own proxy ports only; on Linux tier T1 the child runs in a network namespace whose only endpoints are its proxy listeners, with Landlock as a second layer; tier T2 refuses proxy-only cages. With no proxy running, nothing is reachable. | macOS, Linux | mitigate | mitigated | tests/escape_macos.rs::r36_a_proxy_only_child_has_no_other_route, tests/escape_linux.rs::r36_a_proxy_only_child_has_no_other_route | — |
+| R-37 | Case variants of an allow | Seatbelt matches every path filter case- and normalization-insensitively, on every volume. On a case-sensitive volume an allow for `work` would also allow `WORK` and `Work`, which are other files. procage refuses an allow rule, an allowed Unix socket, a Seatbelt-layer allow or a grant there with `SpawnError::CaseSensitive`, as the longest existing prefix of its path reports through `pathconf(_PC_CASE_SENSITIVE)`; a deny there also covers the case variants. On the default (case-insensitive) volume a rule in any case or Unicode form enforces on the file. | macOS | mitigate | mitigated | tests/escape_macos.rs::r37_an_allow_on_a_case_sensitive_volume_is_refused | — |
 
 ### Harness responsibilities
 

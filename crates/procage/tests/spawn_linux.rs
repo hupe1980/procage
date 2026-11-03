@@ -1004,6 +1004,81 @@ fn many_spawns_from_many_threads_are_all_caged() {
     }
 }
 
+/// The T1 mount sequence (by descriptor: openat2, open_tree, fsmount,
+/// mount_setattr, move_mount) runs in the child between fork and exec, so
+/// it must stay system calls only: 1,000 spawns of a policy with every
+/// mount kind, from four threads, while four more allocate and lock.
+#[test]
+fn t1_mounts_from_a_busy_multithreaded_parent() {
+    if !t1("t1_mounts_from_a_busy_multithreaded_parent") {
+        return;
+    }
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let w = scratch("t1-mt");
+    for dir in ["p", "h", "f", ".git/hooks", "sub/.vscode"] {
+        std::fs::create_dir_all(w.join(dir)).unwrap();
+    }
+    std::fs::write(w.join("f/secret"), "secret").unwrap();
+    let mut p = base();
+    p.process.fork = true;
+    p.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(abs(&w))));
+    p.fs.push(FsRule::new(
+        Access::Protect,
+        FsTarget::Subpath(abs(w.join("p"))),
+    ));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Subpath(abs(w.join("h"))),
+    ));
+    p.fs.push(FsRule::new(
+        Access::Hide,
+        FsTarget::Literal(abs(w.join("f/secret"))),
+    ));
+    let cage = std::sync::Arc::new(Cage::with_options(&p, &options(Tier::T1)).unwrap());
+    let stop = std::sync::Arc::new(AtomicBool::new(false));
+    let lock = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    let churn: Vec<_> = (0..4)
+        .map(|_| {
+            let (stop, lock) = (stop.clone(), lock.clone());
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    let mut held = lock.lock().unwrap();
+                    held.extend(std::iter::repeat_n(1, 4096));
+                    held.clear();
+                    held.shrink_to_fit();
+                }
+            })
+        })
+        .collect();
+    let script = format!(
+        "touch {d}/p/x 2>/dev/null && exit 3; cat {d}/f/secret 2>/dev/null && exit 4; exit 0",
+        d = w.display()
+    );
+    let spawners: Vec<_> = (0..4)
+        .map(|_| {
+            let (cage, script) = (cage.clone(), script.clone());
+            std::thread::spawn(move || {
+                for _ in 0..250 {
+                    let mut cmd = Command::new("/bin/sh");
+                    cmd.args(["-c", &script])
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped());
+                    let child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+                    let out = finish(child, Duration::from_secs(10));
+                    assert_eq!(out.status.code(), Some(0));
+                }
+            })
+        })
+        .collect();
+    for t in spawners {
+        t.join().unwrap();
+    }
+    stop.store(true, Ordering::Relaxed);
+    for t in churn {
+        t.join().unwrap();
+    }
+}
+
 // ---- T1 isolation ----
 
 #[test]

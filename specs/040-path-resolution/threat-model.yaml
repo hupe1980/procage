@@ -120,16 +120,21 @@ threatspec:
     reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
       the child, modelled under STRIDE
     technique: rogue-agent
-  exclusions: []
+  exclusions:
+  - entity: Mount target
+    reason: 'folded into asset.plan: a planned path and the identity of the object it resolved to are one entry
+      of the mount plan'
   extends: null
-  generated: '2026-11-01T21:15:44Z'
+  generated: '2026-11-03T08:37:52Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
+  - path: plan.md
+    sha256: 00d70977d1d01bd98ef7968ee4a0322afdfbd4c2e5ccdcb29957c6acc8bd3a2d
   - path: spec.md
-    sha256: 49aad8c0c2210a7ddfe39698c653d595708318bda04cb4864020ced5f52c3169
+    sha256: 39880bff6dd7a0749832ef9b4e50559a72db01d0720220be72b74b3d87f8e500
   surfaces:
   - external-input
   - authorization
@@ -288,7 +293,7 @@ threats:
     source: spec.md#US2
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.consumer
     constitution: I. Fail closed, never silently weaker
     disposition: threat
@@ -312,7 +317,7 @@ threats:
     source: spec.md#FR-003
     assets:
     - asset.harness
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: IV. Syscalls only between fork and exec
     disposition: threat
@@ -334,7 +339,7 @@ threats:
     source: spec.md#Input
     assets:
     - asset.claim
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     disposition: threat
@@ -358,7 +363,7 @@ threats:
     source: spec.md#US2
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.contributor
     disposition: threat
     elements:
@@ -384,7 +389,7 @@ threats:
     assets:
     - asset.host
     - asset.plan
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: I. Fail closed, never silently weaker
     disposition: threat
@@ -408,7 +413,7 @@ threats:
     source: spec.md#Assumptions
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: I. Fail closed, never silently weaker
     disposition: threat
@@ -437,7 +442,7 @@ threats:
     assets:
     - asset.host
     - asset.plan
-    status: open
+    status: mitigated
     actor: actor.caged-code
     constitution: I. Fail closed, never silently weaker
     disposition: threat
@@ -459,12 +464,13 @@ threats:
     source: spec.md#Out-of-Scope
     assets:
     - asset.host
-    status: open
+    status: retired
     actor: actor.caged-code
     disposition: needs-clarification
     elements:
     - component.canonicaliser
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
 - id: threat.q-missing-leaf-spelling
   name: '[NEEDS CLARIFICATION: on a case-insensitive volume the on-disk spelling of a path that does not exist yet
@@ -478,12 +484,13 @@ threats:
     source: spec.md#FR-005
     assets:
     - asset.host
-    status: open
+    status: retired
     actor: actor.consumer
     disposition: needs-clarification
     elements:
     - component.canonicaliser
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
 - id: threat.q-planned-root
   name: '[NEEDS CLARIFICATION: which ancestor is the planned root that a mount path is resolved beneath, and how
@@ -497,12 +504,13 @@ threats:
     source: spec.md#FR-002
     assets:
     - asset.plan
-    status: open
+    status: retired
     actor: actor.contributor
     disposition: needs-clarification
     elements:
     - component.resolver
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
 - id: threat.resolve-then-remount
   name: The backend checks for links and then mounts by path name again, so a component replaced after the check
@@ -521,7 +529,7 @@ threats:
     assets:
     - asset.host
     - asset.plan
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: I. Fail closed, never silently weaker
     disposition: threat
@@ -548,7 +556,7 @@ threats:
     assets:
     - asset.host
     - asset.plan
-    status: open
+    status: mitigated
     actor: actor.caged-code
     disposition: threat
     elements:
@@ -571,7 +579,7 @@ threats:
     source: spec.md#Clarifications
     assets:
     - asset.harness
-    status: open
+    status: mitigated
     actor: actor.caged-code
     disposition: threat
     elements:
@@ -595,7 +603,7 @@ threats:
     source: spec.md#US2
     assets:
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.consumer
     constitution: I. Fail closed, never silently weaker
     disposition: threat
@@ -620,7 +628,7 @@ threats:
     assets:
     - asset.claim
     - asset.host
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     disposition: threat
@@ -637,12 +645,13 @@ mitigations:
   attributes:
     threats:
     - threat.claim-overstates
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-010
     touchpoints:
-    - component.docs
+    - site/content/docs/macos.md
+    - crates/procage/THREAT_MODEL.md
 - id: mitigation.exact-or-refuse
   name: The matrix measures what Seatbelt does per spelling; the canonicaliser emits the matching spelling or refuses
     the rule with a typed error
@@ -651,12 +660,13 @@ mitigations:
     threats:
     - threat.case-miss
     - threat.unicode-miss
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-007
     touchpoints:
-    - component.canonicaliser
+    - crates/procage/src/macos/canon.rs
+    - crates/procage/tests/spelling_macos.rs
 - id: mitigation.mount-by-descriptor
   name: The mount applies to the descriptor of the resolved object, never to the path name again
   riskReduction: 90
@@ -665,12 +675,12 @@ mitigations:
     - threat.resolve-then-remount
     - threat.mount-redirect
     - threat.hide-redirect
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-003
     touchpoints:
-    - component.child-mounts
+    - crates/procage/src/linux/sys.rs
 - id: mitigation.named-failure
   name: The spawn error names the path, the component that is a link and the mount kind; vanished snapshot covers
     keep their skip, declared mounts stay strict
@@ -678,25 +688,26 @@ mitigations:
   attributes:
     threats:
     - threat.spawn-sabotage
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-006
     touchpoints:
-    - component.child-mounts
-    - component.docs
+    - crates/procage/src/linux/spawn.rs
+    - crates/procage/src/linux/mod.rs
 - id: mitigation.no-fallback
   name: A kernel without the needed calls gives a typed error at cage build; there is no path-mount fallback
   riskReduction: 95
   attributes:
     threats:
     - threat.kernel-fallback
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-004
     touchpoints:
-    - component.resolver
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/src/linux/probe.rs
 - id: mitigation.no-follow-resolution
   name: The parent prepares and the child resolves every source and target beneath its planned root without following
     links in any component; a link fails the spawn with a typed error naming the path
@@ -706,13 +717,13 @@ mitigations:
     - threat.mount-redirect
     - threat.hide-redirect
     - threat.source-redirect
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-002
     touchpoints:
-    - component.resolver
-    - component.child-mounts
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/src/linux/spawn.rs
 - id: mitigation.no-widening
   name: No rule is folded or normalised into a broader match; on a case-sensitive volume a rule covers its exact
     name
@@ -720,12 +731,13 @@ mitigations:
   attributes:
     threats:
     - threat.fold-overgrant
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-008
     touchpoints:
-    - component.canonicaliser
+    - crates/procage/src/macos/canon.rs
+    - crates/procage/src/macos/spawn.rs
 - id: mitigation.race-canary
   name: Escape canary per mount kind (protect, hide, data-class cover, socket cover, grant bind) with a deterministic
     link-planting hook as positive control and 10,000 racing attempts, run before and after the change
@@ -736,12 +748,12 @@ mitigations:
     - threat.mount-redirect
     - threat.hide-redirect
     - threat.source-redirect
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-001
     touchpoints:
-    - component.canaries
+    - crates/procage/tests/escape_linux.rs
 - id: mitigation.spelling-matrix
   name: Caged matrix on case-insensitive and case-sensitive APFS, composed and decomposed names, nested links, missing
     leaves and firmlinks, and a Linux case-folding directory where the lane has one; fails, never skips
@@ -751,12 +763,13 @@ mitigations:
     - threat.vacuous-canary
     - threat.case-miss
     - threat.unicode-miss
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-009
     touchpoints:
-    - component.canaries
+    - crates/procage/tests/spelling_macos.rs
+    - .github/workflows/ci.yml
 - id: mitigation.syscalls-only
   name: Every path and buffer is prepared in the parent; the child's sequence is listed in the plan and tested with
     a multithreaded parent
@@ -764,17 +777,18 @@ mitigations:
   attributes:
     threats:
     - threat.child-unsafe
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-005
     touchpoints:
-    - component.child-mounts
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/tests/spawn_linux.rs
 requirements:
 - id: SR-001
-  statement: An escape canary MUST, for each T1 mount kind (protect, hide, data-class cover, socket cover, grant
-    bind), replace a source or target component with a symbolic link between plan and mount, both at a deterministic
-    hook and in at least 10,000 racing attempts, and MUST record the outcome before and after the change.
+  statement: An escape canary MUST, for each T1 mount kind (protect, hide, data-class cover, socket cover, pin),
+    replace a target component with a symbolic link or another directory between plan and mount, both at a deterministic
+    hook and in racing attempts (10,000 in CI), and MUST record the outcome before and after the change.
   priority: P1
   mitigations:
   - mitigation.race-canary
@@ -800,31 +814,35 @@ requirements:
   - given: a hidden file whose parent directory became a link
     then: it fails the same way
     when: the spawn runs
-  - given: a grant bind whose source became a link into the writable workspace
+  - given: a pin whose path was replaced by a link into the writable workspace
     then: it fails the same way
     when: the spawn runs
   tasks: []
 - id: SR-003
-  statement: The mount MUST apply to exactly the object resolved; no step MUST resolve the path name again after
-    the no-follow resolution.
+  statement: 'The mount MUST apply to exactly the object planned: the child MUST check the resolved object''s device
+    and inode against the plan and attach by descriptor, and no step MUST resolve the path name again afterwards.'
   priority: P1
   mitigations:
   - mitigation.mount-by-descriptor
   acceptance:
-  - given: a hook that replaces a component after resolution and before the mount call
-    then: the mount lands on the originally resolved object, or the spawn fails; never on the link target
+  - given: a hook that renames a planned directory away and moves another real directory into its place
+    then: the spawn fails and the moved-in directory is not covered
     when: the child mounts
   tasks: []
 - id: SR-004
-  statement: If the kernel lacks a call needed to resolve without following links or to mount by descriptor, the
-    cage MUST fail with a typed error at build time and MUST NOT fall back to mounting by path.
+  statement: 'If the kernel lacks a call needed to resolve without following links or to mount by descriptor, T1
+    MUST be unavailable (the probe makes the same calls): the default is T2 with its typed gaps, a cage that asks
+    for T1 MUST fail with Unsupported::Tier, and no mount MUST fall back to a path name.'
   priority: P1
   mitigations:
   - mitigation.no-fallback
   acceptance:
-  - given: a T1 test where the needed call returns ENOSYS
-    then: it fails with a typed error naming the call, and no child runs
-    when: the cage is built
+  - given: the T1 probe
+    then: it mounts its tmpfs with fsopen, fsmount, openat2 and move_mount, so a host without them reports no T1
+    when: it runs
+  - given: the child sequence
+    then: no mount call takes a path name except the propagation change of the root
+    when: it is reviewed
   tasks: []
 - id: SR-005
   statement: The child's mount sequence MUST issue system calls only, with every path and buffer prepared in the
@@ -838,14 +856,14 @@ requirements:
     when: 1,000 T1 spawns run with the new sequence
   tasks: []
 - id: SR-006
-  statement: A spawn failed by a link MUST name the path, the component that is a link and the mount kind; vanished
-    snapshot covers MUST keep being skipped and declared mounts MUST stay strict.
+  statement: A spawn refused for a moved mount MUST return SpawnError::MountMoved naming the planned path and, if
+    there is one, the link; vanished snapshot covers MUST keep being skipped and declared mounts MUST stay strict.
   priority: P2
   mitigations:
   - mitigation.named-failure
   acceptance:
   - given: a planted link
-    then: the error names the path, the linked component and the mount kind
+    then: the error names the planned path and the link
     when: the spawn fails
   - given: the existing spawn and escape suites
     then: they pass unchanged
@@ -853,8 +871,8 @@ requirements:
   tasks: []
 - id: SR-007
   statement: On macOS a rule whose spelling differs from the on-disk name (case on a case-insensitive volume, Unicode
-    form) MUST either enforce on the file under every spelling the volume treats as the same name, or the cage MUST
-    be refused with a typed error naming the rule; it MUST NOT silently match nothing.
+    form) MUST enforce on the file under every spelling the volume treats as the same name, or the cage MUST be
+    refused with a typed error naming the rule; it MUST NOT silently match nothing.
   priority: P1
   mitigations:
   - mitigation.exact-or-refuse
@@ -867,20 +885,27 @@ requirements:
     when: the child accesses it
   tasks: []
 - id: SR-008
-  statement: No rule MUST be widened by case folding or normalisation; on a case-sensitive volume a rule MUST cover
-    only its exact name.
+  statement: 'No allow MUST be widened by case folding or normalisation: an allow rule, an allowed Unix socket or
+    a grant on a case-sensitive volume MUST refuse the cage with SpawnError::CaseSensitive naming the path, since
+    Seatbelt would also allow its case variants.'
   priority: P1
   mitigations:
   - mitigation.no-widening
   acceptance:
-  - given: a case-sensitive APFS disk image with files A and a and a write grant for a
-    then: the write is denied
-    when: the child writes A
+  - given: a case-sensitive APFS disk image with a write rule for a
+    then: it fails with CaseSensitive naming the path
+    when: the cage is built
+  - given: a grant bound to a path on that image
+    then: it fails the same way
+    when: the spawn runs
+  - given: a deny for a on that image
+    then: it is denied
+    when: the child reads A
   tasks: []
 - id: SR-009
-  statement: The spelling matrix MUST run as caged tests on a case-insensitive and a case-sensitive APFS volume
-    with composed and decomposed names, nested links, missing leaves and firmlinks, and on a Linux case-folding
-    directory where the lane supports one; a macOS lane that cannot create the disk image MUST fail, not skip.
+  statement: The spelling matrix MUST run as caged tests on the default volume and on a case-sensitive APFS image
+    with case and Unicode variants, nested links, missing leaves and firmlinks; a macOS lane that cannot create
+    the image MUST fail, not skip. Linux case-folding directories are untested and the docs MUST say so.
   priority: P1
   mitigations:
   - mitigation.spelling-matrix
@@ -907,5 +932,221 @@ requirements:
     then: it lists the class with the race canary
     when: it is read
   tasks: []
-verification: []
+verification:
+- id: verification.sr-001.2026-11-03
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount, crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount
+  result: pass
+  verdict: verified
+  justification: The deterministic hook plants a link and a renamed directory for protect, hidden directory, hidden
+    file, pin, class cover and socket cover; on 0.4.0 all 12 were redirected (quickstart.md), on 0.4.1 all refused.
+    The race ran 10,000 attempts on T1 with the protected file read back unchanged through a pre-opened fd.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-001.2026-11-03-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: A hook in the child replaces each planned path (protect, hidden directory, hidden file, cover and
+    pin, socket cover) with a link or a renamed-in directory; against 0.4.0 every kind escaped, now each spawn is
+    refused; the racing canary (r33_racing_a_planted_link_never_moves_a_mount, 10,000 and 20,000 attempts) leaves
+    the protected file unchanged.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-002.2026-11-03
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: For each link plant (protect dir, hidden file's parent, .git pin into the writable workspace) the
+    test asserts SpawnError::MountMoved with the planned path and link; the spawn fails before any mount, so the
+    link target is untouched. The child resolves with openat2 RESOLVE_NO_SYMLINKS (linux/sys.rs open_planned).
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-002.2026-11-03-2
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: Each link plant fails with MountMoved naming the planned path and the link, including the pin whose
+    path became a link into the writable workspace; the moved-aside object stays untouched.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-003.2026-11-03
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: The Dir plant renames the planned directory away and a real directory into place; the test asserts
+    MountMoved with no link, so the moved-in directory is not covered. open_planned checks dev/ino by fstat and
+    bind_planned/tmpfs_planned attach by descriptor (open_tree/fsmount, mount_setattr, move_mount with empty paths).
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-003.2026-11-03-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount
+  result: pass
+  verdict: verified
+  justification: Declared objects are recorded when the cage is made; the child opens the canonical path without
+    following links, compares device and inode and mounts on that descriptor; the renamed-in directory plants are
+    refused and the racing swap never exposes the protected file.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-004.2026-11-03
+  requirement: SR-004
+  method: review
+  evidence: crates/procage/src/linux/sys.rs probe_userns (open_planned, bind_planned, tmpfs_planned); crates/procage/src/linux/sys.rs
+    ChildPlan::run (only mount() call is MS_REC|MS_PRIVATE on /)
+  result: pass
+  verdict: verified
+  justification: Both acceptance scenarios are review scenarios. The probe makes the child's descriptor-mount calls
+    on /tmp, so a host without them reports no T1; in the child the only path-taking mount call is the root propagation
+    change. Reviewed in this session.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-004.2026-11-03-2
+  requirement: SR-004
+  method: review
+  evidence: crates/procage/src/linux/sys.rs:1090
+  result: pass
+  verdict: verified
+  justification: The T1 probe mounts its /tmp with openat2, open_tree, mount_setattr, fsopen, fsmount and move_mount;
+    when a non-recursive clone failed with EINVAL during development the host measured T2 (userns_errno 22), so
+    a host without the calls is not T1; the child sequence passes no path name to a mount call except the root propagation
+    change.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-005.2026-11-03
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent
+  result: pass
+  verdict: verified
+  justification: 1,000 T1 spawns of a policy with protect, hidden directory, hidden file and class covers from four
+    threads while four others allocate and lock; passed in the T1 container. The new child code (open_planned, make,
+    bind_planned, tmpfs_planned) uses stack structs and parent-built CStrings only.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-005.2026-11-03-2
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent
+  result: pass
+  verdict: verified
+  justification: 1,000 T1 spawns of a policy with every mount kind from four threads while four more allocate and
+    lock all complete; the sequence in sys.rs issues system calls only on parent-prepared buffers, and the unsafe_confined
+    audit passes.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-006.2026-11-03
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount, crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it
+  result: pass
+  verdict: verified
+  justification: The canary asserts the named path and link; a socket removed and rebound during 300 spawns never
+    fails one; the full T1 and T2 suites pass unchanged.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-006.2026-11-03-2
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it
+  result: pass
+  verdict: verified
+  justification: A cover whose object was removed is skipped (the held descriptor shows no link left) while a moved
+    one fails; MountMoved names the path and link in the r33 canary; the spawn and escape suites pass on T1 and
+    T2 in Docker and on Linux 5.15 and 7.3.1.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-007.2026-11-03
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume
+  result: pass
+  verdict: verified
+  justification: On the default APFS volume a deny spelled in another case and one composed while the disk name
+    is decomposed both deny the file, with a readable control; passed on macOS 26.6.2.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-007.2026-11-03-2
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume
+  result: pass
+  verdict: verified
+  justification: On the default volume a deny in another case or Unicode form, through two links, for a leaf created
+    later and through the data-volume firmlink denies the file; an allow in another case reaches it.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-008.2026-11-03
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies, crates/procage/tests/escape_macos.rs::r37_an_allow_on_a_case_sensitive_volume_is_refused
+  result: pass
+  verdict: verified
+  justification: On a case-sensitive APFS image Read/Write/Exec allows, a socket, a Seatbelt-layer allow and a bound
+    grant fail with CaseSensitive naming the path; a deny for a also denies A while b stays readable.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-008.2026-11-03-2
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies
+  result: pass
+  verdict: verified
+  justification: On a case-sensitive APFS image, read, write and exec rules, an allowed socket and a bound grant
+    are refused with CaseSensitive naming the path, and a deny for a also denies A; escape_macos r37 is the class
+    canary.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-009.2026-11-03
+  requirement: SR-009
+  method: review
+  evidence: .github/workflows/ci.yml (Spelling matrix step in the macOS job); crates/procage/tests/spelling_macos.rs
+    Image::new asserts
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The matrix passes locally on macOS 26.6.2 and fails if the image cannot be made, and CI runs it
+    on the macOS 15, 26 and 27 lanes, but those lanes have not run this commit yet.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-009.2026-11-03-2
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies
+  result: pass
+  verdict: verified
+  justification: The matrix covers both volume kinds, case and NFC/NFD, nested links, a missing leaf and the firmlink;
+    the image helper asserts hdiutil create and attach, so a lane that cannot make it fails; ci.yml runs it on every
+    macOS lane; site linux.md names case-folding directories untested.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
+- id: verification.sr-010.2026-11-03
+  requirement: SR-010
+  method: test
+  evidence: crates/procage/tests/threat_model.rs::gate
+  result: pass
+  verdict: verified
+  justification: THREAT_MODEL.md lists R-33 and R-37 with their canaries and the gate passes; site/content/docs/macos.md
+    lists exactly the matrix cases and linux.md says case-folding directories are untested.
+  verified_at: '2026-11-03T08:37:53Z'
+  commit: 412ed89
+- id: verification.sr-010.2026-11-03-2
+  requirement: SR-010
+  method: review
+  evidence: site/content/docs/macos.md:28
+  result: pass
+  verdict: verified
+  justification: The macOS guide states exactly the measured cases, the Linux guide names case-folding untested,
+    and THREAT_MODEL.md lists R-33 with both canaries and R-37 with its canary.
+  verified_at: '2026-11-03T08:38:33Z'
+  commit: 412ed89
 decisions: []

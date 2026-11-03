@@ -80,6 +80,8 @@ jobs:
         run: mkdir -p ~/.ssh ~/.aws ~/.gnupg
       - name: Caged children (spawn tests)
         run: cargo test --locked -p procage --lib --test spawn_macos --test native --test exec --test receipts --test audit --test oracle
+      - name: Spelling matrix (the default volume and a case-sensitive APFS image)
+        run: cargo test --locked -p procage --test spelling_macos
       - name: Escape suite
         run: cargo test --locked -p procage --test escape_macos
       - name: Escape suite, the async handle and the proxy (tokio, proxy)
@@ -119,6 +121,8 @@ jobs:
       PROCAGE_KF_EXPECT_TIER: ${{ matrix.tier }}
       PROCAGE_KF_EXPECT_ARCH: ${{ matrix.arch }}
       PROCAGE_EXPECT_TIER: ${{ matrix.tier }}
+      # The R-33 race canary (SR-001): 10,000 swaps against T1 spawns.
+      PROCAGE_RACE_ATTEMPTS: "10000"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -92,8 +92,9 @@ mainline kernels 5.15 to 7.3 (Landlock ABI 1 to 11). Untested: macOS 14
 and earlier, Intel Macs.
 
 **Known limits:** no pseudo-terminals, no Linux PID namespace, no loopback
-networking on Linux and no proxy-only networking on tier T2, and Landlock's
-file and network denials are not reported.
+networking on Linux and no proxy-only networking on tier T2, Landlock's
+file and network denials are not reported, allows on a case-sensitive macOS
+volume are refused, and Linux case-folding directories are untested.
 
 ## ⏱️ Performance
 

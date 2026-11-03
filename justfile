@@ -196,7 +196,7 @@ site:
 # with violation reporting (run outside any other sandbox).
 escape:
     @echo "==> gate: escape (macOS)"
-    cargo test --locked -p procage --test escape_macos
+    cargo test --locked -p procage --test escape_macos --test spelling_macos
     PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_macos
     PROCAGE_ESCAPE_BASE=v3 PROCAGE_ESCAPE_VIOLATIONS=1 cargo test --locked -p procage --test escape_macos
     PROCAGE_ASYNC=1 cargo test --locked -p procage --features tokio,proxy --test escape_macos --test tokio --test proxy

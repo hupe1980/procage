@@ -228,15 +228,16 @@ pub(super) fn foreign_sockets(
                 .join(" ");
             path.starts_with('/').then(|| PathBuf::from(path))
         })
-        .filter(|p| {
+        .filter_map(|p| {
             // The listing shows the path as bound, which may pass through a
-            // symbolic link; `allowed` is resolved.
-            let real = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
-            std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_socket())
+            // symbolic link; `allowed` is resolved, and so is the cover.
+            let real = std::fs::canonicalize(&p).ok()?;
+            (std::fs::symlink_metadata(&real).is_ok_and(|m| m.file_type().is_socket())
                 && !allowed.iter().any(|a| real.starts_with(a))
                 && !masked
                     .iter()
-                    .any(|m| p.starts_with(m) || real.starts_with(m))
+                    .any(|m| p.starts_with(m) || real.starts_with(m)))
+            .then_some(real)
         })
         .collect();
     out.sort();
@@ -248,152 +249,261 @@ fn depth(path: &Path) -> usize {
     path.components().count()
 }
 
-fn read_only(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
-    if std::fs::metadata(path).is_err() {
-        return Err(path_error(path, libc::ENOENT));
-    }
-    let target = c_path(path)?;
-    let locked = sys::locked_flags(&target).map_err(|e| path_error(path, e))?;
-    Ok(vec![
-        ChildMount::Bind {
-            source: target.clone(),
-            target: target.clone(),
-            recursive: true,
-            optional: false,
-        },
-        ChildMount::Remount {
-            target,
-            flags: locked | libc::MS_RDONLY,
-            optional: false,
-        },
-    ])
+/// A planned mount path and the identity of the object it names.
+struct Planned {
+    path: PathBuf,
+    c: CString,
+    id: sys::Identity,
 }
 
-fn hide(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
-    let meta = std::fs::metadata(path).map_err(|_| path_error(path, libc::ENOENT))?;
-    let target = c_path(path)?;
-    let sealed = libc::MS_RDONLY | libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC;
+/// The first symbolic link on the way to `path`, if any.
+fn link_on(path: &Path) -> Option<PathBuf> {
+    let mut at = PathBuf::from("/");
+    for component in path.components().skip(1) {
+        at.push(component);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) if meta.file_type().is_symlink() => return Some(at),
+            Ok(_) => {}
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// A mount path, canonical as the parent resolves it now (its own links
+/// followed), with the identity of the object it names. The child opens
+/// this canonical path without following links, so a link or rename that
+/// appears after this point refuses the spawn.
+fn planned(path: &Path) -> Result<Planned, SpawnError> {
+    let real = std::fs::canonicalize(path)
+        .map_err(|e| path_error(path, e.raw_os_error().unwrap_or(libc::EIO)))?;
+    let c = c_path(&real)?;
+    let id = sys::identity(&c).map_err(|e| path_error(&real, e))?;
+    Ok(Planned { path: real, c, id })
+}
+
+const SEALED: u64 = sys::MOUNT_ATTR_RDONLY
+    | sys::MOUNT_ATTR_NOSUID
+    | sys::MOUNT_ATTR_NODEV
+    | sys::MOUNT_ATTR_NOEXEC;
+
+/// A bind of `p` over itself with `attrs`.
+fn self_bind(p: &Planned, attrs: u64) -> ChildMount {
+    ChildMount::Bind {
+        source: p.c.clone(),
+        source_id: p.id,
+        target: p.c.clone(),
+        target_id: p.id,
+        attrs,
+        optional: None,
+    }
+}
+
+fn read_only(p: &Planned) -> ChildMount {
+    self_bind(p, sys::MOUNT_ATTR_RDONLY)
+}
+
+fn pin(p: &Planned) -> ChildMount {
+    self_bind(p, 0)
+}
+
+fn hide(p: &Planned) -> Result<ChildMount, SpawnError> {
+    let meta = std::fs::metadata(&p.path).map_err(|_| path_error(&p.path, libc::ENOENT))?;
     if meta.is_dir() {
-        return Ok(vec![ChildMount::Tmpfs {
-            target,
-            flags: sealed,
-            data: c"mode=000".into(),
-            optional: false,
-        }]);
+        return Ok(ChildMount::Tmpfs {
+            target: p.c.clone(),
+            target_id: p.id,
+            attrs: SEALED,
+            mode: c"000".into(),
+            optional: None,
+        });
     }
-    let null = c"/dev/null";
-    let locked = sys::locked_flags(null).map_err(|e| path_error(Path::new("/dev/null"), e))?;
-    Ok(vec![
-        ChildMount::Bind {
-            source: null.into(),
-            target: target.clone(),
-            recursive: false,
-            optional: false,
-        },
-        ChildMount::Remount {
-            target,
-            flags: locked | sealed,
-            optional: false,
-        },
-    ])
+    let null = planned(Path::new("/dev/null"))?;
+    Ok(ChildMount::Bind {
+        source: null.c,
+        source_id: null.id,
+        target: p.c.clone(),
+        target_id: p.id,
+        attrs: SEALED,
+        optional: None,
+    })
 }
 
-fn pin(path: &Path) -> Result<Vec<ChildMount>, SpawnError> {
-    let target = c_path(path)?;
-    Ok(vec![ChildMount::Bind {
-        source: target.clone(),
-        target,
-        recursive: true,
-        optional: false,
-    }])
+/// The objects a cage's declared mounts name, found when the cage is made:
+/// canonical paths and their identities. Spawns mount only these objects,
+/// so a link or rename made later, even while the parent plans a spawn,
+/// refuses it.
+pub(super) type Declared = BTreeMap<PathBuf, sys::Identity>;
+
+/// Rewrites the plan's declared mount paths to their canonical form and
+/// records the object each names. A path that does not exist yet keeps its
+/// spelling and has no identity: its spawns fail as before.
+pub(super) fn declare(plan: &mut LinuxPlan) -> Declared {
+    let mut declared = Declared::new();
+    for m in &mut plan.mounts {
+        let (Mount::ReadOnlyBind(p) | Mount::Mask(p) | Mount::Pin(p)) = m else {
+            continue;
+        };
+        let path = PathBuf::from(std::ffi::OsStr::from_bytes(p.as_bytes()));
+        let Ok(real) = std::fs::canonicalize(&path) else {
+            continue;
+        };
+        let Ok(c) = c_path(&real) else {
+            continue;
+        };
+        let Ok(id) = sys::identity(&c) else {
+            continue;
+        };
+        if let Ok(canonical) = procage_policy::AbsPath::new(real.as_os_str().as_bytes()) {
+            *p = canonical;
+            declared.insert(real, id);
+        }
+    }
+    declared
+}
+
+/// A declared mount path at spawn, with the object the cage was made with.
+/// The child checks that the path still names it: a link or rename made
+/// since refuses the spawn there, after the link check has had its say.
+fn declared_at(path: &Path, declared: &Declared) -> Result<Planned, SpawnError> {
+    let id = *declared
+        .get(path)
+        .ok_or_else(|| path_error(path, libc::ENOENT))?;
+    Ok(Planned {
+        path: path.to_path_buf(),
+        c: c_path(path)?,
+        id,
+    })
 }
 
 /// The T1 mounts: the plan's, then the class covers, shallowest first.
 pub(super) fn mounts(
     plan: &LinuxPlan,
+    declared: &Declared,
     covers: &[(PathBuf, Cover)],
 ) -> Result<Vec<ChildMount>, SpawnError> {
     let to_path =
         |p: &procage_policy::AbsPath| PathBuf::from(std::ffi::OsStr::from_bytes(p.as_bytes()));
-    let mut groups: Vec<(usize, Vec<ChildMount>)> = Vec::new();
+    let mut out: Vec<(usize, ChildMount)> = Vec::new();
     for m in &plan.mounts {
-        let (path, group) = match m {
-            Mount::ReadOnlyBind(p) => (to_path(p), read_only(&to_path(p))?),
-            Mount::Mask(p) => (to_path(p), hide(&to_path(p))?),
-            Mount::Pin(p) => (to_path(p), pin(&to_path(p))?),
+        let (p, mount) = match m {
+            Mount::ReadOnlyBind(path) => {
+                let p = declared_at(&to_path(path), declared)?;
+                let m = read_only(&p);
+                (p, m)
+            }
+            Mount::Mask(path) => {
+                let p = declared_at(&to_path(path), declared)?;
+                let m = hide(&p)?;
+                (p, m)
+            }
+            Mount::Pin(path) => {
+                let p = declared_at(&to_path(path), declared)?;
+                let m = pin(&p);
+                (p, m)
+            }
             Mount::PrivateDevShm => {
-                let shm = PathBuf::from("/dev/shm");
-                if !shm.is_dir() {
+                let Ok(p) = planned(Path::new("/dev/shm")) else {
+                    continue;
+                };
+                if !p.path.is_dir() {
                     continue;
                 }
-                let group = vec![ChildMount::Tmpfs {
-                    target: c"/dev/shm".into(),
-                    flags: libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC,
-                    data: c"mode=1777".into(),
-                    optional: false,
-                }];
-                (shm, group)
+                let m = ChildMount::Tmpfs {
+                    target: p.c.clone(),
+                    target_id: p.id,
+                    attrs: sys::MOUNT_ATTR_NOSUID | sys::MOUNT_ATTR_NODEV | sys::MOUNT_ATTR_NOEXEC,
+                    mode: c"1777".into(),
+                    optional: None,
+                };
+                (p, m)
             }
         };
-        groups.push((depth(&path), group));
+        out.push((depth(&p.path), mount));
     }
     // Covers come from the file system at spawn (class names, foreign
     // sockets): one whose file is removed before it is mounted, here or in
     // the child, has nothing left to cover and is skipped, as a file created
-    // after the spawn is never covered.
+    // after the spawn is never covered. Each holds its object, so the child
+    // tells a removed file from a moved one.
     for (path, cover) in covers {
-        let group = match cover {
-            Cover::Pin => pin(path),
-            Cover::ReadOnly => read_only(path),
-            Cover::Hide => hide(path),
-        };
-        let group = match group {
-            Ok(g) => g,
-            Err(SpawnError::Path { error, .. }) if error.raw_os_error() == Some(libc::ENOENT) => {
-                continue;
-            }
+        let gone = |e: &SpawnError| matches!(e, SpawnError::Path { error, .. } if error.raw_os_error() == Some(libc::ENOENT));
+        let mut p = match planned(path) {
+            Ok(p) => p,
+            Err(e) if gone(&e) => continue,
             Err(e) => return Err(e),
         };
-        groups.push((depth(path), optional(group)));
+        let held = match sys::hold(&p.c) {
+            Ok(fd) => fd,
+            Err(libc::ENOENT) => continue,
+            Err(e) => return Err(path_error(&p.path, e)),
+        };
+        // The object held is the one planned: the name may have passed to
+        // another file since `planned` looked.
+        p.id = sys::identity_of(&held).map_err(|e| path_error(&p.path, e))?;
+        let mount = match cover {
+            Cover::Pin => Ok(pin(&p)),
+            Cover::ReadOnly => Ok(read_only(&p)),
+            Cover::Hide => hide(&p),
+        };
+        let mut mount = match mount {
+            Ok(m) => m,
+            Err(e) if gone(&e) => continue,
+            Err(e) => return Err(e),
+        };
+        match &mut mount {
+            ChildMount::Bind { optional, .. } | ChildMount::Tmpfs { optional, .. } => {
+                *optional = Some(held);
+            }
+        }
+        out.push((depth(&p.path), mount));
     }
-    groups.sort_by_key(|(d, _)| *d);
-    Ok(groups.into_iter().flat_map(|(_, g)| g).collect())
+    out.sort_by_key(|(d, _)| *d);
+    // A hidden directory (an empty tmpfs) shadows everything beneath it, so
+    // a deeper cover under one is redundant: drop it, or the child would
+    // find its path gone and could not tell the shadow from an attacker's
+    // rename.
+    let mut hidden: Vec<PathBuf> = Vec::new();
+    let mut kept = Vec::new();
+    for (_, mount) in out {
+        let target = match &mount {
+            ChildMount::Bind { target, .. } | ChildMount::Tmpfs { target, .. } => target,
+        };
+        let path = PathBuf::from(std::ffi::OsStr::from_bytes(target.to_bytes()));
+        if hidden.iter().any(|h| path.starts_with(h) && path != *h) {
+            continue;
+        }
+        if matches!(&mount, ChildMount::Tmpfs { mode, .. } if mode.to_bytes() == b"000") {
+            hidden.push(path.clone());
+        }
+        kept.push(mount);
+    }
+    Ok(kept)
 }
 
-/// `group` with its mounts marked optional (see [`ChildMount::Tmpfs`]).
-fn optional(group: Vec<ChildMount>) -> Vec<ChildMount> {
-    group
-        .into_iter()
-        .map(|m| match m {
-            ChildMount::Bind {
-                source,
-                target,
-                recursive,
-                ..
-            } => ChildMount::Bind {
-                source,
-                target,
-                recursive,
-                optional: true,
-            },
-            ChildMount::Tmpfs {
-                target,
-                flags,
-                data,
-                ..
-            } => ChildMount::Tmpfs {
-                target,
-                flags,
-                data,
-                optional: true,
-            },
-            ChildMount::Remount { target, flags, .. } => ChildMount::Remount {
-                target,
-                flags,
-                optional: true,
-            },
-        })
-        .collect()
+/// After the child refused a mount (`ELOOP`, `ESTALE`): the first planned
+/// path that now passes a link or names another object.
+pub(super) fn moved(mounts: &[ChildMount]) -> Option<SpawnError> {
+    // A removed cover was skipped, whatever its name leads to now.
+    for m in mounts.iter().filter(|m| !m.removed()) {
+        for (c, id) in m.planned() {
+            let path = Path::new(std::ffi::OsStr::from_bytes(c.to_bytes()));
+            if let Some(link) = link_on(path) {
+                return Some(SpawnError::MountMoved {
+                    path: path.to_path_buf(),
+                    link: Some(link),
+                });
+            }
+            let now = sys::identity(c);
+            if now != Ok(id) {
+                return Some(SpawnError::MountMoved {
+                    path: path.to_path_buf(),
+                    link: None,
+                });
+            }
+        }
+    }
+    None
 }
 
 /// The id map that keeps `id` as itself.

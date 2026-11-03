@@ -23,6 +23,7 @@ pub(super) fn tokens(
                 error,
             })
         })?;
+        canon::exact_allow(&resolved)?;
         let token = lib
             .issue_file(&slot.class, resolved.as_bytes())
             .ok_or_else(|| {

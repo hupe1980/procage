@@ -611,6 +611,18 @@ pub(crate) fn live_of_user(pid: libc::pid_t) -> bool {
     n == size && info.pbi_uid == uid && info.pbi_status != libc::SZOMB
 }
 
+/// Whether the volume holding the existing path `path` tells names apart
+/// by case (`pathconf(_PC_CASE_SENSITIVE)`); `None` when it cannot say.
+pub(crate) fn case_sensitive(path: &CStr) -> Option<bool> {
+    // SAFETY: pathconf with a NUL-terminated path.
+    let rc = unsafe { libc::pathconf(path.as_ptr(), libc::_PC_CASE_SENSITIVE) };
+    match rc {
+        1 => Some(true),
+        0 => Some(false),
+        _ => None,
+    }
+}
+
 /// The real uid.
 pub(crate) fn uid() -> u32 {
     // SAFETY: getuid is a system call without arguments.
