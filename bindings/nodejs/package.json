@@ -1,6 +1,6 @@
 {
   "name": "procage",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Run commands caged by the OS sandbox from Node.js: macOS Seatbelt, Linux Landlock, seccomp and namespaces",
   "license": "(MIT OR Apache-2.0)",
   "author": "hupe1980",
