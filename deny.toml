@@ -17,6 +17,9 @@ unused-allowed-license = "allow"
 # exception only widens Apache-2.0.
 exceptions = [
     { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "target-lexicon" },
+    # napi's dynamic loading of Node-API (Node.js bindings only); ISC is
+    # MIT-equivalent.
+    { allow = ["ISC"], crate = "libloading" },
 ]
 
 [licenses.private]

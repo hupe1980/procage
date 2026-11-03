@@ -1,0 +1,37 @@
+[package]
+name = "procage-node"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Node.js bindings of procage (the `procage` package on npm)"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+# The addon is tested from Node (test/).
+test = false
+doctest = false
+
+[dependencies]
+napi = { version = "3", default-features = false, features = ["napi8"] }
+napi-derive = "3"
+procage = { path = "../../crates/procage" }
+procage-policy = { workspace = true, features = ["serde"] }
+serde_json.workspace = true
+
+[build-dependencies]
+napi-build = "2"
+
+# The workspace's lints, except `unsafe_code`: napi-rs's macros mark their
+# generated glue `allow(unsafe_code)`, which `forbid` refuses; `deny` still
+# fails any `unsafe` written here.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+undocumented_unsafe_blocks = "deny"

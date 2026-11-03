@@ -148,8 +148,12 @@ fn spawn_error(py: Python<'_>, e: native::SpawnError) -> PyErr {
     }
 }
 
+/// `path` as an absolute path; a trailing slash (not the root's) is
+/// dropped, so `"/abs/project/"` names the project.
 fn abs(path: &std::path::Path, what: &str) -> PyResult<AbsPath> {
-    AbsPath::new(path.as_os_str().as_encoded_bytes())
+    let bytes = path.as_os_str().as_encoded_bytes();
+    let end = bytes.iter().rposition(|&b| b != b'/').map_or(1, |i| i + 1);
+    AbsPath::new(&bytes[..end])
         .map_err(|e| PolicyError::new_err(format!("{what} {}: {e}", path.display())))
 }
 

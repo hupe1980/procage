@@ -1,0 +1,470 @@
+{
+  "feature": "049-nodejs",
+  "commit": "f72c024",
+  "requirements": [
+    {
+      "id": "SR-001",
+      "statement": "The binding MUST NOT copy process.env into the command; only variables passed in env are set explicitly, and the policy environment rules decide the rest.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a secret variable in process.env and a preset policy",
+          "then": "the secret is absent",
+          "when": "a caged command prints its environment"
+        },
+        {
+          "given": "the same and env naming one variable",
+          "then": "that variable is present and the secret absent",
+          "when": "the command prints its environment"
+        }
+      ],
+      "mitigations": [
+        "mitigation.explicit-env"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-007] [US1] `Cage` and async `spawn` (explicit env, workspace as default cwd, grants), `Run` with async `wait`, `output`, `violations`, `kill`, the receipt; collection ends a run \u2014 bindings/nodejs/src/lib.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [SR-008] [US1] Tests from the packed package \u2014 bindings/nodejs/test/procage.test.js"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/nodejs/index.js",
+            "exists": true
+          },
+          {
+            "path": "bindings/nodejs/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-002",
+      "statement": "The binding MUST NOT run JavaScript in the child between fork and exec, and MUST spawn off the event loop thread.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "many concurrent runs started from one event loop",
+          "then": "every spawn completes",
+          "when": "they all run"
+        }
+      ],
+      "mitigations": [
+        "mitigation.rust-spawn"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-007] [US1] `Cage` and async `spawn` (explicit env, workspace as default cwd, grants), `Run` with async `wait`, `output`, `violations`, `kill`, the receipt; collection ends a run \u2014 bindings/nodejs/src/lib.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [SR-008] [US1] Tests from the packed package \u2014 bindings/nodejs/test/procage.test.js"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/nodejs/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-003",
+      "statement": "A policy MUST reach the cage only through the presets or the versioned format, an unknown field or invalid value MUST throw PolicyError, a gap MUST throw CapabilityGapError with the gaps, and the binding MUST add no default the Rust API does not have.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a JSON policy with an unknown field",
+          "then": "PolicyError is thrown",
+          "when": "Policy.fromJSON is called"
+        },
+        {
+          "given": "a policy the host cannot enforce",
+          "then": "CapabilityGapError is thrown with the gaps",
+          "when": "a Cage is made"
+        }
+      ],
+      "mitigations": [
+        "mitigation.same-semantics"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-003] [SR-008] Addon `Policy` and the typed error protocol; the fixed loader and error classes in `index.js` \u2014 bindings/nodejs/src/lib.rs, bindings/nodejs/index.js"
+        },
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-007] [US1] `Cage` and async `spawn` (explicit env, workspace as default cwd, grants), `Run` with async `wait`, `output`, `violations`, `kill`, the receipt; collection ends a run \u2014 bindings/nodejs/src/lib.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [SR-008] [US1] Tests from the packed package \u2014 bindings/nodejs/test/procage.test.js"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/nodejs/index.js",
+            "exists": true
+          },
+          {
+            "path": "bindings/nodejs/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-004",
+      "statement": "Every process of a run MUST be killed when it is killed, disposed, aborted, timed out, collected, or the Node process exits.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "a running command and an AbortSignal",
+          "then": "its processes are dead",
+          "when": "the signal aborts"
+        },
+        {
+          "given": "a running command when the Node process exits",
+          "then": "its processes are dead",
+          "when": "the process exits"
+        }
+      ],
+      "mitigations": [
+        "mitigation.end-on-release"
+      ],
+      "tasks": [
+        {
+          "id": "T004",
+          "done": true,
+          "text": "[SR-004] [US1] `run()` with `shell`, `encoding`, `input`, `timeout`, `signal`, `check`; `Run` disposal; exit hook; `index.d.ts` \u2014 bindings/nodejs/index.js, bindings/nodejs/index.d.ts"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [SR-008] [US1] Tests from the packed package \u2014 bindings/nodejs/test/procage.test.js"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/nodejs/index.js",
+            "exists": true
+          },
+          {
+            "path": "bindings/nodejs/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-005",
+      "statement": "The package MUST be built from the tagged commit by actions pinned to full SHAs and published with npm Trusted Publishing and provenance from a protected environment, with no stored token.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "the release workflow",
+          "then": "every action is SHA-pinned and the publish job uses OIDC in the npm environment with provenance",
+          "when": "the workflows gate runs"
+        }
+      ],
+      "mitigations": [
+        "mitigation.trusted-publishing"
+      ],
+      "tasks": [
+        {
+          "id": "T008",
+          "done": true,
+          "text": "[SR-005] Release: per-platform addon jobs, an npm job with Trusted Publishing and provenance in the `npm` environment, the GitHub release after it \u2014 .github/workflows/release.yml"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/release.yml",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-006",
+      "statement": "Every published platform MUST run the escape subset and the shell tool example from the packed package on its CI lane, and the docs MUST claim no platform beyond them.",
+      "priority": "P2",
+      "acceptance": [
+        {
+          "given": "each platform lane",
+          "then": "reads and writes outside the workspace, secrets and the network are refused and the example runs",
+          "when": "the Node tests run against the installed package"
+        }
+      ],
+      "mitigations": [
+        "mitigation.tested-wheels"
+      ],
+      "tasks": [
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [SR-008] [US1] Tests from the packed package \u2014 bindings/nodejs/test/procage.test.js"
+        },
+        {
+          "id": "T006",
+          "done": true,
+          "text": "[SR-006] [US2] The shell tool example, run by the tests \u2014 bindings/nodejs/examples/shell-tool.js"
+        },
+        {
+          "id": "T007",
+          "done": true,
+          "text": "[SR-006] `build.sh` (build, pack, test from the tarball), `just node`, `just node-linux`, a CI step on every facts lane \u2014 bindings/nodejs/build.sh, justfile, .github/workflows/ci.yml"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": ".github/workflows/ci.yml",
+            "exists": true
+          },
+          {
+            "path": "bindings/nodejs/build.sh",
+            "exists": true
+          },
+          {
+            "path": "bindings/nodejs/test/procage.test.js",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-007",
+      "statement": "Spawn, wait and the reading of output MUST NOT block the event loop.",
+      "priority": "P3",
+      "acceptance": [
+        {
+          "given": "a run of one second",
+          "then": "it fires on time",
+          "when": "a timer is due meanwhile"
+        }
+      ],
+      "mitigations": [
+        "mitigation.release-gil"
+      ],
+      "tasks": [
+        {
+          "id": "T003",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-007] [US1] `Cage` and async `spawn` (explicit env, workspace as default cwd, grants), `Run` with async `wait`, `output`, `violations`, `kill`, the receipt; collection ends a run \u2014 bindings/nodejs/src/lib.rs"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [SR-008] [US1] Tests from the packed package \u2014 bindings/nodejs/test/procage.test.js"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/nodejs/src/lib.rs",
+            "exists": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "SR-008",
+      "statement": "The package MUST load its native addon only from its own directory by a fixed name for the host platform, ignoring environment variables and the working directory, and MUST throw a typed error on an unsupported platform.",
+      "priority": "P1",
+      "acceptance": [
+        {
+          "given": "an environment variable naming another addon",
+          "then": "the packaged addon is loaded",
+          "when": "the package is imported"
+        },
+        {
+          "given": "an unsupported platform",
+          "then": "it throws UnsupportedError naming the platform",
+          "when": "the package is imported"
+        }
+      ],
+      "mitigations": [
+        "mitigation.fixed-loader"
+      ],
+      "tasks": [
+        {
+          "id": "T002",
+          "done": true,
+          "text": "[SR-003] [SR-008] Addon `Policy` and the typed error protocol; the fixed loader and error classes in `index.js` \u2014 bindings/nodejs/src/lib.rs, bindings/nodejs/index.js"
+        },
+        {
+          "id": "T005",
+          "done": true,
+          "text": "[SR-001] [SR-002] [SR-003] [SR-004] [SR-006] [SR-007] [SR-008] [US1] Tests from the packed package \u2014 bindings/nodejs/test/procage.test.js"
+        }
+      ],
+      "all_tasks_done": true,
+      "existing_verification": [],
+      "evidence": {
+        "test_files": [],
+        "touchpoints": [
+          {
+            "path": "bindings/nodejs/index.js",
+            "exists": true
+          }
+        ]
+      }
+    }
+  ],
+  "open_threats": [
+    "threat.binary-substitution",
+    "threat.env-leak",
+    "threat.gil-starvation",
+    "threat.orphaned-run",
+    "threat.python-in-child",
+    "threat.silent-weakening",
+    "threat.untested-wheel",
+    "threat.wheel-tampering"
+  ],
+  "decisions": [],
+  "check_findings": [
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-001",
+      "summary": "Requirement 'SR-001' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "high",
+      "location": "threat-model.yaml#SR-003",
+      "summary": "Requirement 'SR-003' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-002",
+      "summary": "Requirement 'SR-002' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-004",
+      "summary": "Requirement 'SR-004' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-005",
+      "summary": "Requirement 'SR-005' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-006",
+      "summary": "Requirement 'SR-006' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-007",
+      "summary": "Requirement 'SR-007' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    },
+    {
+      "check": "C6",
+      "severity": "medium",
+      "location": "threat-model.yaml#SR-008",
+      "summary": "Requirement 'SR-008' has no verification entry (all tasks are done but nothing verifies it)",
+      "recommendation": "Run the converge command after implementation or record evidence"
+    }
+  ],
+  "metrics": {
+    "threats": 8,
+    "needs_clarification": 0,
+    "threats_by_status": {
+      "open": 8
+    },
+    "threats_by_severity": {
+      "medium": 5,
+      "high": 2,
+      "low": 1
+    },
+    "mitigations": 8,
+    "requirements": 8,
+    "requirements_with_tasks": 8,
+    "requirements_verified": 0,
+    "decisions": 0,
+    "findings": {
+      "high": 2,
+      "medium": 6
+    }
+  },
+  "config": {
+    "verification": {
+      "test_command": "",
+      "scanners": [],
+      "evidence_markers": [
+        "SR-"
+      ],
+      "test_dirs": [
+        "tests",
+        "test",
+        "spec",
+        "__tests__"
+      ]
+    },
+    "enforcement": "warn",
+    "config_file": ".specify/extensions/threatspec/threatspec-config.yml"
+  },
+  "verdict_schema": {
+    "requirement": "SR-###",
+    "verdict": "verified | implemented-unverified | partial | missing",
+    "method": "test | review | scan | manual | evidence",
+    "evidence": "path::test or record",
+    "result": "pass | fail | partial | inconclusive",
+    "justification": "one sentence"
+  }
+}

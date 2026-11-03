@@ -1,0 +1,38 @@
+{
+  "name": "procage",
+  "version": "0.6.1",
+  "description": "Run commands caged by the OS sandbox from Node.js: macOS Seatbelt, Linux Landlock, seccomp and namespaces",
+  "license": "(MIT OR Apache-2.0)",
+  "author": "hupe1980",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hupe1980/procage.git",
+    "directory": "bindings/nodejs"
+  },
+  "homepage": "https://hupe1980.github.io/procage/docs/nodejs/",
+  "keywords": ["sandbox", "seatbelt", "landlock", "seccomp", "agents", "security", "mcp"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "types": "./index.d.ts",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "os": ["darwin", "linux"],
+  "cpu": ["arm64", "x64"],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "procage.*.node",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

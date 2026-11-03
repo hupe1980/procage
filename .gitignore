@@ -33,6 +33,9 @@ __pycache__/
 .venv/
 /bindings/python/python/procage/*.so
 /bindings/python/python/procage/*.dSYM/
+# The Node addon a local build copies beside index.js.
+/bindings/nodejs/*.node
+/bindings/nodejs/node_modules/
 
 # Private design notes and agent configuration. The design records
 # (specs/, .specify/) are public; they never point here.

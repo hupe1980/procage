@@ -11,7 +11,7 @@ default:
     @just --list --unsorted
 
 # Every local quality gate, in order; stops at the first failure.
-ci: fmt-check lint test doc package-docs deny msrv no-std features semver planning-paths workflows
+ci: fmt-check lint test doc package-docs deny msrv no-std features semver planning-paths workflows versions
 
 # `ci` plus the Linux facts and tests in containers.
 ci-all: ci kf-linux kf-linux-t1 linux linux-t1
@@ -158,6 +158,16 @@ planning-paths:
 
 # The workflows hold least privilege, and the README's lane table names
 # exactly the runners CI uses.
+# The npm package's version is the crates' (the Python package reads it
+# from the crate).
+versions:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> gate: versions"
+    crate=$(cargo pkgid -p procage | sed 's/.*[#@]//')
+    npm=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' bindings/nodejs/package.json)
+    test "$crate" = "$npm" || { echo "bindings/nodejs/package.json is $npm, the crates are $crate" >&2; exit 1; }
+
 workflows:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -261,6 +271,28 @@ python-linux tier="T1":
         sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y python3-venv >/dev/null \
             && bindings/python/wheel.sh build /tmp/wheels && chmod -R a+rX /tmp/wheels \
             && setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp bindings/python/wheel.sh test /tmp/wheels'
+
+# The npm package, built and packed as the release does, and its tests from
+# the packed tarball (macOS host).
+node:
+    @echo "==> gate: node"
+    bindings/nodejs/build.sh all
+
+# The npm package on Linux: the addon built in the Rust image (as root: it
+# lacks venv), then packed and tested in the Node image as an unprivileged
+# user, on Node {{node}}; tier T1 or T2 as for `linux`.
+node-linux tier="T1" node="22":
+    @echo "==> gate: node-linux ({{tier}}, Node {{node}})"
+    rm -rf target/node-linux && mkdir -p target/node-linux
+    docker run --rm -e CARGO_TARGET_DIR=/tmp/target \
+        -v "$PWD":/src:ro -v "$PWD/target/node-linux":/out -w /src {{rust_image}} \
+        sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y python3-venv >/dev/null \
+            && bindings/nodejs/build.sh build /out && chmod -R a+rX /out'
+    docker run --rm --user 65534:65534 \
+        {{ if tier == "T1" { "--security-opt seccomp=unconfined --security-opt apparmor=unconfined" } else { "" } }} \
+        -e HOME=/tmp -v "$PWD":/src:ro -v "$PWD/target/node-linux":/out:ro node:{{node}} \
+        sh -c 'cp -R /src/bindings/nodejs /tmp/pkg && rm -f /tmp/pkg/*.node && cp /out/*.node /tmp/pkg/ \
+            && /tmp/pkg/build.sh pack /tmp/tgz && /tmp/pkg/build.sh test /tmp/tgz/procage-*.tgz'
 
 # The Linux backend's tests with seccomp and AppArmor unconfined, so user namespaces work (tier T1).
 linux-t1 tier="T1":

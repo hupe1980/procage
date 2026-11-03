@@ -117,6 +117,8 @@ class Policies(unittest.TestCase):
                 procage.Policy.preset(*args)
         with self.assertRaises(procage.PolicyError):
             procage.Policy.preset("agent_workspace", 3)
+        # A trailing slash names the same directory.
+        procage.Policy.preset("agent_workspace", 3, workspace=workspace() + "/")
 
     def test_json_round_trips(self) -> None:
         p = procage.Policy.preset("agent_readonly", 3, workspace=workspace())

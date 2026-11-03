@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/procage", "crates/procage-policy", "crates/procage-proxy", "crates/procage-kernel-facts", "bindings/python"]
+members = ["crates/procage", "crates/procage-policy", "crates/procage-proxy", "crates/procage-kernel-facts", "bindings/python", "bindings/nodejs"]
 # The fuzz packages need nightly and libfuzzer; each is its own workspace.
 exclude = ["crates/procage-policy/fuzz", "crates/procage-proxy/fuzz"]
 resolver = "3"

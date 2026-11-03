@@ -104,6 +104,12 @@ jobs:
           python-version: "3.13"
       - name: Python wheel, built as the release builds it (escape subset and example)
         run: bindings/python/wheel.sh all
+      - name: Node.js 26
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+      - name: npm package, built and packed as the release does (escape subset and example)
+        run: bindings/nodejs/build.sh all
       - name: Spawn benchmark (indicative; never fails on timing)
         run: cargo bench --locked -p procage --bench spawn -- --quick
 
@@ -163,6 +169,12 @@ jobs:
           python-version: "3.13"
       - name: Python wheel, built as the release builds it (escape subset and example)
         run: bindings/python/wheel.sh all
+      - name: Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: npm package, built and packed as the release does (escape subset and example)
+        run: bindings/nodejs/build.sh all
 
   kernels:
     name: kernel ${{ matrix.kernel }}

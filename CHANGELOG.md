@@ -6,6 +6,25 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Node.js bindings: the `procage` package on npm (macOS arm64, Linux x64
+  and arm64 with glibc 2.28+, Node.js 22.12+, TypeScript declarations).
+  Presets (which run in their workspace) and the versioned JSON format,
+  `Cage` with violations, named relaxations and the spawn snapshot,
+  `run()` with `shell`, `input`, `timeout`, `AbortSignal`, `check` and
+  `encoding`, `Run` with `wait`, `output`, `kill`, violations, the receipt
+  and `Symbol.asyncDispose`, typed errors whose gaps name the accepting
+  option, and runs that end on abort, timeout, disposal, collection or
+  process exit. Built from `bindings/nodejs` (crate `procage-node`, not
+  published to crates.io); published by the release workflow with npm
+  Trusted Publishing and provenance. A shell tool example.
+- `just versions`: the npm package's version is the crates'.
+
+### Changed
+
+- Python: a preset's workspace may end with a slash.
+
 ## [0.6.1] - 2026-11-03
 
 ### Fixed

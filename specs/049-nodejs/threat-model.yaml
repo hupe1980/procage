@@ -1,0 +1,730 @@
+otmVersion: 0.2.0
+project:
+  id: 049-nodejs
+  name: Node.js bindings
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code a Node agent tool runs in the cage (model-written commands)
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a Node or TypeScript agent tool that calls the binding
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the binding, the wheel build or the release workflow
+    trust: semi-trusted
+  - id: actor.supply-chain
+    name: 'An attacker on the package path: a build dependency, a CI action or the index upload'
+    trust: untrusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface in the binding; publishing credentials are modelled as threat.wheel-tampering
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no network transit at run time; the package download is modelled as threat.wheel-tampering
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no store
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: single user; one interpreter owns its runs
+    technique: cross-tenant-leak
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-03T21:27:11Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 500ef0d0325e9c23d1b98e22b2e7d3c1d0b447c29def27be8121b18235014027
+  - path: spec.md
+    sha256: 7fec99dec883e9eaa8c754352a50d809e3224d54a057738301eb80a3fdc48937
+  surfaces:
+  - external-input
+  - authorization
+  - audit-relevant
+  version: '0.1'
+trustZones:
+- id: tz.build
+  name: CI that builds, tests and publishes the npm package
+  risk:
+    trustRating: 70
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.os
+  name: The kernel
+  risk:
+    trustRating: 95
+- id: tz.python
+  name: The Node process that hosts the binding and the agent tool
+  risk:
+    trustRating: 85
+assets:
+- id: asset.host
+  name: The user's files, secrets, environment and processes outside the policy
+  risk:
+    availability: 50
+    confidentiality: 100
+    integrity: 90
+  attributes:
+    type: credential
+    source: spec.md#Context
+    classification: secret
+- id: asset.policy
+  name: The policy a Python caller passes, and its enforcement
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 95
+  attributes:
+    type: configuration
+    source: spec.md#FR-001
+    classification: internal
+- id: asset.wheel
+  name: The published npm package and its prebuilt binaries
+  risk:
+    availability: 40
+    confidentiality: 0
+    integrity: 100
+  attributes:
+    type: source-code
+    source: spec.md#FR-004
+    classification: public
+components:
+- id: component.example
+  name: The framework-neutral shell tool example and the docs
+  type: document
+  parent:
+    trustZone: tz.python
+  attributes:
+    source: spec.md#US2
+- id: component.native
+  name: The native addon (bindings/nodejs/src) over procage
+  type: library
+  parent:
+    trustZone: tz.python
+  attributes:
+    source: spec.md#FR-001
+- id: component.release
+  name: Package builds in CI and the release workflow
+  type: pipeline
+  parent:
+    trustZone: tz.build
+  attributes:
+    source: spec.md#FR-004
+- id: component.wrapper
+  name: 'The JavaScript module: run(), Run, errors, exit hooks, the binary loader'
+  type: library
+  parent:
+    trustZone: tz.python
+  attributes:
+    source: spec.md#FR-002
+dataflows:
+- id: flow.child
+  name: The caged child runs and reports output, violations and its exit
+  source: tz.cage
+  destination: component.native
+  assets:
+  - asset.host
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.python
+- id: flow.publish
+  name: CI builds the package and publishes it to npm
+  source: component.release
+  destination: actor.consumer
+  assets:
+  - asset.wheel
+  attributes:
+    crosses:
+    - tz.build
+    - tz.python
+- id: flow.spawn
+  name: JavaScript passes a policy, arguments, environment and grants; the addon spawns
+  source: component.wrapper
+  destination: component.native
+  assets:
+  - asset.policy
+  - asset.host
+  attributes:
+    crosses: []
+threats:
+- id: threat.binary-substitution
+  name: The loader picks the native addon from an environment variable, the working directory or a search path,
+    so whoever controls those loads their own code into the agent process in place of the sandbox
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: arbitrary native code in the agent process; no cage
+    likelihood: 30
+    likelihoodComment: generated loaders offer an override path through the environment
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.host
+    - asset.wheel
+    status: mitigated
+    actor: actor.supply-chain
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.wrapper
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.env-leak
+  name: The binding copies process.env (or the caller's whole environment) into the command as explicit variables,
+    which procage always keeps, so secrets in the environment reach the cage past the allowlist
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 90
+    impactComment: tokens and keys in the environment reach the caged code
+    likelihood: 50
+    likelihoodComment: spreading process.env is the child_process habit
+  attributes:
+    source: spec.md#FR-001
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - component.wrapper
+    - flow.spawn
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.gil-starvation
+  name: A blocking spawn, wait or read runs on the event loop thread, so the whole Node process stalls while one
+    command runs
+  categories:
+  - Denial of Service
+  risk:
+    impact: 30
+    impactComment: other tool calls stall; no confinement is lost
+    likelihood: 40
+    likelihoodComment: a synchronous binding call is the simplest to write
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.policy
+    status: mitigated
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.native
+    profile: stride
+    severity: low
+    technique: resource-exhaustion
+- id: threat.orphaned-run
+  name: A run outlives its JavaScript object or the process (collection deferred, exit skipping finalisers, an aborted
+    request), so caged processes keep running unowned
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 60
+    impactComment: caged code keeps running after the agent stopped
+    likelihood: 40
+    likelihoodComment: V8 does not finalise objects at exit
+  attributes:
+    source: spec.md#US1
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - component.wrapper
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.python-in-child
+  name: JavaScript runs in the child between fork and exec (a callback across the fork), or the spawn runs on the
+    event loop thread
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 80
+    impactComment: code runs uncaged in the child or the spawn hangs
+    likelihood: 25
+    likelihoodComment: a callback option is tempting
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    constitution: IV. Syscalls only between fork and exec
+    disposition: threat
+    elements:
+    - component.native
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.silent-weakening
+  name: 'The binding loosens what the caller asked: an unknown or misspelt field is dropped, a gap is ignored, or
+    a default policy allows more than the Rust default'
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 85
+    impactComment: the cage is weaker than the policy the caller wrote
+    likelihood: 35
+    likelihoodComment: dict-to-struct glue often ignores unknown keys
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.policy
+    - asset.host
+    status: mitigated
+    actor: actor.contributor
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.native
+    - flow.spawn
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.untested-wheel
+  name: A binary is published for a platform where the binding was never run against the kernel, or the docs claim
+    more than the tests show
+  categories:
+  - Repudiation
+  risk:
+    impact: 60
+    impactComment: users rely on a sandbox nobody measured there
+    likelihood: 40
+    likelihoodComment: cross-built wheels are easy to add
+  attributes:
+    source: spec.md#SC-001
+    assets:
+    - asset.wheel
+    - asset.policy
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.release
+    - component.example
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.wheel-tampering
+  name: An attacker on the package path (a build dependency, a mutable CI action, a stored npm token) publishes
+    a package that does not cage, under the procage name
+  categories:
+  - Tampering
+  risk:
+    impact: 100
+    impactComment: every user of the wheel runs code without a sandbox
+    likelihood: 25
+    likelihoodComment: packaging pipelines are a common target
+  attributes:
+    source: spec.md#FR-004
+    assets:
+    - asset.wheel
+    status: open
+    actor: actor.supply-chain
+    disposition: threat
+    elements:
+    - component.release
+    - flow.publish
+    profile: stride
+    severity: medium
+    technique: injection
+mitigations:
+- id: mitigation.end-on-release
+  name: kill, disposal, abort, timeout, collection and the exit hooks end a run
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.orphaned-run
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - bindings/nodejs/src/lib.rs
+    - bindings/nodejs/index.js
+- id: mitigation.explicit-env
+  name: The binding passes only the variables the caller names in env=; the policy decides the rest, as in Rust
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.env-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - bindings/nodejs/src/lib.rs
+    - bindings/nodejs/index.js
+- id: mitigation.fixed-loader
+  name: The loader loads only the package file for the host platform by a fixed path relative to the module; no
+    environment variable, working directory or search path; an unsupported platform throws
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.binary-substitution
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - bindings/nodejs/index.js
+- id: mitigation.release-gil
+  name: Spawn, wait and reads run on the libuv thread pool
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.gil-starvation
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - bindings/nodejs/src/lib.rs
+- id: mitigation.rust-spawn
+  name: Spawning is the Rust child sequence on a worker thread; the binding exposes no hook that runs in the child
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.python-in-child
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - bindings/nodejs/src/lib.rs
+- id: mitigation.same-semantics
+  name: Policies come only through the Rust presets and the versioned format, which refuses unknown fields; every
+    Rust error becomes a typed exception; no binding default differs from Rust
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.silent-weakening
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - bindings/nodejs/src/lib.rs
+    - bindings/nodejs/index.js
+- id: mitigation.tested-wheels
+  name: Each published platform runs the escape subset and the example from the packed package, on the kernel, in
+    CI
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.untested-wheel
+    status: required
+    kind: detective
+    requirements:
+    - SR-006
+    touchpoints:
+    - bindings/nodejs/build.sh
+    - bindings/nodejs/test/procage.test.js
+    - .github/workflows/ci.yml
+- id: mitigation.trusted-publishing
+  name: The package is built from the tag by pinned actions and published with npm Trusted Publishing and provenance
+    from a protected environment; no stored token
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.wheel-tampering
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - .github/workflows/release.yml
+requirements:
+- id: SR-001
+  statement: The binding MUST NOT copy process.env into the command; only variables passed in env are set explicitly,
+    and the policy environment rules decide the rest.
+  priority: P1
+  mitigations:
+  - mitigation.explicit-env
+  acceptance:
+  - given: a secret variable in process.env and a preset policy
+    then: the secret is absent
+    when: a caged command prints its environment
+  - given: the same and env naming one variable
+    then: that variable is present and the secret absent
+    when: the command prints its environment
+  tasks: []
+- id: SR-002
+  statement: The binding MUST NOT run JavaScript in the child between fork and exec, and MUST spawn off the event
+    loop thread.
+  priority: P1
+  mitigations:
+  - mitigation.rust-spawn
+  acceptance:
+  - given: many concurrent runs started from one event loop
+    then: every spawn completes
+    when: they all run
+  tasks: []
+- id: SR-003
+  statement: A policy MUST reach the cage only through the presets or the versioned format, an unknown field or
+    invalid value MUST throw PolicyError, a gap MUST throw CapabilityGapError with the gaps, and the binding MUST
+    add no default the Rust API does not have.
+  priority: P1
+  mitigations:
+  - mitigation.same-semantics
+  acceptance:
+  - given: a JSON policy with an unknown field
+    then: PolicyError is thrown
+    when: Policy.fromJSON is called
+  - given: a policy the host cannot enforce
+    then: CapabilityGapError is thrown with the gaps
+    when: a Cage is made
+  tasks: []
+- id: SR-004
+  statement: Every process of a run MUST be killed when it is killed, disposed, aborted, timed out, collected, or
+    the Node process exits.
+  priority: P1
+  mitigations:
+  - mitigation.end-on-release
+  acceptance:
+  - given: a running command and an AbortSignal
+    then: its processes are dead
+    when: the signal aborts
+  - given: a running command when the Node process exits
+    then: its processes are dead
+    when: the process exits
+  tasks: []
+- id: SR-005
+  statement: The package MUST be built from the tagged commit by actions pinned to full SHAs and published with
+    npm Trusted Publishing and provenance from a protected environment, with no stored token.
+  priority: P1
+  mitigations:
+  - mitigation.trusted-publishing
+  acceptance:
+  - given: the release workflow
+    then: every action is SHA-pinned and the publish job uses OIDC in the npm environment with provenance
+    when: the workflows gate runs
+  tasks: []
+- id: SR-006
+  statement: Every published platform MUST run the escape subset and the shell tool example from the packed package
+    on its CI lane, and the docs MUST claim no platform beyond them.
+  priority: P2
+  mitigations:
+  - mitigation.tested-wheels
+  acceptance:
+  - given: each platform lane
+    then: reads and writes outside the workspace, secrets and the network are refused and the example runs
+    when: the Node tests run against the installed package
+  tasks: []
+- id: SR-007
+  statement: Spawn, wait and the reading of output MUST NOT block the event loop.
+  priority: P3
+  mitigations:
+  - mitigation.release-gil
+  acceptance:
+  - given: a run of one second
+    then: it fires on time
+    when: a timer is due meanwhile
+  tasks: []
+- id: SR-008
+  statement: The package MUST load its native addon only from its own directory by a fixed name for the host platform,
+    ignoring environment variables and the working directory, and MUST throw a typed error on an unsupported platform.
+  priority: P1
+  mitigations:
+  - mitigation.fixed-loader
+  acceptance:
+  - given: an environment variable naming another addon
+    then: the packaged addon is loaded
+    when: the package is imported
+  - given: an unsupported platform
+    then: it throws UnsupportedError naming the platform
+    when: the package is imported
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-03
+  requirement: SR-001
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::escape subset::process.env is not copied
+  result: pass
+  verdict: verified
+  justification: With a secret in process.env and env naming one variable, a caged env prints that variable and
+    not the secret, on macOS and Linux T1 and T2 from the packed package; the addon sets only env entries.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+- id: verification.sr-002.2026-11-03
+  requirement: SR-002
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free
+  result: pass
+  verdict: verified
+  justification: Six runs started from one event loop complete together; spawn is an AsyncTask on the libuv pool
+    through procage's Rust child sequence, and the API has no hook that runs in the child.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+- id: verification.sr-003.2026-11-03
+  requirement: SR-003
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::policies::a gap throws with the gaps
+  result: pass
+  verdict: verified
+  justification: Unknown fields, unknown presets, bad versions, relative workspaces and unknown relaxations throw
+    PolicyError; a gap throws CapabilityGapError (instanceof ProcageError) with gaps; the Linux test shows the accepting
+    option named without being applied.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+- id: verification.sr-004.2026-11-03
+  requirement: SR-004
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::lifetime::aborting ends the run
+  result: pass
+  verdict: verified
+  justification: Timeout, AbortSignal, Symbol.asyncDispose and the exit of a child Node process each leave the run's
+    process dead; collection drops the Child through the addon's finaliser.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+- id: verification.sr-005.2026-11-03
+  requirement: SR-005
+  method: review
+  evidence: .github/workflows/release.yml:142
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: The node and npm jobs use SHA-pinned actions, test each addon from a packed package, check the
+    tag and the three addons, pack with the contents check and run npm publish --provenance with id-token write
+    in the npm environment and no token; not yet run, and npm's trusted publisher for procage must name release.yml
+    and the npm environment.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+- id: verification.sr-006.2026-11-03
+  requirement: SR-006
+  method: review
+  evidence: .github/workflows/ci.yml:112
+  result: inconclusive
+  verdict: implemented-unverified
+  justification: Every facts lane runs bindings/nodejs/build.sh all (build, pack with the contents check, 25 tests
+    and the example from the tarball; Node 22 on Linux, 26 on macOS); passed locally on macOS and Linux T1 and T2,
+    not yet on the CI lanes.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+- id: verification.sr-007.2026-11-03
+  requirement: SR-007
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free
+  result: pass
+  verdict: verified
+  justification: While six one-second runs proceed, a 20 ms interval never waits more than 500 ms; wait, output
+    and violations are AsyncTasks on the pool.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+- id: verification.sr-008.2026-11-03
+  requirement: SR-008
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::loader::loads the packaged addon whatever the environment says
+  result: pass
+  verdict: verified
+  justification: With NAPI_RS_NATIVE_LIBRARY_PATH set to another path the import loads the packaged addon; the loader
+    builds the file name from platform and arch beside index.js and throws UnsupportedError on any other platform
+    or without glibc.
+  verified_at: '2026-11-03T21:27:12Z'
+  commit: f72c024
+decisions: []

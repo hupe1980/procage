@@ -73,15 +73,10 @@ backed by a caged test on a real kernel, never by the profile text alone.
 | [037-public-design-records](037-public-design-records/spec.md) | Public design records |
 | [038-snapshot-covers-and-report-loss](038-snapshot-covers-and-report-loss/spec.md) | Vanished snapshot covers and honest report loss |
 
-### Specified, not yet built
+### Shipped since 0.1.0
 
-Drafts: requirements and decisions taken; plans and tasks follow when a
-change is picked up. Grouped by the release they are aimed at.
-
-| Record | Change | Aimed at |
+| Record | Change | Release |
 |---|---|---|
-| [039-ci-lanes](039-ci-lanes/spec.md) | CI lanes for the releases people run | 0.1.x |
-| [040-path-resolution](040-path-resolution/spec.md) | Path resolution that cannot be redirected or mis-spelled | 0.1.x |
 | [041-service-sockets](041-service-sockets/spec.md) | No service handoff over Unix sockets | 0.2.0 |
 | [011-receipts](011-receipts/spec.md) | Receipts — evidence of how a run was caged | 0.2.0 |
 | [042-explain](042-explain/spec.md) | Explain and diff, checked against the kernel | 0.2.0 |
@@ -91,9 +86,21 @@ change is picked up. Grouped by the release they are aimed at.
 | [013-tokio](013-tokio/spec.md) | Async integration (tokio) | 0.3.0 |
 | [016-proxy](016-proxy/spec.md) | Egress proxy with a domain allowlist | 0.3.0 |
 | [044-kernel-matrix](044-kernel-matrix/spec.md) | Kernel matrix and newer Landlock ABIs | 0.3.0 |
-| [022-pty](022-pty/spec.md) | A fresh pseudo-terminal for interactive runs | 0.4.0 |
-| [017-grant-on-denial](017-grant-on-denial/spec.md) | Grant on denial | 0.4.0 |
-| [020-python](020-python/spec.md) | Python bindings | 0.5.0 |
+| [045-moves-and-link-exemptions](045-moves-and-link-exemptions/spec.md) | Moves between writable directories, and link-check exemptions | 0.3.0 |
+| [046-process-groups](046-process-groups/spec.md) | Process groups under `Lifetime::Run` on Linux | 0.3.1 |
+| [047-exec-session](047-exec-session/spec.md) | A helper's command in a session of its own | 0.3.2 |
+| [048-ip-network](048-ip-network/spec.md) | An IP network without Unix sockets | 0.4.0 |
+| [039-ci-lanes](039-ci-lanes/spec.md) | CI lanes for the releases people run | 0.4.1 |
+| [040-path-resolution](040-path-resolution/spec.md) | Path resolution that cannot be redirected or mis-spelled | 0.4.1 |
+| [022-pty](022-pty/spec.md) | A fresh pseudo-terminal for interactive runs | 0.5.0 |
+| [017-grant-on-denial](017-grant-on-denial/spec.md) | Grant on denial | 0.5.0 |
+| [020-python](020-python/spec.md) | Python bindings | 0.6.0 |
+
+### In progress
+
+| Record | Change |
+|---|---|
+| [049-nodejs](049-nodejs/spec.md) | Node.js bindings |
 
 ## Reading order
 

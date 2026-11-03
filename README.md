@@ -33,6 +33,15 @@ policy = procage.Policy.preset("agent_readonly", 3, workspace="/Users/me/project
 done = procage.run(policy, ["make"])  # runs in the workspace
 ```
 
+From Node.js (`npm install procage`, macOS arm64 and Linux):
+
+```ts
+import { Policy, run } from "procage";
+
+const policy = Policy.preset("agent_readonly", 3, { workspace: "/Users/me/project" });
+const done = await run(policy, ["make"]);
+```
+
 📖 [Documentation](https://hupe1980.github.io/procage) ·
 🔐 [Threat model](crates/procage/THREAT_MODEL.md) ·
 📐 [Design records](specs/README.md) ·
