@@ -228,7 +228,9 @@ class Concurrency(unittest.TestCase):
         while waiter.is_alive():
             ticks += 1
             time.sleep(0.001)
-        self.assertGreater(ticks, 100)
+        # Holding the lock for the second would leave this thread one or two
+        # ticks; hosts sleep in coarser steps than 1 ms (about 95 on CI VMs).
+        self.assertGreater(ticks, 20)
 
     def test_wait_async(self) -> None:
         import asyncio
