@@ -146,7 +146,7 @@ mod macos {
         },
         Fact {
             id: "KF-M05",
-            statement: "after apply the self-check reports 1 and stays 1",
+            statement: "after apply the self-check reports 1 and stays 1; an identical second apply returns 0 (EPERM before macOS 26)",
             kind: Kind::Enforcement,
             tiers: &[],
             slow: false,
@@ -178,7 +178,7 @@ mod macos {
         },
         Fact {
             id: "KF-M09",
-            statement: "a different second profile fails with EPERM and is not enforced; an identical one returns 0",
+            statement: "a different second profile fails with EPERM and is not enforced; an identical one returns 0 (EPERM before macOS 26)",
             kind: Kind::Enforcement,
             tiers: &[],
             slow: false,
@@ -388,6 +388,20 @@ mod macos {
         Ok(s.summary())
     }
 
+    /// The errno of applying an identical profile a second time: 0 from
+    /// macOS 26, `EPERM` before (measured on 15.8.2). procage never relies
+    /// on it: it refuses to nest before applying.
+    fn identical_errno(c: &Ctx) -> &'static str {
+        let os = c.step(&["osinfo"]);
+        let major = os
+            .obs
+            .get("product")
+            .and_then(|p| p.split('.').next())
+            .and_then(|m| m.parse::<u32>().ok())
+            .unwrap_or(u32::MAX);
+        if major < 26 { "1" } else { "0" }
+    }
+
     fn m05(c: &Ctx) -> Check {
         let s = ran(c.step(&["apply-selfcheck"]))?;
         control(&s, &[("before", "0")])?;
@@ -396,7 +410,7 @@ mod macos {
             &[
                 ("apply_errno", "0"),
                 ("after", "1"),
-                ("again_errno", "0"),
+                ("again_errno", identical_errno(c)),
                 ("after_again", "1"),
             ],
         )?;
@@ -447,7 +461,11 @@ mod macos {
         control(&s, &[("first_errno", "0"), ("a_errno", "1")])?;
         expect(
             &s,
-            &[("second_errno", "1"), ("b_errno", "0"), ("same_errno", "0")],
+            &[
+                ("second_errno", "1"),
+                ("b_errno", "0"),
+                ("same_errno", identical_errno(c)),
+            ],
         )?;
         Ok(s.summary())
     }
