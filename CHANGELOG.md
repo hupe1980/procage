@@ -6,6 +6,8 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-03
+
 ### Added
 
 - `Tty::NewPty`: a new pseudo-terminal per run, on macOS and Linux (both
@@ -252,7 +254,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/hupe1980/procage/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/hupe1980/procage/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/hupe1980/procage/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/hupe1980/procage/compare/v0.3.1...v0.3.2
