@@ -6,6 +6,8 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-03
+
 ### Fixed
 
 - Python wheels: the 0.6.0 wheels carried a stray bytecode file
@@ -283,7 +285,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/hupe1980/procage/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/hupe1980/procage/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/hupe1980/procage/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/hupe1980/procage/compare/v0.4.0...v0.4.1
