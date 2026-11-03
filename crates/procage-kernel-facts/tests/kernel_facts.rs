@@ -3,9 +3,10 @@
 //! Runs every fact of the catalog through `kf-probe`, each in fresh child
 //! processes, and prints a three-state report (pass, fail, not applicable)
 //! headed by the OS build, architecture and date. The process fails if any
-//! fact fails, if a control run did not succeed, or if the measured Linux tier
-//! or Landlock ABI differs from `PROCAGE_KF_EXPECT_TIER` or
-//! `PROCAGE_KF_EXPECT_ABI`.
+//! fact fails, if a control run did not succeed, or if the measured Linux tier,
+//! Landlock ABI, architecture or macOS major version differs from
+//! `PROCAGE_KF_EXPECT_TIER`, `PROCAGE_KF_EXPECT_ABI`, `PROCAGE_KF_EXPECT_ARCH`
+//! or `PROCAGE_KF_EXPECT_MACOS`.
 //!
 //! Enforcement facts must run outside any Seatbelt sandbox: when this process
 //! is already sandboxed (for example inside an agent harness), every
@@ -1368,13 +1369,36 @@ fn main() -> ExitCode {
         linux: None,
     };
     let mut report = String::from("procage kernel facts\n");
-    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
     let mut failed = false;
 
     // The precheck: a Seatbelt-sandboxed runner cannot verify enforcement.
     let sandboxed =
         cfg!(target_os = "macos").then(|| c.step(&["selfcheck"]).obs.get("sandboxed") != Some("0"));
     let _ = writeln!(report, "{}", header(&c, sandboxed));
+
+    // A lane names the image it expects: a runner label can move to
+    // another OS or architecture without the workflow changing.
+    if let Ok(want) = std::env::var("PROCAGE_KF_EXPECT_ARCH")
+        && std::env::consts::ARCH != want
+    {
+        let _ = writeln!(
+            report,
+            "ARCH MISMATCH: expected {want}, measured {}",
+            std::env::consts::ARCH
+        );
+        failed = true;
+    }
+    if let Ok(want) = std::env::var("PROCAGE_KF_EXPECT_MACOS") {
+        let os = c.step(&["osinfo"]);
+        let product = os.obs.get("product").unwrap_or("unknown");
+        if !cfg!(target_os = "macos") || product.split('.').next() != Some(want.as_str()) {
+            let _ = writeln!(
+                report,
+                "MACOS MISMATCH: expected macOS {want}, measured {product}"
+            );
+            failed = true;
+        }
+    }
 
     #[cfg(target_os = "linux")]
     {

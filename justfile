@@ -11,7 +11,7 @@ default:
     @just --list --unsorted
 
 # Every local quality gate, in order; stops at the first failure.
-ci: fmt-check lint test doc package-docs deny msrv no-std features semver planning-paths
+ci: fmt-check lint test doc package-docs deny msrv no-std features semver planning-paths workflows
 
 # `ci` plus the Linux facts and tests in containers.
 ci-all: ci kf-linux kf-linux-t1 linux linux-t1
@@ -153,6 +153,37 @@ planning-paths:
     pattern='concepts|D-[0-9]{3}|Q-[0-9]{2}\b|F-[0-9]{2}\b|research/0|[Rr]oadmap|speccoder|ordex|\bbilling\b|\bsepa\b|/Users/|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}'
     if [[ -d specs ]] && grep -rnE --exclude='incoming-*' "$pattern" "${records[@]}"; then
         echo "private references in the design records" >&2; status=1
+    fi
+    exit $status
+
+# The workflows hold least privilege, and the README's lane table names
+# exactly the runners CI uses.
+workflows:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> gate: workflows"
+    status=0
+    fail() { echo "$1" >&2; status=1; }
+    wf=(.github/workflows/*.yml)
+    # Every action at a full commit SHA, with its version as a comment.
+    if grep -nE '^\s*(- )?uses:' "${wf[@]}" | grep -vE 'uses: (\./|[^@ ]+@[0-9a-f]{40} # v[0-9])'; then
+        fail "actions not pinned to a full SHA with a version comment"
+    fi
+    for f in "${wf[@]}"; do
+        grep -qxE 'permissions:' "$f" && grep -A1 -xE 'permissions:' "$f" | grep -qxE '  contents: read' \
+            || fail "$f: no top-level read-only token"
+    done
+    if grep -nE 'pull_request_target|workflow_run' "${wf[@]}"; then fail "pull-request code under a privileged trigger"; fi
+    # Pull-request and commit text reach scripts through env only.
+    if grep -nE '\$\{\{ *github\.(event\.|head_ref)' "${wf[@]}"; then fail "untrusted context in an expression"; fi
+    if grep -nE 'actions/cache|cache:|continue-on-error' "${wf[@]}"; then fail "a cache or a lane allowed to fail"; fi
+    # The test lanes: no widened token, no secrets.
+    if grep -nE '^ +permissions:|secrets\.' .github/workflows/ci.yml | grep -vE '^[0-9]+: *#'; then fail "ci.yml widens the token or uses secrets"; fi
+    ci=$(grep -oE '(runs-on|os): *[a-z][a-z0-9.-]+' .github/workflows/ci.yml | sed 's/.*: *//' | sort -u || true)
+    readme=$(grep -oE '^\| `[a-z][a-z0-9.-]+` \|' README.md | tr -d '|` ' | sort -u || true)
+    if [[ "$ci" != "$readme" ]]; then
+        diff <(echo "$ci") <(echo "$readme") | sed 's/^</  only in ci.yml:/; s/^>/  only in README:/' | grep only >&2 || true
+        fail "the README's lane table and ci.yml name different runners"
     fi
     exit $status
 

@@ -74,6 +74,23 @@ let status = cage
 procage picks the strongest tier the host allows and never runs a child
 unsandboxed.
 
+**Tested releases.** Supported means a green CI lane: every push runs the
+kernel facts and all suites on each of these runners.
+
+| Runner | Release | Arch | Tier | Measured |
+|---|---|---|---|---|
+| `macos-15` | macOS 15 (measuring) | arm64 | — | — |
+| `macos-26` | macOS 26.6.2 (25G83) | arm64 | — | 2026-11-02 |
+| `xcode-27` | macOS 27 (measuring) | arm64 | — | — |
+| `ubuntu-24.04` | Ubuntu 24.04, Linux 7.0.0-1017-azure | x86_64 | T2 as shipped, T1 with the sysctl | 2026-11-02 |
+| `ubuntu-24.04-arm` | Ubuntu 24.04 (measuring) | aarch64 | — | — |
+| `ubuntu-26.04` | Ubuntu 26.04 (measuring) | x86_64 | — | — |
+
+T1 needs `sysctl kernel.apparmor_restrict_unprivileged_userns=0`, the
+setting Ubuntu documents; the tests run as an ordinary user. CI also boots
+mainline kernels 5.15 to 7.3 (Landlock ABI 1 to 11). Untested: macOS 14
+and earlier, Intel Macs.
+
 **Known limits:** no pseudo-terminals, no Linux PID namespace, no loopback
 networking on Linux and no proxy-only networking on tier T2, and Landlock's
 file and network denials are not reported.

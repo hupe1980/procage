@@ -20,7 +20,7 @@ env:
 
 jobs:
   gates:
-    name: gates (fmt, lint, doc, deny, msrv, no-std, semver, features, planning paths)
+    name: gates (fmt, lint, doc, deny, msrv, no-std, semver, features, planning paths, workflows)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -36,7 +36,7 @@ jobs:
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: just,cargo-deny,cargo-semver-checks
-      - run: just fmt-check lint doc deny msrv no-std semver features planning-paths
+      - run: just fmt-check lint doc deny msrv no-std semver features planning-paths workflows
       - name: The macOS backend (lint and docs, cross-checked)
         run: |
           cargo clippy --workspace --all-targets --all-features --target aarch64-apple-darwin -- -D warnings
@@ -49,9 +49,21 @@ jobs:
           cargo test -p procage-kernel-facts --lib --bins
 
   macos:
-    name: facts macos-26 arm64
-    runs-on: macos-26
+    name: facts ${{ matrix.os }} (macOS ${{ matrix.macos }}, arm64)
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # A label names an image (xcode-27 is an Xcode version), so each lane
+        # asserts the macOS major version it runs on.
+        include:
+          - { os: macos-15, macos: "15" }
+          - { os: macos-26, macos: "26" }
+          - { os: xcode-27, macos: "27" }
+    env:
+      PROCAGE_KF_EXPECT_MACOS: ${{ matrix.macos }}
+      PROCAGE_KF_EXPECT_ARCH: aarch64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,7 +73,7 @@ jobs:
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
           rustup default "$RUST_TOOLCHAIN"
       - name: Lane
-        run: sw_vers; uname -m; csrutil status || true
+        run: sw_vers; uname -m; id -un; csrutil status || true
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
       - name: Secret directories the hard-deny tests check
@@ -95,13 +107,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04]
-        config: [shipped, userns-unrestricted]
+        # As shipped (T2), and with Ubuntu's documented sysctl lifted (T1).
         include:
-          - { config: shipped, tier: T2 }
-          - { config: userns-unrestricted, tier: T1 }
+          - { os: ubuntu-24.04, config: shipped, tier: T2, arch: x86_64 }
+          - { os: ubuntu-24.04, config: userns-unrestricted, tier: T1, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, config: shipped, tier: T2, arch: aarch64 }
+          - { os: ubuntu-24.04-arm, config: userns-unrestricted, tier: T1, arch: aarch64 }
+          - { os: ubuntu-26.04, config: shipped, tier: T2, arch: x86_64 }
+          - { os: ubuntu-26.04, config: userns-unrestricted, tier: T1, arch: x86_64 }
     env:
       PROCAGE_KF_EXPECT_TIER: ${{ matrix.tier }}
+      PROCAGE_KF_EXPECT_ARCH: ${{ matrix.arch }}
       PROCAGE_EXPECT_TIER: ${{ matrix.tier }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -115,7 +131,9 @@ jobs:
         if: matrix.config == 'userns-unrestricted'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Lane
-        run: uname -a; cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
+        run: |
+          . /etc/os-release && echo "$PRETTY_NAME"; uname -a; id -un
+          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
       - name: Kernel facts
         run: cargo test --locked -p procage-kernel-facts --test kernel_facts
       - name: Caged children and escape suite

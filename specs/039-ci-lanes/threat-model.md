@@ -1,6 +1,6 @@
 # Threat Model: CI lanes for the releases people run
 
-**Feature**: `039-ci-lanes` · **Generated**: 2026-11-01T21:15:52Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
+**Feature**: `039-ci-lanes` · **Generated**: 2026-11-03T06:34:01Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
 
 > Rendered by ThreatSpec. Edit `threat-model.yaml`, not this file.
 
@@ -8,12 +8,7 @@
 
 | Threats | Critical | High | Medium | Low | Needs clarification | Not applicable | Mitigations | Requirements | Decisions |
 |---|---|---|---|---|---|---|---|---|---|
-| 11 | 0 | 5 | 4 | 2 | 2 | 23 | 7 | 8 | 0 |
-
-### Needs clarification
-
-- `threat.t1-step-scope` — [NEEDS CLARIFICATION: does a documented host change made as root (the sysctl used on 24.04, an AppArmor profile) count as the documented, user-level way for a 26.04 T1 job, or only a step that needs no host change?] (spec.md#Clarifications)
-- `threat.unavailable-lane-status` — [NEEDS CLARIFICATION: while a lane is marked temporarily unavailable, is its release still listed as supported on the last measured result, and for how long, given that supported means exactly the green lanes?] (spec.md#Edge-Cases)
+| 11 | 0 | 5 | 4 | 2 | 0 | 23 | 7 | 8 | 0 |
 
 ## Actors
 
@@ -151,13 +146,13 @@ flowchart LR
 
 | ID | Mitigation | Kind | Threats | Requirements | Touchpoints | Status |
 |---|---|---|---|---|---|---|
-| `mitigation.assert-expected` | Each lane prints its report header and asserts the expected macOS major version and architecture or Linux tier; any mismatch fails the lane | detective | `threat.silent-image-change`, `threat.silent-tier-change` | SR-004 | `component.lane-report`, `component.lane` | required |
-| `mitigation.docs-from-lanes` | The supported list equals the workflow's green lanes, with tier, build and measurement date copied from the lane report; a gate compares docs and workflow | detective | `threat.stale-claims`, `threat.evidence-expiry` | SR-006 | `component.docs`, `component.workflow` | required |
-| `mitigation.least-privilege-workflow` | Read-only token at workflow level, no job-level widening in test lanes, no secrets, pull_request trigger only (no pull_request_target or workflow_run running PR code), no PR-saved cache restored on main, untrusted context passed through env only | preventive | `threat.token-overreach`, `threat.expression-injection`, `threat.cache-poisoning` | SR-002, SR-003 | `component.workflow` | required |
-| `mitigation.new-base-version` | A newer macOS's allowance lands as a new frozen base version with its program-set measurement; fixtures of V1 to V3 stay byte-identical in CI | preventive | `threat.frozen-base-drift` | SR-007 | `component.bases`, `component.suites` | required |
-| `mitigation.no-skip-green` | Enforcement tests fail instead of skipping; no lane whose release is named supported is continue-on-error | preventive | `threat.pass-without-evidence` | SR-005 | `component.suites`, `component.workflow` | required |
-| `mitigation.representative-t1` | A T1 job applies only the documented step, logs it, runs the tests unprivileged; without such a step T1 is recorded unavailable | preventive | `threat.t1-unrepresentative` | SR-008 | `component.t1-step`, `component.docs` | required |
-| `mitigation.sha-pins` | Every action reference is a full commit SHA with its version as a comment; a lint gate rejects tags, branches and short SHAs | preventive | `threat.action-supply-chain` | SR-001 | `component.workflow`, `component.actions` | required |
+| `mitigation.assert-expected` | Each lane prints its report header and asserts the expected macOS major version and architecture or Linux tier; any mismatch fails the lane | detective | `threat.silent-image-change`, `threat.silent-tier-change` | SR-004 | `crates/procage-kernel-facts/tests/kernel_facts.rs`, `.github/workflows/ci.yml` | required |
+| `mitigation.docs-from-lanes` | The supported list equals the workflow's green lanes, with tier, build and measurement date copied from the lane report; a gate compares docs and workflow | detective | `threat.stale-claims`, `threat.evidence-expiry` | SR-006 | `README.md`, `SECURITY.md`, `justfile` | required |
+| `mitigation.least-privilege-workflow` | Read-only token at workflow level, no job-level widening in test lanes, no secrets, pull_request trigger only (no pull_request_target or workflow_run running PR code), no PR-saved cache restored on main, untrusted context passed through env only | preventive | `threat.token-overreach`, `threat.expression-injection`, `threat.cache-poisoning` | SR-002, SR-003 | `.github/workflows/ci.yml`, `justfile` | required |
+| `mitigation.new-base-version` | A newer macOS's allowance lands as a new frozen base version with its program-set measurement; fixtures of V1 to V3 stay byte-identical in CI | preventive | `threat.frozen-base-drift` | SR-007 | `crates/procage-policy/tests/presets.rs`, `crates/procage-policy/src/base.rs` | required |
+| `mitigation.no-skip-green` | Enforcement tests fail instead of skipping; no lane whose release is named supported is continue-on-error | preventive | `threat.pass-without-evidence` | SR-005 | `crates/procage-kernel-facts/tests/kernel_facts.rs`, `justfile` | required |
+| `mitigation.representative-t1` | A T1 job applies only the documented step, logs it, runs the tests unprivileged; without such a step T1 is recorded unavailable | preventive | `threat.t1-unrepresentative` | SR-008 | `.github/workflows/ci.yml`, `README.md` | required |
+| `mitigation.sha-pins` | Every action reference is a full commit SHA with its version as a comment; a lint gate rejects tags, branches and short SHAs | preventive | `threat.action-supply-chain` | SR-001 | `.github/workflows/ci.yml`, `justfile` | required |
 
 ## Security Requirements
 
@@ -165,8 +160,8 @@ flowchart LR
 
 Every action a workflow uses MUST be referenced by a full 40-character commit SHA; a gate MUST fail on any tag, branch or short-SHA reference.
 
-- **Given** a workflow step using an action at a tag such as v4, **when** the pin gate runs, **then** it fails naming the file and line
-- **Given** the workflows on main, **when** the pin gate runs, **then** it passes and every reference carries its version as a comment
+- **Given** a workflow step using an action at a tag such as v4, **when** the workflows gate runs, **then** it fails naming the file and line
+- **Given** the workflows on main, **when** the workflows gate runs, **then** it passes and every reference carries its version as a comment
 - Mitigations: `mitigation.sha-pins`
 - Tasks: — none —
 
@@ -174,17 +169,17 @@ Every action a workflow uses MUST be referenced by a full 40-character commit SH
 
 Every workflow MUST default to a read-only token; test lanes MUST NOT widen permissions or reference secrets, and no workflow MAY run pull-request code under pull_request_target or workflow_run.
 
-- **Given** the CI workflow, **when** a gate parses it, **then** the top-level permissions are contents read, no test job sets permissions, and no step references secrets
+- **Given** the CI workflow, **when** the workflows gate parses it, **then** the top-level permissions are contents read, no test job sets permissions, and no step references secrets
 - **Given** a pull request from a fork, **when** its lanes run, **then** the token cannot push, and the job has no secrets
 - Mitigations: `mitigation.least-privilege-workflow`
 - Tasks: — none —
 
 ### SR-003 (P2) — unverified
 
-Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment variables), and a main-branch lane MUST NOT restore a cache saved by a pull-request job.
+Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment variables), and the CI workflow MUST NOT use cache steps, so no lane restores a cache a pull-request job saved.
 
-- **Given** the workflows, **when** a gate searches run steps for github.event and github.head_ref expressions, **then** none appear inside a run script
-- **Given** any cache step, **when** its keys are reviewed, **then** main-branch lanes restore only caches saved on main
+- **Given** the workflows, **when** the workflows gate searches run steps for github.event and github.head_ref expressions, **then** none appear inside a run script
+- **Given** a cache step added to the CI workflow, **when** the workflows gate runs, **then** it fails naming the file and line
 - Mitigations: `mitigation.least-privilege-workflow`
 - Tasks: — none —
 
@@ -203,17 +198,17 @@ Every lane MUST print its OS release and build (or kernel release), architecture
 In CI an enforcement test MUST fail, never skip, when it cannot run (AlreadySandboxed, missing administrator rights, a missing feature), and a lane whose release is named supported MUST NOT be continue-on-error.
 
 - **Given** a lane run inside an outer sandbox, **when** the enforcement tests run, **then** they fail with AlreadySandboxed
-- **Given** the workflow, **when** a gate reads it, **then** no lane of a supported release has continue-on-error
+- **Given** the workflow, **when** the workflows gate reads it, **then** no lane of a supported release has continue-on-error
 - Mitigations: `mitigation.no-skip-green`
 - Tasks: — none —
 
 ### SR-006 (P2) — unverified
 
-README and SECURITY MUST list as supported exactly the releases with a green lane, each with its build or kernel, measured Linux tier and measurement date, and MUST name every other release untested.
+The README platform table MUST list as supported exactly the releases with a green lane, each with its runner label, build or kernel, architecture, measured Linux tier and measurement date; SECURITY MUST link that table, and the docs MUST name every other release untested.
 
-- **Given** a lane removed from the workflow while its release stays listed, **when** the docs gate runs, **then** it fails naming the release
-- **Given** macOS 14 retired and macOS 15 without a green lane, **when** the docs are read, **then** both are named untested
-- **Given** the platform table, **when** it is read, **then** every Linux lane has its measured tier and date
+- **Given** a lane removed from the workflow while its label stays in the README table, **when** the workflows gate runs, **then** it fails naming the label
+- **Given** a runner label in the workflow missing from the README table, **when** the workflows gate runs, **then** it fails naming the label
+- **Given** the platform table, **when** it is read, **then** every Linux lane has its measured tier and date, and macOS 14 and any lane removed are named untested
 - Mitigations: `mitigation.docs-from-lanes`
 - Tasks: — none —
 

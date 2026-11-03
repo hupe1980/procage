@@ -128,14 +128,16 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-01T21:15:52Z'
+  generated: '2026-11-03T06:34:01Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
+  - path: plan.md
+    sha256: cfa785843226e2999c6f8e4ffa41832e2a80d107ca2c9d250cf6e8bd933d09de
   - path: spec.md
-    sha256: 126f92403c883c6e2afe705e15aab32552637db76f6135f1348361da3a4f61c8
+    sha256: 0215f3da823e2c4b80de3c7c13ae671e51c8cdc5d64586ebdfb15b80e88046af
   surfaces:
   - external-input
   - authentication
@@ -561,12 +563,13 @@ threats:
     source: spec.md#Clarifications
     assets:
     - asset.claims
-    status: open
+    status: retired
     actor: actor.contributor
     disposition: needs-clarification
     elements:
     - component.t1-step
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: missing-audit-trail
 - id: threat.t1-unrepresentative
@@ -632,12 +635,13 @@ threats:
     source: spec.md#Edge-Cases
     assets:
     - asset.claims
-    status: open
+    status: retired
     actor: actor.contributor
     disposition: needs-clarification
     elements:
     - component.docs
     profile: stride
+    retired_reason: Not present in the regenerated model
     severity: unrated
     technique: missing-audit-trail
 mitigations:
@@ -654,8 +658,8 @@ mitigations:
     requirements:
     - SR-004
     touchpoints:
-    - component.lane-report
-    - component.lane
+    - crates/procage-kernel-facts/tests/kernel_facts.rs
+    - .github/workflows/ci.yml
 - id: mitigation.docs-from-lanes
   name: The supported list equals the workflow's green lanes, with tier, build and measurement date copied from
     the lane report; a gate compares docs and workflow
@@ -669,8 +673,9 @@ mitigations:
     requirements:
     - SR-006
     touchpoints:
-    - component.docs
-    - component.workflow
+    - README.md
+    - SECURITY.md
+    - justfile
 - id: mitigation.least-privilege-workflow
   name: Read-only token at workflow level, no job-level widening in test lanes, no secrets, pull_request trigger
     only (no pull_request_target or workflow_run running PR code), no PR-saved cache restored on main, untrusted
@@ -687,7 +692,8 @@ mitigations:
     - SR-002
     - SR-003
     touchpoints:
-    - component.workflow
+    - .github/workflows/ci.yml
+    - justfile
 - id: mitigation.new-base-version
   name: A newer macOS's allowance lands as a new frozen base version with its program-set measurement; fixtures
     of V1 to V3 stay byte-identical in CI
@@ -700,8 +706,8 @@ mitigations:
     requirements:
     - SR-007
     touchpoints:
-    - component.bases
-    - component.suites
+    - crates/procage-policy/tests/presets.rs
+    - crates/procage-policy/src/base.rs
 - id: mitigation.no-skip-green
   name: Enforcement tests fail instead of skipping; no lane whose release is named supported is continue-on-error
   riskReduction: 80
@@ -713,8 +719,8 @@ mitigations:
     requirements:
     - SR-005
     touchpoints:
-    - component.suites
-    - component.workflow
+    - crates/procage-kernel-facts/tests/kernel_facts.rs
+    - justfile
 - id: mitigation.representative-t1
   name: A T1 job applies only the documented step, logs it, runs the tests unprivileged; without such a step T1
     is recorded unavailable
@@ -727,8 +733,8 @@ mitigations:
     requirements:
     - SR-008
     touchpoints:
-    - component.t1-step
-    - component.docs
+    - .github/workflows/ci.yml
+    - README.md
 - id: mitigation.sha-pins
   name: Every action reference is a full commit SHA with its version as a comment; a lint gate rejects tags, branches
     and short SHAs
@@ -741,8 +747,8 @@ mitigations:
     requirements:
     - SR-001
     touchpoints:
-    - component.workflow
-    - component.actions
+    - .github/workflows/ci.yml
+    - justfile
 requirements:
 - id: SR-001
   statement: Every action a workflow uses MUST be referenced by a full 40-character commit SHA; a gate MUST fail
@@ -753,10 +759,10 @@ requirements:
   acceptance:
   - given: a workflow step using an action at a tag such as v4
     then: it fails naming the file and line
-    when: the pin gate runs
+    when: the workflows gate runs
   - given: the workflows on main
     then: it passes and every reference carries its version as a comment
-    when: the pin gate runs
+    when: the workflows gate runs
   tasks: []
 - id: SR-002
   statement: Every workflow MUST default to a read-only token; test lanes MUST NOT widen permissions or reference
@@ -767,24 +773,24 @@ requirements:
   acceptance:
   - given: the CI workflow
     then: the top-level permissions are contents read, no test job sets permissions, and no step references secrets
-    when: a gate parses it
+    when: the workflows gate parses it
   - given: a pull request from a fork
     then: the token cannot push, and the job has no secrets
     when: its lanes run
   tasks: []
 - id: SR-003
   statement: Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment
-    variables), and a main-branch lane MUST NOT restore a cache saved by a pull-request job.
+    variables), and the CI workflow MUST NOT use cache steps, so no lane restores a cache a pull-request job saved.
   priority: P2
   mitigations:
   - mitigation.least-privilege-workflow
   acceptance:
   - given: the workflows
     then: none appear inside a run script
-    when: a gate searches run steps for github.event and github.head_ref expressions
-  - given: any cache step
-    then: main-branch lanes restore only caches saved on main
-    when: its keys are reviewed
+    when: the workflows gate searches run steps for github.event and github.head_ref expressions
+  - given: a cache step added to the CI workflow
+    then: it fails naming the file and line
+    when: the workflows gate runs
   tasks: []
 - id: SR-004
   statement: Every lane MUST print its OS release and build (or kernel release), architecture, sandbox status, observed
@@ -816,23 +822,24 @@ requirements:
     when: the enforcement tests run
   - given: the workflow
     then: no lane of a supported release has continue-on-error
-    when: a gate reads it
+    when: the workflows gate reads it
   tasks: []
 - id: SR-006
-  statement: README and SECURITY MUST list as supported exactly the releases with a green lane, each with its build
-    or kernel, measured Linux tier and measurement date, and MUST name every other release untested.
+  statement: The README platform table MUST list as supported exactly the releases with a green lane, each with
+    its runner label, build or kernel, architecture, measured Linux tier and measurement date; SECURITY MUST link
+    that table, and the docs MUST name every other release untested.
   priority: P2
   mitigations:
   - mitigation.docs-from-lanes
   acceptance:
-  - given: a lane removed from the workflow while its release stays listed
-    then: it fails naming the release
-    when: the docs gate runs
-  - given: macOS 14 retired and macOS 15 without a green lane
-    then: both are named untested
-    when: the docs are read
+  - given: a lane removed from the workflow while its label stays in the README table
+    then: it fails naming the label
+    when: the workflows gate runs
+  - given: a runner label in the workflow missing from the README table
+    then: it fails naming the label
+    when: the workflows gate runs
   - given: the platform table
-    then: every Linux lane has its measured tier and date
+    then: every Linux lane has its measured tier and date, and macOS 14 and any lane removed are named untested
     when: it is read
   tasks: []
 - id: SR-007

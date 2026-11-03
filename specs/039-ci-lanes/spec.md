@@ -55,6 +55,34 @@ of five jobs is no longer a constraint.
   documented, user-level way exists; otherwise T1 on 26.04 is recorded as
   unavailable without host changes.
 
+### Session 2026-11-03
+
+- Q: Does a documented host change made as root count as the way to reach
+  T1? → A: Yes, if the distribution documents it for this purpose (Ubuntu's
+  `kernel.apparmor_restrict_unprivileged_userns=0`). Turning AppArmor off or
+  running the tests as root does not count. The tests always run as the
+  runner user.
+- Q: While a lane is temporarily unavailable, is its release still
+  supported? → A: No. Supported means a green lane, with no grace period.
+  The docs name the release untested and keep its last measured result
+  with the date.
+- Q: Where is the list of supported releases? → A: In the README's platform
+  table: one row per lane, with the runner label, OS release and build or
+  kernel, the measured tier and the date. SECURITY links that table instead
+  of repeating it.
+- Q: How does a lane assert its macOS major version and architecture? → A:
+  The kernel-facts runner reads `PROCAGE_KF_EXPECT_MACOS` and
+  `PROCAGE_KF_EXPECT_ARCH`, as it reads the expected tier, and fails the
+  step naming what it expected and what it measured. On macOS the label
+  names an Xcode image (`xcode-27`), not an OS.
+- Q: What checks the workflows and the docs? → A: One `workflows` gate in
+  the justfile, written in bash, with no new tool. It checks that actions
+  are pinned to full SHAs, the token is read-only and no test job widens
+  it, no secrets, no `pull_request_target` or `workflow_run`, no
+  `github.event` or `github.head_ref` inside a run script, no cache steps
+  and no `continue-on-error`. It also checks that every runner label in
+  `ci.yml` is in the README's platform table, and the reverse.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - procage is proven on macOS 27 (Priority: P1)
@@ -123,9 +151,9 @@ pass the same suites as their x86_64 / macOS 26 counterparts.
 - The `xcode-27` label maps to an Xcode version, not an OS version: the lane
   asserts the major macOS version it expects, so a silent image change fails
   loudly.
-- A lane is temporarily unavailable (preview withdrawn): the job is marked
-  as such in the workflow, and the docs keep the last measured result with
-  its date.
+- A lane is temporarily unavailable (preview withdrawn): the job is
+  removed, and the docs name its release untested with the last measured
+  result and its date.
 
 ## Requirements *(mandatory)*
 
@@ -141,8 +169,9 @@ pass the same suites as their x86_64 / macOS 26 counterparts.
 - **FR-004**: Every lane MUST print its OS release and build (or kernel
   release), architecture, sandbox status and observed tier, and MUST assert
   the macOS major version or Linux tier it expects.
-- **FR-005**: The README and SECURITY MUST list the supported releases as
-  exactly the green lanes, with the measured tier for each Linux lane.
+- **FR-005**: The README's platform table MUST list the supported releases
+  as exactly the green lanes, with the runner label, build or kernel,
+  measured tier (Linux) and date. SECURITY MUST link that table.
 - **FR-006**: A base-profile change needed by a newer macOS MUST be a new
   frozen base version with its own program-set measurement; existing base
   versions MUST stay byte-identical (their fixtures unchanged).
@@ -152,7 +181,7 @@ pass the same suites as their x86_64 / macOS 26 counterparts.
 ### Key Entities
 
 - **Lane**: a CI job with an OS image, architecture, expected tier (Linux) or
-  macOS major version, and the suites it runs.
+  macOS major version and architecture, and the suites it runs.
 - **Lane report**: the printed header (OS, build, arch, sandboxed, tier, ABI,
   errata) kept in the job log as evidence.
 
@@ -161,16 +190,16 @@ pass the same suites as their x86_64 / macOS 26 counterparts.
 
 - **SR-001** (P1): Every action a workflow uses MUST be referenced by a full 40-character commit SHA; a gate MUST fail on any tag, branch or short-SHA reference.
   - Mitigates: `threat.action-supply-chain` via `mitigation.sha-pins`
-  - Given a workflow step using an action at a tag such as v4, when the pin gate runs, then it fails naming the file and line
-  - Given the workflows on main, when the pin gate runs, then it passes and every reference carries its version as a comment
+  - Given a workflow step using an action at a tag such as v4, when the workflows gate runs, then it fails naming the file and line
+  - Given the workflows on main, when the workflows gate runs, then it passes and every reference carries its version as a comment
 - **SR-002** (P1): Every workflow MUST default to a read-only token; test lanes MUST NOT widen permissions or reference secrets, and no workflow MAY run pull-request code under pull_request_target or workflow_run.
   - Mitigates: `threat.cache-poisoning`, `threat.expression-injection`, `threat.token-overreach` via `mitigation.least-privilege-workflow`
-  - Given the CI workflow, when a gate parses it, then the top-level permissions are contents read, no test job sets permissions, and no step references secrets
+  - Given the CI workflow, when the workflows gate parses it, then the top-level permissions are contents read, no test job sets permissions, and no step references secrets
   - Given a pull request from a fork, when its lanes run, then the token cannot push, and the job has no secrets
-- **SR-003** (P2): Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment variables), and a main-branch lane MUST NOT restore a cache saved by a pull-request job.
+- **SR-003** (P2): Run steps MUST NOT interpolate pull-request or commit text into scripts (pass it through environment variables), and the CI workflow MUST NOT use cache steps, so no lane restores a cache a pull-request job saved.
   - Mitigates: `threat.cache-poisoning`, `threat.expression-injection`, `threat.token-overreach` via `mitigation.least-privilege-workflow`
-  - Given the workflows, when a gate searches run steps for github.event and github.head_ref expressions, then none appear inside a run script
-  - Given any cache step, when its keys are reviewed, then main-branch lanes restore only caches saved on main
+  - Given the workflows, when the workflows gate searches run steps for github.event and github.head_ref expressions, then none appear inside a run script
+  - Given a cache step added to the CI workflow, when the workflows gate runs, then it fails naming the file and line
 - **SR-004** (P1): Every lane MUST print its OS release and build (or kernel release), architecture, sandbox status, observed tier, Landlock ABI and errata, and MUST fail when the macOS major version, architecture or Linux tier differs from what it expects.
   - Mitigates: `threat.silent-image-change`, `threat.silent-tier-change` via `mitigation.assert-expected`
   - Given the macOS 27 lane expecting major version 27 on arm64, when the image reports another major version or architecture, then the lane fails naming expected and observed
@@ -179,12 +208,12 @@ pass the same suites as their x86_64 / macOS 26 counterparts.
 - **SR-005** (P1): In CI an enforcement test MUST fail, never skip, when it cannot run (AlreadySandboxed, missing administrator rights, a missing feature), and a lane whose release is named supported MUST NOT be continue-on-error.
   - Mitigates: `threat.pass-without-evidence` via `mitigation.no-skip-green`
   - Given a lane run inside an outer sandbox, when the enforcement tests run, then they fail with AlreadySandboxed
-  - Given the workflow, when a gate reads it, then no lane of a supported release has continue-on-error
-- **SR-006** (P2): README and SECURITY MUST list as supported exactly the releases with a green lane, each with its build or kernel, measured Linux tier and measurement date, and MUST name every other release untested.
+  - Given the workflow, when the workflows gate reads it, then no lane of a supported release has continue-on-error
+- **SR-006** (P2): The README platform table MUST list as supported exactly the releases with a green lane, each with its runner label, build or kernel, architecture, measured Linux tier and measurement date; SECURITY MUST link that table, and the docs MUST name every other release untested.
   - Mitigates: `threat.evidence-expiry`, `threat.stale-claims` via `mitigation.docs-from-lanes`
-  - Given a lane removed from the workflow while its release stays listed, when the docs gate runs, then it fails naming the release
-  - Given macOS 14 retired and macOS 15 without a green lane, when the docs are read, then both are named untested
-  - Given the platform table, when it is read, then every Linux lane has its measured tier and date
+  - Given a lane removed from the workflow while its label stays in the README table, when the workflows gate runs, then it fails naming the label
+  - Given a runner label in the workflow missing from the README table, when the workflows gate runs, then it fails naming the label
+  - Given the platform table, when it is read, then every Linux lane has its measured tier and date, and macOS 14 and any lane removed are named untested
 - **SR-007** (P1): Existing base profile versions MUST stay byte-identical; an entry a newer macOS needs MUST be a new frozen base version with its own program-set measurement on that release.
   - Mitigates: `threat.frozen-base-drift` via `mitigation.new-base-version`
   - Given the fixtures of base V1 to V3, when CI compiles each base, then the output equals the fixture byte for byte
