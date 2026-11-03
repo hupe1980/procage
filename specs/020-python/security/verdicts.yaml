@@ -24,17 +24,17 @@ verdicts:
     result: pass
     justification: A sleep started by a child interpreter is dead after that interpreter exits; test_collecting_a_run_kills_it shows the same for a collected Run; kill ends a run.
   - requirement: SR-005
-    verdict: implemented-unverified
-    method: review
-    evidence: .github/workflows/release.yml:73
-    result: inconclusive
-    justification: The wheel and pypi jobs use actions pinned to full SHAs (workflows gate passes), test the built wheel before upload and publish with pypa/gh-action-pypi-publish in the pypi environment with id-token write and no secret; not yet run, and PyPI's trusted publisher must name release.yml and the pypi environment.
+    verdict: verified
+    method: test
+    evidence: .github/workflows/release.yml::pypi
+    result: pass
+    justification: Release run 41709283676 (tag v0.6.0 on 523e41c) built the wheels with SHA-pinned actions, tested each built file, and uploaded them with PyPI Trusted Publishing from the pypi environment (limited to v* tags) with no stored token; the first attempt was refused with invalid-publisher until the trusted publisher matched, so publishing fails closed.
   - requirement: SR-006
-    verdict: implemented-unverified
-    method: review
-    evidence: .github/workflows/ci.yml:106
-    result: inconclusive
-    justification: Every facts lane runs bindings/python/wheel.sh all (build as released, install fresh, 26 tests and the example); passed locally on macOS and Linux T1 and T2, not yet on the CI lanes.
+    verdict: verified
+    method: test
+    evidence: bindings/python/tests/test_procage.py::EscapeSubset::test_reading_outside_the_workspace_is_refused
+    result: pass
+    justification: CI run 41706008599 ran wheel.sh all (build as released, install fresh, 29 tests and the shell tool example) green on macOS 26 and 27, Ubuntu 24.04 x86_64 and arm64 and 26.04 on both tiers; the release tested the three published wheels before upload; the docs claim only those platforms.
   - requirement: SR-007
     verdict: verified
     method: test

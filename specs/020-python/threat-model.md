@@ -84,8 +84,8 @@ flowchart LR
 | `threat.silent-weakening` | The binding loosens what the caller asked: an unknown or misspelt field is dropped, a gap is ignored, or a default policy allows more than the Rust default | Elevation of Privilege | broken-access-control | **high** | mitigated | `mitigation.same-semantics` |  | spec.md#FR-002 |
 | `threat.orphaned-run` | A run outlives its Python object or the interpreter (garbage collection deferred, interpreter exit skipping finalisers), so caged processes keep running unowned | Elevation of Privilege | broken-access-control | **medium** | mitigated | `mitigation.end-on-release` |  | spec.md#US1 |
 | `threat.python-in-child` | Python code runs in the child between fork and exec (a preexec hook, at-fork handlers, a callback), deadlocking on the interpreter lock or running before the sandbox applies | Elevation of Privilege | privilege-escalation-via-config | **medium** | mitigated | `mitigation.rust-spawn` |  | spec.md#FR-003 |
-| `threat.untested-wheel` | A wheel is published for a platform where the binding was never run against the kernel, or the docs claim more than the binding tests show | Repudiation | missing-audit-trail | **medium** | open | `mitigation.tested-wheels` |  | spec.md#SC-001 |
-| `threat.wheel-tampering` | An attacker on the package path (a build dependency, a mutable CI action, a stored upload token) publishes a wheel that does not cage, under the procage name | Tampering | injection | **medium** | open | `mitigation.trusted-publishing` |  | spec.md#FR-004 |
+| `threat.untested-wheel` | A wheel is published for a platform where the binding was never run against the kernel, or the docs claim more than the binding tests show | Repudiation | missing-audit-trail | **medium** | mitigated | `mitigation.tested-wheels` |  | spec.md#SC-001 |
+| `threat.wheel-tampering` | An attacker on the package path (a build dependency, a mutable CI action, a stored upload token) publishes a wheel that does not cage, under the procage name | Tampering | injection | **medium** | mitigated | `mitigation.trusted-publishing` |  | spec.md#FR-004 |
 | `threat.gil-starvation` | A blocking spawn, wait or read holds the interpreter lock, so a framework that runs tools on threads stalls while one command runs | Denial of Service | resource-exhaustion | **low** | mitigated | `mitigation.release-gil` |  | spec.md#FR-005 |
 
 ### Techniques evaluated without findings
@@ -129,8 +129,8 @@ flowchart LR
 | `mitigation.release-gil` | Spawn, wait and reads run with the interpreter lock released | preventive | `threat.gil-starvation` | SR-007 | `bindings/python/src/lib.rs` | verified |
 | `mitigation.rust-spawn` | Spawning is the Rust child sequence only; the binding exposes no hook that runs in the child | preventive | `threat.python-in-child` | SR-002 | `bindings/python/src/lib.rs` | verified |
 | `mitigation.same-semantics` | Policies come only through the Rust presets and the versioned format, which refuses unknown fields; every Rust error becomes a typed exception; no binding default differs from Rust | preventive | `threat.silent-weakening` | SR-003 | `bindings/python/src/lib.rs`, `bindings/python/python/procage/__init__.py` | verified |
-| `mitigation.tested-wheels` | Each published platform runs the binding escape subset and the example from the wheel it ships, on the kernel, in CI | detective | `threat.untested-wheel` | SR-006 | `bindings/python/wheel.sh`, `bindings/python/tests/test_procage.py`, `.github/workflows/ci.yml` | required |
-| `mitigation.trusted-publishing` | Wheels are built from the tag by pinned actions and uploaded with PyPI Trusted Publishing in a protected environment; no stored token | preventive | `threat.wheel-tampering` | SR-005 | `.github/workflows/release.yml` | required |
+| `mitigation.tested-wheels` | Each published platform runs the binding escape subset and the example from the wheel it ships, on the kernel, in CI | detective | `threat.untested-wheel` | SR-006 | `bindings/python/wheel.sh`, `bindings/python/tests/test_procage.py`, `.github/workflows/ci.yml` | verified |
+| `mitigation.trusted-publishing` | Wheels are built from the tag by pinned actions and uploaded with PyPI Trusted Publishing in a protected environment; no stored token | preventive | `threat.wheel-tampering` | SR-005 | `.github/workflows/release.yml` | verified |
 
 ## Security Requirements
 
@@ -144,6 +144,7 @@ The binding MUST NOT copy the caller environment into the command; only variable
 - Tasks: T004 ✓, T005 ✓
 - Verification `verification.sr-001.2026-11-03`: test → pass (verified) — `bindings/python/tests/test_procage.py::EscapeSubset::test_the_callers_environment_is_not_copied`
 - Verification `verification.sr-001.2026-11-03-2`: test → pass (verified) — `bindings/python/tests/test_procage.py::EscapeSubset::test_the_callers_environment_is_not_copied`
+- Verification `verification.sr-001.2026-11-03-3`: test → pass (verified) — `bindings/python/tests/test_procage.py::EscapeSubset::test_the_callers_environment_is_not_copied`
 
 ### SR-002 (P1) — verified
 
@@ -154,6 +155,7 @@ The binding MUST NOT run Python code in the child between fork and exec.
 - Tasks: T003 ✓, T005 ✓
 - Verification `verification.sr-002.2026-11-03`: test → pass (verified) — `bindings/python/tests/test_procage.py::Concurrency::test_spawns_from_several_threads_complete`
 - Verification `verification.sr-002.2026-11-03-2`: test → pass (verified) — `bindings/python/tests/test_procage.py::Concurrency::test_spawns_from_several_threads_complete`
+- Verification `verification.sr-002.2026-11-03-3`: test → pass (verified) — `bindings/python/tests/test_procage.py::Concurrency::test_spawns_from_several_threads_complete`
 
 ### SR-003 (P1) — verified
 
@@ -165,6 +167,7 @@ A policy MUST reach the cage only through the presets or the versioned format, a
 - Tasks: T002 ✓, T003 ✓, T005 ✓
 - Verification `verification.sr-003.2026-11-03`: test → pass (verified) — `bindings/python/tests/test_procage.py::Policies::test_a_gap_raises_with_the_gaps`
 - Verification `verification.sr-003.2026-11-03-2`: test → pass (verified) — `bindings/python/tests/test_procage.py::Policies::test_a_gap_raises_with_the_gaps`
+- Verification `verification.sr-003.2026-11-03-3`: test → pass (verified) — `bindings/python/tests/test_procage.py::Policies::test_a_gap_raises_with_the_gaps`
 
 ### SR-004 (P1) — verified
 
@@ -176,26 +179,29 @@ Every process of a run MUST be killed when the Run object is collected or the in
 - Tasks: T004 ✓, T005 ✓
 - Verification `verification.sr-004.2026-11-03`: test → pass (verified) — `bindings/python/tests/test_procage.py::Lifetime::test_interpreter_exit_kills_live_runs`
 - Verification `verification.sr-004.2026-11-03-2`: test → pass (verified) — `bindings/python/tests/test_procage.py::Lifetime::test_interpreter_exit_kills_live_runs`
+- Verification `verification.sr-004.2026-11-03-3`: test → pass (verified) — `bindings/python/tests/test_procage.py::Lifetime::test_interpreter_exit_kills_live_runs`
 
-### SR-005 (P1) — has-evidence
+### SR-005 (P1) — verified
 
 Wheels MUST be built from the tagged commit by actions pinned to full SHAs and published with PyPI Trusted Publishing from a protected environment, with no stored token.
 
 - **Given** the release workflow, **when** the workflows gate runs, **then** every action is SHA-pinned and the publish job uses OIDC in the pypi environment
 - Mitigations: `mitigation.trusted-publishing`
-- Tasks: T008 ✓, T011
+- Tasks: T008 ✓, T011 ✓
 - Verification `verification.sr-005.2026-11-03`: review → inconclusive (implemented-unverified) — `.github/workflows/release.yml:73`
 - Verification `verification.sr-005.2026-11-03-2`: review → inconclusive (implemented-unverified) — `.github/workflows/release.yml:73`
+- Verification `verification.sr-005.2026-11-03-3`: test → pass (verified) — `.github/workflows/release.yml::pypi`
 
-### SR-006 (P2) — has-evidence
+### SR-006 (P2) — verified
 
 Every published wheel platform MUST run the binding escape subset and the shell tool example from the built wheel on its CI lane, and the docs MUST claim no platform beyond them.
 
 - **Given** each wheel platform lane, **when** the Python tests run against the installed wheel, **then** reads and writes outside the workspace, secrets and the network are refused and the example runs
 - Mitigations: `mitigation.tested-wheels`
-- Tasks: T005 ✓, T006 ✓, T007 ✓, T012
+- Tasks: T005 ✓, T006 ✓, T007 ✓, T012 ✓
 - Verification `verification.sr-006.2026-11-03`: review → inconclusive (implemented-unverified) — `.github/workflows/ci.yml:106`
 - Verification `verification.sr-006.2026-11-03-2`: review → inconclusive (implemented-unverified) — `.github/workflows/ci.yml:106`
+- Verification `verification.sr-006.2026-11-03-3`: test → pass (verified) — `bindings/python/tests/test_procage.py::EscapeSubset::test_reading_outside_the_workspace_is_refused`
 
 ### SR-007 (P3) — verified
 
@@ -206,3 +212,4 @@ Spawn, wait and the reading of output MUST release the interpreter lock.
 - Tasks: T003 ✓, T004 ✓, T005 ✓
 - Verification `verification.sr-007.2026-11-03`: test → pass (verified) — `bindings/python/tests/test_procage.py::Concurrency::test_waiting_releases_the_interpreter`
 - Verification `verification.sr-007.2026-11-03-2`: test → pass (verified) — `bindings/python/tests/test_procage.py::Concurrency::test_waiting_releases_the_interpreter`
+- Verification `verification.sr-007.2026-11-03-3`: test → pass (verified) — `bindings/python/tests/test_procage.py::Concurrency::test_waiting_releases_the_interpreter`
