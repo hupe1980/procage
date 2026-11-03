@@ -27,3 +27,4 @@ Push to `main` and read each lane's header in the job log (`os:`, `arch:`,
 - Ubuntu 26.04: the documented sysctl still gives tier T1.
 - The gate fails on a tag pin, a cache step, and `github.event` in a run
   script (checked by editing `ci.yml` and restoring it).
+- CI run 41632414082 (`43faa47`): every lane in the table green.

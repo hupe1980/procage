@@ -1,6 +1,6 @@
 # Threat Model: Path resolution that cannot be redirected or mis-spelled
 
-**Feature**: `040-path-resolution` · **Generated**: 2026-11-03T08:37:52Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
+**Feature**: `040-path-resolution` · **Generated**: 2026-11-03T12:24:25Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
 
 > Rendered by ThreatSpec. Edit `threat-model.yaml`, not this file.
 
@@ -155,6 +155,8 @@ An escape canary MUST, for each T1 mount kind (protect, hide, data-class cover, 
 - Tasks: T001 ✓, T005 ✓
 - Verification `verification.sr-001.2026-11-03`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount, crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount`
 - Verification `verification.sr-001.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
+- Verification `verification.sr-001.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
+- Verification `verification.sr-001.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
 
 ### SR-002 (P1) — verified
 
@@ -167,6 +169,8 @@ On T1 every mount source and target MUST be resolved beneath its planned root wi
 - Tasks: T002 ✓, T003 ✓
 - Verification `verification.sr-002.2026-11-03`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
 - Verification `verification.sr-002.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
+- Verification `verification.sr-002.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
+- Verification `verification.sr-002.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
 
 ### SR-003 (P1) — verified
 
@@ -177,6 +181,8 @@ The mount MUST apply to exactly the object planned: the child MUST check the res
 - Tasks: T002 ✓
 - Verification `verification.sr-003.2026-11-03`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount`
 - Verification `verification.sr-003.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount`
+- Verification `verification.sr-003.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount`
+- Verification `verification.sr-003.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount`
 
 ### SR-004 (P1) — verified
 
@@ -188,6 +194,8 @@ If the kernel lacks a call needed to resolve without following links or to mount
 - Tasks: T004 ✓
 - Verification `verification.sr-004.2026-11-03`: review → pass (verified) — `crates/procage/src/linux/sys.rs probe_userns (open_planned, bind_planned, tmpfs_planned); crates/procage/src/linux/sys.rs ChildPlan::run (only mount() call is MS_REC|MS_PRIVATE on /)`
 - Verification `verification.sr-004.2026-11-03-2`: review → pass (verified) — `crates/procage/src/linux/sys.rs:1090`
+- Verification `verification.sr-004.2026-11-03-3`: review → pass (verified) — `crates/procage/src/linux/sys.rs:1090`
+- Verification `verification.sr-004.2026-11-03-4`: review → pass (verified) — `crates/procage/src/linux/sys.rs:1090`
 
 ### SR-005 (P2) — verified
 
@@ -198,6 +206,8 @@ The child's mount sequence MUST issue system calls only, with every path and buf
 - Tasks: T002 ✓, T010 ✓
 - Verification `verification.sr-005.2026-11-03`: test → pass (verified) — `crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent`
 - Verification `verification.sr-005.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent`
+- Verification `verification.sr-005.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent`
+- Verification `verification.sr-005.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent`
 
 ### SR-006 (P2) — verified
 
@@ -209,6 +219,8 @@ A spawn refused for a moved mount MUST return SpawnError::MountMoved naming the 
 - Tasks: T003 ✓, T005 ✓
 - Verification `verification.sr-006.2026-11-03`: test → pass (verified) — `crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount, crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it`
 - Verification `verification.sr-006.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it`
+- Verification `verification.sr-006.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it`
+- Verification `verification.sr-006.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it`
 
 ### SR-007 (P1) — verified
 
@@ -220,6 +232,8 @@ On macOS a rule whose spelling differs from the on-disk name (case on a case-ins
 - Tasks: T007 ✓
 - Verification `verification.sr-007.2026-11-03`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume`
 - Verification `verification.sr-007.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume`
+- Verification `verification.sr-007.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume`
+- Verification `verification.sr-007.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume`
 
 ### SR-008 (P1) — verified
 
@@ -232,6 +246,8 @@ No allow MUST be widened by case folding or normalisation: an allow rule, an all
 - Tasks: T006 ✓, T007 ✓
 - Verification `verification.sr-008.2026-11-03`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies, crates/procage/tests/escape_macos.rs::r37_an_allow_on_a_case_sensitive_volume_is_refused`
 - Verification `verification.sr-008.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies`
+- Verification `verification.sr-008.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies`
+- Verification `verification.sr-008.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies`
 
 ### SR-009 (P1) — verified
 
@@ -240,9 +256,11 @@ The spelling matrix MUST run as caged tests on the default volume and on a case-
 - **Given** each macOS lane, **when** the matrix runs, **then** every case enforces as intended or is refused
 - **Given** a macOS lane where the disk image cannot be created, **when** the matrix runs, **then** it fails
 - Mitigations: `mitigation.spelling-matrix`
-- Tasks: T007 ✓, T011
+- Tasks: T007 ✓, T011 ✓
 - Verification `verification.sr-009.2026-11-03`: review → inconclusive (implemented-unverified) — `.github/workflows/ci.yml (Spelling matrix step in the macOS job); crates/procage/tests/spelling_macos.rs Image::new asserts`
 - Verification `verification.sr-009.2026-11-03-2`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies`
+- Verification `verification.sr-009.2026-11-03-3`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies`
+- Verification `verification.sr-009.2026-11-03-4`: test → pass (verified) — `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies`
 
 ### SR-010 (P2) — verified
 
@@ -254,3 +272,5 @@ The published canonicalisation claim MUST list exactly the cases the matrix cove
 - Tasks: T008 ✓
 - Verification `verification.sr-010.2026-11-03`: test → pass (verified) — `crates/procage/tests/threat_model.rs::gate`
 - Verification `verification.sr-010.2026-11-03-2`: review → pass (verified) — `site/content/docs/macos.md:28`
+- Verification `verification.sr-010.2026-11-03-3`: review → pass (verified) — `site/content/docs/macos.md:28`
+- Verification `verification.sr-010.2026-11-03-4`: review → pass (verified) — `site/content/docs/macos.md:28`

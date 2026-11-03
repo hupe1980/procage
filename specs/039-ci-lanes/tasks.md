@@ -20,4 +20,4 @@
 ## Phase 5: Polish
 
 - [X] T006 [SR-006] [SR-008] Docs from the measured lanes: README platform table (label, release and build or kernel, arch, tier, date; untested releases named), SECURITY supported version 0.4.x and a link to the table, site testing and getting-started — README.md, SECURITY.md, site/content/docs/{testing,getting-started,macos}.md
-- [ ] T007 Run `just ci`; push; CI green on every lane or the lane removed and named untested; quickstart; status Implemented; changelog; commit on `main` — CHANGELOG.md, specs/039-ci-lanes/{spec,quickstart}.md
+- [X] T007 Run `just ci`; push; CI green on every lane or the lane removed and named untested; quickstart; status Implemented; changelog; commit on `main` — CHANGELOG.md, specs/039-ci-lanes/{spec,quickstart}.md

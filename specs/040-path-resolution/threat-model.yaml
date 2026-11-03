@@ -125,14 +125,14 @@ threatspec:
     reason: 'folded into asset.plan: a planned path and the identity of the object it resolved to are one entry
       of the mount plan'
   extends: null
-  generated: '2026-11-03T08:37:52Z'
+  generated: '2026-11-03T12:24:25Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
   - path: plan.md
-    sha256: 00d70977d1d01bd98ef7968ee4a0322afdfbd4c2e5ccdcb29957c6acc8bd3a2d
+    sha256: 76e3ec839c54f2b5359945ce6a7ed8a3f00966ca900b84fb7edb409998137c5f
   - path: spec.md
     sha256: 39880bff6dd7a0749832ef9b4e50559a72db01d0720220be72b74b3d87f8e500
   surfaces:
@@ -956,6 +956,30 @@ verification:
     the protected file unchanged.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-001.2026-11-03-3
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: A hook in the child replaces each planned path (protect, hidden directory, hidden file, cover and
+    pin, socket cover) with a link or a renamed-in directory; against 0.4.0 every kind escaped, now each spawn is
+    refused; the racing canary (r33_racing_a_planted_link_never_moves_a_mount, 10,000 and 20,000 attempts) leaves
+    the protected file unchanged.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-001.2026-11-03-4
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: A hook in the child replaces each planned path (protect, hidden directory, hidden file, cover and
+    pin, socket cover) with a link or a renamed-in directory; against 0.4.0 every kind escaped, now each spawn is
+    refused; the racing canary (r33_racing_a_planted_link_never_moves_a_mount, 10,000 and 20,000 attempts) leaves
+    the protected file unchanged.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-002.2026-11-03
   requirement: SR-002
   method: test
@@ -977,6 +1001,26 @@ verification:
     path became a link into the writable workspace; the moved-aside object stays untouched.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-002.2026-11-03-3
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: Each link plant fails with MountMoved naming the planned path and the link, including the pin whose
+    path became a link into the writable workspace; the moved-aside object stays untouched.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-002.2026-11-03-4
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_a_planted_link_or_directory_cannot_move_a_mount
+  result: pass
+  verdict: verified
+  justification: Each link plant fails with MountMoved naming the planned path and the link, including the pin whose
+    path became a link into the writable workspace; the moved-aside object stays untouched.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-003.2026-11-03
   requirement: SR-003
   method: test
@@ -999,6 +1043,28 @@ verification:
     refused and the racing swap never exposes the protected file.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-003.2026-11-03-3
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount
+  result: pass
+  verdict: verified
+  justification: Declared objects are recorded when the cage is made; the child opens the canonical path without
+    following links, compares device and inode and mounts on that descriptor; the renamed-in directory plants are
+    refused and the racing swap never exposes the protected file.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-003.2026-11-03-4
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r33_racing_a_planted_link_never_moves_a_mount
+  result: pass
+  verdict: verified
+  justification: Declared objects are recorded when the cage is made; the child opens the canonical path without
+    following links, compares device and inode and mounts on that descriptor; the renamed-in directory plants are
+    refused and the racing swap never exposes the protected file.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-004.2026-11-03
   requirement: SR-004
   method: review
@@ -1023,6 +1089,30 @@ verification:
     change.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-004.2026-11-03-3
+  requirement: SR-004
+  method: review
+  evidence: crates/procage/src/linux/sys.rs:1090
+  result: pass
+  verdict: verified
+  justification: The T1 probe mounts its /tmp with openat2, open_tree, mount_setattr, fsopen, fsmount and move_mount;
+    when a non-recursive clone failed with EINVAL during development the host measured T2 (userns_errno 22), so
+    a host without the calls is not T1; the child sequence passes no path name to a mount call except the root propagation
+    change.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-004.2026-11-03-4
+  requirement: SR-004
+  method: review
+  evidence: crates/procage/src/linux/sys.rs:1090
+  result: pass
+  verdict: verified
+  justification: The T1 probe mounts its /tmp with openat2, open_tree, mount_setattr, fsopen, fsmount and move_mount;
+    when a non-recursive clone failed with EINVAL during development the host measured T2 (userns_errno 22), so
+    a host without the calls is not T1; the child sequence passes no path name to a mount call except the root propagation
+    change.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-005.2026-11-03
   requirement: SR-005
   method: test
@@ -1045,6 +1135,28 @@ verification:
     audit passes.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-005.2026-11-03-3
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent
+  result: pass
+  verdict: verified
+  justification: 1,000 T1 spawns of a policy with every mount kind from four threads while four more allocate and
+    lock all complete; the sequence in sys.rs issues system calls only on parent-prepared buffers, and the unsafe_confined
+    audit passes.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-005.2026-11-03-4
+  requirement: SR-005
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::t1_mounts_from_a_busy_multithreaded_parent
+  result: pass
+  verdict: verified
+  justification: 1,000 T1 spawns of a policy with every mount kind from four threads while four more allocate and
+    lock all complete; the sequence in sys.rs issues system calls only on parent-prepared buffers, and the unsafe_confined
+    audit passes.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-006.2026-11-03
   requirement: SR-006
   method: test
@@ -1066,6 +1178,28 @@ verification:
     T2 in Docker and on Linux 5.15 and 7.3.1.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-006.2026-11-03-3
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it
+  result: pass
+  verdict: verified
+  justification: A cover whose object was removed is skipped (the held descriptor shows no link left) while a moved
+    one fails; MountMoved names the path and link in the r33 canary; the spawn and escape suites pass on T1 and
+    T2 in Docker and on Linux 5.15 and 7.3.1.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-006.2026-11-03-4
+  requirement: SR-006
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it
+  result: pass
+  verdict: verified
+  justification: A cover whose object was removed is skipped (the held descriptor shows no link left) while a moved
+    one fails; MountMoved names the path and link in the r33 canary; the spawn and escape suites pass on T1 and
+    T2 in Docker and on Linux 5.15 and 7.3.1.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-007.2026-11-03
   requirement: SR-007
   method: test
@@ -1086,6 +1220,26 @@ verification:
     later and through the data-volume firmlink denies the file; an allow in another case reaches it.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-007.2026-11-03-3
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume
+  result: pass
+  verdict: verified
+  justification: On the default volume a deny in another case or Unicode form, through two links, for a leaf created
+    later and through the data-volume firmlink denies the file; an allow in another case reaches it.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-007.2026-11-03-4
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume
+  result: pass
+  verdict: verified
+  justification: On the default volume a deny in another case or Unicode form, through two links, for a leaf created
+    later and through the data-volume firmlink denies the file; an allow in another case reaches it.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-008.2026-11-03
   requirement: SR-008
   method: test
@@ -1107,6 +1261,28 @@ verification:
     canary.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-008.2026-11-03-3
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies
+  result: pass
+  verdict: verified
+  justification: On a case-sensitive APFS image, read, write and exec rules, an allowed socket and a bound grant
+    are refused with CaseSensitive naming the path, and a deny for a also denies A; escape_macos r37 is the class
+    canary.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-008.2026-11-03-4
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies
+  result: pass
+  verdict: verified
+  justification: On a case-sensitive APFS image, read, write and exec rules, an allowed socket and a bound grant
+    are refused with CaseSensitive naming the path, and a deny for a also denies A; escape_macos r37 is the class
+    canary.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-009.2026-11-03
   requirement: SR-009
   method: review
@@ -1129,6 +1305,30 @@ verification:
     macOS lane; site linux.md names case-folding directories untested.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-009.2026-11-03-3
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies
+  result: pass
+  verdict: verified
+  justification: The matrix covers both volume kinds, case and NFC/NFD, nested links, a missing leaf and the firmlink;
+    the image helper asserts hdiutil create and attach, so a lane that cannot make it fails; CI run 41632414082
+    (43faa47) ran both spelling tests and the R-37 canary green on the macos-26 and xcode-27 lanes; site linux.md
+    names case-folding directories untested.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-009.2026-11-03-4
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies
+  result: pass
+  verdict: verified
+  justification: The matrix covers both volume kinds, case and NFC/NFD, nested links, a missing leaf and the firmlink;
+    the image helper asserts hdiutil create and attach, so a lane that cannot make it fails; CI run 41632414082
+    (43faa47) ran both spelling tests and the R-37 canary green on the macos-26 and xcode-27 lanes; site linux.md
+    names case-folding directories untested.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 - id: verification.sr-010.2026-11-03
   requirement: SR-010
   method: test
@@ -1149,4 +1349,24 @@ verification:
     and THREAT_MODEL.md lists R-33 with both canaries and R-37 with its canary.
   verified_at: '2026-11-03T08:38:33Z'
   commit: 412ed89
+- id: verification.sr-010.2026-11-03-3
+  requirement: SR-010
+  method: review
+  evidence: site/content/docs/macos.md:28
+  result: pass
+  verdict: verified
+  justification: The macOS guide states exactly the measured cases, the Linux guide names case-folding untested,
+    and THREAT_MODEL.md lists R-33 with both canaries and R-37 with its canary.
+  verified_at: '2026-11-03T12:24:18Z'
+  commit: 43faa47
+- id: verification.sr-010.2026-11-03-4
+  requirement: SR-010
+  method: review
+  evidence: site/content/docs/macos.md:28
+  result: pass
+  verdict: verified
+  justification: The macOS guide states exactly the measured cases, the Linux guide names case-folding untested,
+    and THREAT_MODEL.md lists R-33 with both canaries and R-37 with its canary.
+  verified_at: '2026-11-03T12:24:25Z'
+  commit: 43faa47
 decisions: []

@@ -2,9 +2,7 @@
 
 Feature: `040-path-resolution` · Model: `threat-model.yaml` · Enforcement: `warn`
 
-| ID | Check | Severity | Location | Summary | Recommendation |
-|---|---|---|---|---|---|
-| F1 | C6 | LOW | `threat-model.yaml#requirements` | 10 requirements have no verification entry yet (implementation not started): SR-001, SR-002, SR-003, SR-004, SR-005, SR-006, SR-007, SR-008, SR-009, SR-010 | Expected before implementation; run the converge command afterwards |
+No findings. The security chain is structurally complete.
 
 **Metrics**
 
@@ -12,10 +10,9 @@ Feature: `040-path-resolution` · Model: `threat-model.yaml` · Enforcement: `wa
 - mitigations: 10
 - requirements: 10
 - requirements with tasks: 10
-- requirements verified: 0
+- requirements verified: 10
 - decisions: 0
 - threats by severity: high 6, low 1, medium 5
-- findings: low 1
 
 **Next actions**
 

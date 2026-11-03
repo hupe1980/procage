@@ -38,6 +38,11 @@ hardening.
 | `just linux-t1` and `just linux` (container, 7.0, ABI 8) | passed |
 | `just kernel v5.15=1 v7.3.1=11` (mainline, Landlock ABI 1 and 11) | passed, R-33 canaries and the race included |
 | macOS 26.6.2: `just test`, `just escape`, `spelling_macos` | passed |
+| CI run 41632414082 (`43faa47`, released as 0.4.1): every lane, the spelling matrix on macOS 26 and 27, the 10,000-attempt race on each T1 lane, eight kernels | passed |
+
+The first CI run (41628757579) failed on every T1 lane and kernel: a runner's
+root-only `/run/podman/podman.sock` made holding its cover fail with `EACCES`.
+Such a cover is skipped again, as in 0.4.0 (plan, step 2).
 
 ## Spawn latency (SC-003)
 

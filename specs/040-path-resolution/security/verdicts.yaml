@@ -52,7 +52,7 @@ verdicts:
     method: test
     evidence: crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies
     result: pass
-    justification: The matrix covers both volume kinds, case and NFC/NFD, nested links, a missing leaf and the firmlink; the image helper asserts hdiutil create and attach, so a lane that cannot make it fails; ci.yml runs it on every macOS lane; site linux.md names case-folding directories untested.
+    justification: The matrix covers both volume kinds, case and NFC/NFD, nested links, a missing leaf and the firmlink; the image helper asserts hdiutil create and attach, so a lane that cannot make it fails; CI run 41632414082 (43faa47) ran both spelling tests and the R-37 canary green on the macos-26 and xcode-27 lanes; site linux.md names case-folding directories untested.
   - requirement: SR-010
     verdict: verified
     method: review

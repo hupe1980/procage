@@ -20,10 +20,10 @@
 ## Phase 4: Polish
 
 - [X] T008 [SR-010] R-33 and R-37 in the threat model with their canaries; canonicalisation claim from the matrix, Linux case-folding untested; changelog Security entries; README known limits — crates/procage/THREAT_MODEL.md, site/content/docs/{macos,linux,threat-model}.md, CHANGELOG.md
-- [ ] T009 Version 0.4.1; `just ci`, `just linux-t1`, `just linux`, `just kernel`; CI green; quickstart; status Implemented; commit on `main`; tag and release — Cargo.toml, specs/040-path-resolution/{spec,quickstart}.md
+- [X] T009 Version 0.4.1; `just ci`, `just linux-t1`, `just linux`, `just kernel`; CI green; quickstart; status Implemented; commit on `main`; tag and release — Cargo.toml, specs/040-path-resolution/{spec,quickstart}.md
 
 ## Phase 5: Security Convergence
 
 **Purpose**: Close security gaps found by ThreatSpec converge on 2026-11-03 (commit 412ed89).
 
-- [ ] T011 [SR-009] Add a test for SR-009 (The spelling matrix MUST run as caged tests on the default volume and on a case-sensitive APFS image with case and Unicode variants, nested links, missing leaves and firmlinks; a macOS lane that cannot create the image MUST fail, not skip. Linux case-folding directories are untested and the docs MUST say so) — touchpoints: .github/workflows/ci.yml, crates/procage/tests/spelling_macos.rs [converge: implemented-unverified; The matrix passes locally on macOS 26.6.2 and fails if the image cannot be made, and CI runs it on the macOS 15, 26 and 27 lanes, but those lanes have not run this commit yet.]
+- [X] T011 [SR-009] Add a test for SR-009 (The spelling matrix MUST run as caged tests on the default volume and on a case-sensitive APFS image with case and Unicode variants, nested links, missing leaves and firmlinks; a macOS lane that cannot create the image MUST fail, not skip. Linux case-folding directories are untested and the docs MUST say so) — touchpoints: .github/workflows/ci.yml, crates/procage/tests/spelling_macos.rs [converge: implemented-unverified; The matrix passes locally on macOS 26.6.2 and fails if the image cannot be made, and CI runs it on the macOS 15, 26 and 27 lanes, but those lanes have not run this commit yet.]

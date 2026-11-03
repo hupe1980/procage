@@ -1,6 +1,6 @@
 ## Security Convergence — 040-path-resolution
 
-Commit `412ed89` · 2026-11-03T08:38:33Z
+Commit `43faa47` · 2026-11-03T12:24:25Z
 
 | Metric | Value |
 |---|---|
@@ -26,5 +26,5 @@ Commit `412ed89` · 2026-11-03T08:38:33Z
 | SR-006 | verified | test | `crates/procage/tests/spawn_linux.rs::a_socket_removed_during_the_spawn_does_not_fail_it` | A cover whose object was removed is skipped (the held descriptor shows no link left) while a moved one fails; MountMoved names the path and link in the r33 canary; the spawn and escape suites pass on T1 and T2 in Docker and on Linux 5.15 and 7.3.1. |
 | SR-007 | verified | test | `crates/procage/tests/spelling_macos.rs::every_spelling_enforces_on_the_default_volume` | On the default volume a deny in another case or Unicode form, through two links, for a leaf created later and through the data-volume firmlink denies the file; an allow in another case reaches it. |
 | SR-008 | verified | test | `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies` | On a case-sensitive APFS image, read, write and exec rules, an allowed socket and a bound grant are refused with CaseSensitive naming the path, and a deny for a also denies A; escape_macos r37 is the class canary. |
-| SR-009 | verified | test | `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies` | The matrix covers both volume kinds, case and NFC/NFD, nested links, a missing leaf and the firmlink; the image helper asserts hdiutil create and attach, so a lane that cannot make it fails; ci.yml runs it on every macOS lane; site linux.md names case-folding directories untested. |
+| SR-009 | verified | test | `crates/procage/tests/spelling_macos.rs::a_case_sensitive_volume_refuses_allows_and_keeps_denies` | The matrix covers both volume kinds, case and NFC/NFD, nested links, a missing leaf and the firmlink; the image helper asserts hdiutil create and attach, so a lane that cannot make it fails; CI run 41632414082 (43faa47) ran both spelling tests and the R-37 canary green on the macos-26 and xcode-27 lanes; site linux.md names case-folding directories untested. |
 | SR-010 | verified | review | `site/content/docs/macos.md:28` | The macOS guide states exactly the measured cases, the Linux guide names case-folding untested, and THREAT_MODEL.md lists R-33 with both canaries and R-37 with its canary. |
