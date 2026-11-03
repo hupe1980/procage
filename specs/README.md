@@ -95,12 +95,7 @@ backed by a caged test on a real kernel, never by the profile text alone.
 | [022-pty](022-pty/spec.md) | A fresh pseudo-terminal for interactive runs | 0.5.0 |
 | [017-grant-on-denial](017-grant-on-denial/spec.md) | Grant on denial | 0.5.0 |
 | [020-python](020-python/spec.md) | Python bindings | 0.6.0 |
-
-### In progress
-
-| Record | Change |
-|---|---|
-| [049-nodejs](049-nodejs/spec.md) | Node.js bindings |
+| [049-nodejs](049-nodejs/spec.md) | Node.js bindings | 0.7.1 |
 
 ## Reading order
 

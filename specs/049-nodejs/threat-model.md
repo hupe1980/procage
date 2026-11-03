@@ -1,6 +1,6 @@
 # Threat Model: Node.js bindings
 
-**Feature**: `049-nodejs` · **Generated**: 2026-11-03T21:27:11Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
+**Feature**: `049-nodejs` · **Generated**: 2026-11-03T22:44:52Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
 
 > Rendered by ThreatSpec. Edit `threat-model.yaml`, not this file.
 
@@ -85,8 +85,8 @@ flowchart LR
 | `threat.binary-substitution` | The loader picks the native addon from an environment variable, the working directory or a search path, so whoever controls those loads their own code into the agent process in place of the sandbox | Elevation of Privilege | privilege-escalation-via-config | **medium** | mitigated | `mitigation.fixed-loader` |  | spec.md#Clarifications |
 | `threat.orphaned-run` | A run outlives its JavaScript object or the process (collection deferred, exit skipping finalisers, an aborted request), so caged processes keep running unowned | Elevation of Privilege | broken-access-control | **medium** | mitigated | `mitigation.end-on-release` |  | spec.md#US1 |
 | `threat.python-in-child` | JavaScript runs in the child between fork and exec (a callback across the fork), or the spawn runs on the event loop thread | Elevation of Privilege | privilege-escalation-via-config | **medium** | mitigated | `mitigation.rust-spawn` |  | spec.md#FR-003 |
-| `threat.untested-wheel` | A binary is published for a platform where the binding was never run against the kernel, or the docs claim more than the tests show | Repudiation | missing-audit-trail | **medium** | open | `mitigation.tested-wheels` |  | spec.md#SC-001 |
-| `threat.wheel-tampering` | An attacker on the package path (a build dependency, a mutable CI action, a stored npm token) publishes a package that does not cage, under the procage name | Tampering | injection | **medium** | open | `mitigation.trusted-publishing` |  | spec.md#FR-004 |
+| `threat.untested-wheel` | A binary is published for a platform where the binding was never run against the kernel, or the docs claim more than the tests show | Repudiation | missing-audit-trail | **medium** | mitigated | `mitigation.tested-wheels` |  | spec.md#SC-001 |
+| `threat.wheel-tampering` | An attacker on the package path (a build dependency, a mutable CI action, a stored npm token) publishes a package that does not cage, under the procage name | Tampering | injection | **medium** | mitigated | `mitigation.trusted-publishing` |  | spec.md#FR-004 |
 | `threat.gil-starvation` | A blocking spawn, wait or read runs on the event loop thread, so the whole Node process stalls while one command runs | Denial of Service | resource-exhaustion | **low** | mitigated | `mitigation.release-gil` |  | spec.md#FR-005 |
 
 ### Techniques evaluated without findings
@@ -131,8 +131,8 @@ flowchart LR
 | `mitigation.release-gil` | Spawn, wait and reads run on the libuv thread pool | preventive | `threat.gil-starvation` | SR-007 | `bindings/nodejs/src/lib.rs` | verified |
 | `mitigation.rust-spawn` | Spawning is the Rust child sequence on a worker thread; the binding exposes no hook that runs in the child | preventive | `threat.python-in-child` | SR-002 | `bindings/nodejs/src/lib.rs` | verified |
 | `mitigation.same-semantics` | Policies come only through the Rust presets and the versioned format, which refuses unknown fields; every Rust error becomes a typed exception; no binding default differs from Rust | preventive | `threat.silent-weakening` | SR-003 | `bindings/nodejs/src/lib.rs`, `bindings/nodejs/index.js` | verified |
-| `mitigation.tested-wheels` | Each published platform runs the escape subset and the example from the packed package, on the kernel, in CI | detective | `threat.untested-wheel` | SR-006 | `bindings/nodejs/build.sh`, `bindings/nodejs/test/procage.test.js`, `.github/workflows/ci.yml` | required |
-| `mitigation.trusted-publishing` | The package is built from the tag by pinned actions and published with npm Trusted Publishing and provenance from a protected environment; no stored token | preventive | `threat.wheel-tampering` | SR-005 | `.github/workflows/release.yml` | required |
+| `mitigation.tested-wheels` | Each published platform runs the escape subset and the example from the packed package, on the kernel, in CI | detective | `threat.untested-wheel` | SR-006 | `bindings/nodejs/build.sh`, `bindings/nodejs/test/procage.test.js`, `.github/workflows/ci.yml` | verified |
+| `mitigation.trusted-publishing` | The package is built from the tag by pinned actions and published with npm Trusted Publishing and provenance from a protected environment; no stored token | preventive | `threat.wheel-tampering` | SR-005 | `.github/workflows/release.yml` | verified |
 
 ## Security Requirements
 
@@ -145,6 +145,7 @@ The binding MUST NOT copy process.env into the command; only variables passed in
 - Mitigations: `mitigation.explicit-env`
 - Tasks: T003 ✓, T005 ✓
 - Verification `verification.sr-001.2026-11-03`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::escape subset::process.env is not copied`
+- Verification `verification.sr-001.2026-11-03-2`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::escape subset::process.env is not copied`
 
 ### SR-002 (P1) — verified
 
@@ -154,6 +155,7 @@ The binding MUST NOT run JavaScript in the child between fork and exec, and MUST
 - Mitigations: `mitigation.rust-spawn`
 - Tasks: T003 ✓, T005 ✓
 - Verification `verification.sr-002.2026-11-03`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free`
+- Verification `verification.sr-002.2026-11-03-2`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free`
 
 ### SR-003 (P1) — verified
 
@@ -164,6 +166,7 @@ A policy MUST reach the cage only through the presets or the versioned format, a
 - Mitigations: `mitigation.same-semantics`
 - Tasks: T002 ✓, T003 ✓, T005 ✓
 - Verification `verification.sr-003.2026-11-03`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::policies::a gap throws with the gaps`
+- Verification `verification.sr-003.2026-11-03-2`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::policies::a gap throws with the gaps`
 
 ### SR-004 (P1) — verified
 
@@ -174,24 +177,27 @@ Every process of a run MUST be killed when it is killed, disposed, aborted, time
 - Mitigations: `mitigation.end-on-release`
 - Tasks: T004 ✓, T005 ✓
 - Verification `verification.sr-004.2026-11-03`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::lifetime::aborting ends the run`
+- Verification `verification.sr-004.2026-11-03-2`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::lifetime::aborting ends the run`
 
-### SR-005 (P1) — has-evidence
+### SR-005 (P1) — verified
 
 The package MUST be built from the tagged commit by actions pinned to full SHAs and published with npm Trusted Publishing and provenance from a protected environment, with no stored token.
 
 - **Given** the release workflow, **when** the workflows gate runs, **then** every action is SHA-pinned and the publish job uses OIDC in the npm environment with provenance
 - Mitigations: `mitigation.trusted-publishing`
-- Tasks: T008 ✓, T011
+- Tasks: T008 ✓, T011 ✓
 - Verification `verification.sr-005.2026-11-03`: review → inconclusive (implemented-unverified) — `.github/workflows/release.yml:142`
+- Verification `verification.sr-005.2026-11-03-2`: test → pass (verified) — `.github/workflows/release.yml::npm`
 
-### SR-006 (P2) — has-evidence
+### SR-006 (P2) — verified
 
 Every published platform MUST run the escape subset and the shell tool example from the packed package on its CI lane, and the docs MUST claim no platform beyond them.
 
 - **Given** each platform lane, **when** the Node tests run against the installed package, **then** reads and writes outside the workspace, secrets and the network are refused and the example runs
 - Mitigations: `mitigation.tested-wheels`
-- Tasks: T005 ✓, T006 ✓, T007 ✓, T012
+- Tasks: T005 ✓, T006 ✓, T007 ✓, T012 ✓
 - Verification `verification.sr-006.2026-11-03`: review → inconclusive (implemented-unverified) — `.github/workflows/ci.yml:112`
+- Verification `verification.sr-006.2026-11-03-2`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::escape subset::reading outside the workspace is refused`
 
 ### SR-007 (P3) — verified
 
@@ -201,6 +207,7 @@ Spawn, wait and the reading of output MUST NOT block the event loop.
 - Mitigations: `mitigation.release-gil`
 - Tasks: T003 ✓, T005 ✓
 - Verification `verification.sr-007.2026-11-03`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free`
+- Verification `verification.sr-007.2026-11-03-2`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free`
 
 ### SR-008 (P1) — verified
 
@@ -211,3 +218,4 @@ The package MUST load its native addon only from its own directory by a fixed na
 - Mitigations: `mitigation.fixed-loader`
 - Tasks: T002 ✓, T005 ✓
 - Verification `verification.sr-008.2026-11-03`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::loader::loads the packaged addon whatever the environment says`
+- Verification `verification.sr-008.2026-11-03-2`: test → pass (verified) — `bindings/nodejs/test/procage.test.js::loader::loads the packaged addon whatever the environment says`

@@ -122,7 +122,7 @@ threatspec:
     technique: rogue-agent
   exclusions: []
   extends: null
-  generated: '2026-11-03T21:27:11Z'
+  generated: '2026-11-03T22:44:52Z'
   profiles:
   - stride
   - llm
@@ -401,7 +401,7 @@ threats:
     assets:
     - asset.wheel
     - asset.policy
-    status: open
+    status: mitigated
     actor: actor.contributor
     constitution: III. The kernel is the oracle
     disposition: threat
@@ -425,7 +425,7 @@ threats:
     source: spec.md#FR-004
     assets:
     - asset.wheel
-    status: open
+    status: mitigated
     actor: actor.supply-chain
     disposition: threat
     elements:
@@ -519,7 +519,7 @@ mitigations:
   attributes:
     threats:
     - threat.untested-wheel
-    status: required
+    status: verified
     kind: detective
     requirements:
     - SR-006
@@ -534,7 +534,7 @@ mitigations:
   attributes:
     threats:
     - threat.wheel-tampering
-    status: required
+    status: verified
     kind: preventive
     requirements:
     - SR-005
@@ -652,6 +652,16 @@ verification:
     not the secret, on macOS and Linux T1 and T2 from the packed package; the addon sets only env entries.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-001.2026-11-03-2
+  requirement: SR-001
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::escape subset::process.env is not copied
+  result: pass
+  verdict: verified
+  justification: With a secret in process.env and env naming one variable, a caged env prints that variable and
+    not the secret, on macOS and Linux T1 and T2 from the packed package; the addon sets only env entries.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 - id: verification.sr-002.2026-11-03
   requirement: SR-002
   method: test
@@ -662,6 +672,16 @@ verification:
     through procage's Rust child sequence, and the API has no hook that runs in the child.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-002.2026-11-03-2
+  requirement: SR-002
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free
+  result: pass
+  verdict: verified
+  justification: Six runs started from one event loop complete together; spawn is an AsyncTask on the libuv pool
+    through procage's Rust child sequence, and the API has no hook that runs in the child.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 - id: verification.sr-003.2026-11-03
   requirement: SR-003
   method: test
@@ -673,6 +693,17 @@ verification:
     option named without being applied.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-003.2026-11-03-2
+  requirement: SR-003
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::policies::a gap throws with the gaps
+  result: pass
+  verdict: verified
+  justification: Unknown fields, unknown presets, bad versions, relative workspaces and unknown relaxations throw
+    PolicyError; a gap throws CapabilityGapError (instanceof ProcageError) with gaps; the Linux test shows the accepting
+    option named without being applied.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 - id: verification.sr-004.2026-11-03
   requirement: SR-004
   method: test
@@ -683,6 +714,16 @@ verification:
     process dead; collection drops the Child through the addon's finaliser.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-004.2026-11-03-2
+  requirement: SR-004
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::lifetime::aborting ends the run
+  result: pass
+  verdict: verified
+  justification: Timeout, AbortSignal, Symbol.asyncDispose and the exit of a child Node process each leave the run's
+    process dead; collection drops the Child through the addon's finaliser.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 - id: verification.sr-005.2026-11-03
   requirement: SR-005
   method: review
@@ -695,6 +736,19 @@ verification:
     and the npm environment.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-005.2026-11-03-2
+  requirement: SR-005
+  method: test
+  evidence: .github/workflows/release.yml::npm
+  result: pass
+  verdict: verified
+  justification: Release run 41732927065 (v0.7.1 on 0ea56cd) built each addon with SHA-pinned actions, tested it
+    from a packed package, checked the tag and the three addons, packed with the contents check and published with
+    npm Trusted Publishing (OIDC, environment npm limited to v* tags, no token); npm shows procage@0.7.1 with SLSA
+    provenance. 0.7.0's upload failed closed (the tarball path was read as a repository) and the GitHub release
+    waited.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 - id: verification.sr-006.2026-11-03
   requirement: SR-006
   method: review
@@ -706,6 +760,17 @@ verification:
     not yet on the CI lanes.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-006.2026-11-03-2
+  requirement: SR-006
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::escape subset::reading outside the workspace is refused
+  result: pass
+  verdict: verified
+  justification: CI runs 41726108698 and 41730028663 ran build.sh all (build, pack with the contents check, 25 tests
+    and the example from the tarball) green on macOS 26 and 27 (Node 26) and Ubuntu 24.04 x86_64 and arm64 and 26.04
+    on both tiers (Node 22); the published package installs from npm and runs a caged command on macOS 26.6.2.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 - id: verification.sr-007.2026-11-03
   requirement: SR-007
   method: test
@@ -716,6 +781,16 @@ verification:
     and violations are AsyncTasks on the pool.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-007.2026-11-03-2
+  requirement: SR-007
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::concurrency::many runs at once, and the event loop stays free
+  result: pass
+  verdict: verified
+  justification: While six one-second runs proceed, a 20 ms interval never waits more than 500 ms; wait, output
+    and violations are AsyncTasks on the pool.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 - id: verification.sr-008.2026-11-03
   requirement: SR-008
   method: test
@@ -727,4 +802,15 @@ verification:
     or without glibc.
   verified_at: '2026-11-03T21:27:12Z'
   commit: f72c024
+- id: verification.sr-008.2026-11-03-2
+  requirement: SR-008
+  method: test
+  evidence: bindings/nodejs/test/procage.test.js::loader::loads the packaged addon whatever the environment says
+  result: pass
+  verdict: verified
+  justification: With NAPI_RS_NATIVE_LIBRARY_PATH set to another path the import loads the packaged addon; the loader
+    builds the file name from platform and arch beside index.js and throws UnsupportedError on any other platform
+    or without glibc.
+  verified_at: '2026-11-03T22:44:53Z'
+  commit: 0ea56cd
 decisions: []

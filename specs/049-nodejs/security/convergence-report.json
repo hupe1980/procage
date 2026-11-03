@@ -1,8 +1,8 @@
 {
   "feature": "049-nodejs",
-  "commit": "f72c024",
-  "timestamp": "2026-11-03T21:27:12Z",
-  "status": "NOT CONVERGED",
+  "commit": "0ea56cd",
+  "timestamp": "2026-11-03T22:44:53Z",
+  "status": "CONVERGED",
   "threats": {
     "total": 8,
     "open_blocking": []
@@ -14,22 +14,18 @@
       "SR-002",
       "SR-003",
       "SR-004",
+      "SR-005",
+      "SR-006",
       "SR-007",
       "SR-008"
     ],
-    "implemented_unverified": [
-      "SR-005",
-      "SR-006"
-    ],
+    "implemented_unverified": [],
     "partial": [],
     "missing": []
   },
   "expired_decisions": [],
   "drift": [],
-  "appended_tasks": [
-    "T011",
-    "T012"
-  ],
+  "appended_tasks": [],
   "already_open_tasks_for": [],
   "verdicts": {
     "SR-001": {
@@ -57,16 +53,16 @@
       "justification": "Timeout, AbortSignal, Symbol.asyncDispose and the exit of a child Node process each leave the run's process dead; collection drops the Child through the addon's finaliser."
     },
     "SR-005": {
-      "verdict": "implemented-unverified",
-      "method": "review",
-      "evidence": ".github/workflows/release.yml:142",
-      "justification": "The node and npm jobs use SHA-pinned actions, test each addon from a packed package, check the tag and the three addons, pack with the contents check and run npm publish --provenance with id-token write in the npm environment and no token; not yet run, and npm's trusted publisher for procage must name release.yml and the npm environment."
+      "verdict": "verified",
+      "method": "test",
+      "evidence": ".github/workflows/release.yml::npm",
+      "justification": "Release run 41732927065 (v0.7.1 on 0ea56cd) built each addon with SHA-pinned actions, tested it from a packed package, checked the tag and the three addons, packed with the contents check and published with npm Trusted Publishing (OIDC, environment npm limited to v* tags, no token); npm shows procage@0.7.1 with SLSA provenance. 0.7.0's upload failed closed (the tarball path was read as a repository) and the GitHub release waited."
     },
     "SR-006": {
-      "verdict": "implemented-unverified",
-      "method": "review",
-      "evidence": ".github/workflows/ci.yml:112",
-      "justification": "Every facts lane runs bindings/nodejs/build.sh all (build, pack with the contents check, 25 tests and the example from the tarball; Node 22 on Linux, 26 on macOS); passed locally on macOS and Linux T1 and T2, not yet on the CI lanes."
+      "verdict": "verified",
+      "method": "test",
+      "evidence": "bindings/nodejs/test/procage.test.js::escape subset::reading outside the workspace is refused",
+      "justification": "CI runs 41726108698 and 41730028663 ran build.sh all (build, pack with the contents check, 25 tests and the example from the tarball) green on macOS 26 and 27 (Node 26) and Ubuntu 24.04 x86_64 and arm64 and 26.04 on both tiers (Node 22); the published package installs from npm and runs a caged command on macOS 26.6.2."
     },
     "SR-007": {
       "verdict": "verified",
