@@ -7,7 +7,8 @@
 A capability procage cannot enforce is a typed error, never a no-op or a
 broader rule. This covers:
 
-- a missing libsandbox symbol;
+- a missing libsandbox symbol, or a missing or untested version of the
+  Windows process security environment;
 - an already-sandboxed parent;
 - a profile over its limits;
 - a construct a backend or Linux tier cannot express (`CapabilityGap`);
@@ -48,13 +49,21 @@ the date and the macOS build or kernel release they were measured on.
 Enforcement tests that hit `AlreadySandboxed` (for example inside an agent's
 own sandbox) **fail**; they never skip.
 
-Checked by the CI matrix (macOS lanes; Linux T1 and T2 lanes) and the escape
+Checked by the CI matrix (macOS lanes; Linux T1 and T2 lanes; a Windows lane
+on a host with the process security environment) and the escape
 suite: one canary per escape class in `crates/procage/THREAT_MODEL.md`.
 
 ### IV. Syscalls only between fork and exec; unsafe in `sys` only
 
-`unsafe_code` is forbidden everywhere except `procage::macos::sys` and
-`procage::linux::sys`, and every `unsafe` block carries a `SAFETY:` comment.
+`unsafe_code` is forbidden everywhere except `procage::macos::sys`,
+`procage::linux::sys` and `procage::windows::sys`, and every `unsafe` block
+carries a `SAFETY:` comment.
+
+On Windows there is no `fork`, and no procage code runs in the child.
+Everything the child needs is prepared before the process is created: the
+security environment, the job, the handle list and the environment block.
+The child is created suspended, verified from the parent, and only then
+resumed. A child that fails verification is terminated before it runs.
 
 Code that runs in the child between `fork` and `execve` issues syscalls only:
 
@@ -91,7 +100,11 @@ libsandbox's compile, apply and extension symbols are undocumented. procage:
 - probes them before first use;
 - surfaces their absence as `Unsupported`.
 
-Linux capabilities are probed, never inferred from `uname`. The public docs
+Linux capabilities are probed, never inferred from `uname`. The Windows
+process security environment is not documented by Microsoft either. Its
+exports are resolved at runtime from the system directory only. Its version
+and optional features are probed. Its absence is `Unsupported`, and Windows
+features are never inferred from the build number. The public docs
 state these dependencies, the threat model and the non-goals.
 
 Checked by the probe tests and rustdoc review.
@@ -168,4 +181,12 @@ is named as it runs. Evidence: the 0.1.0 release and an audit of the
 constitution against the code. Affects the release workflow and specs
 040-path-resolution and 013-tokio.
 
-**Version**: 2.3.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-11-01
+2.4.0 (2026-11-07) adds Windows. Principle IV allows `unsafe` in
+`procage::windows::sys` and states its rule for an OS without `fork` (create
+suspended, verify from the parent, resume). Principle VI covers the
+undocumented Windows process security environment, principle I its missing
+or untested version, and principle III the Windows lane. Evidence: the OS
+interface shipped in Windows 11 builds 26100.9278/26200.9278 and is applied
+at process creation, with no code in the child. Affects spec 050-windows.
+
+**Version**: 2.4.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-11-07

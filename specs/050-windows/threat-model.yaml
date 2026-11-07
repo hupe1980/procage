@@ -1,0 +1,1210 @@
+otmVersion: 0.2.0
+project:
+  id: 050-windows
+  name: Windows backend
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code running in the cage as the user (model-written commands, build scripts)
+    trust: untrusted
+  - id: actor.consumer
+    name: Developer of a Windows agent tool, editor extension or MCP host that calls procage
+    trust: trusted
+  - id: actor.contributor
+    name: procage contributor who edits the lowering, the encoder, the backend or the CI lane
+    trust: semi-trusted
+  - id: actor.os-update
+    name: A Windows update that changes the process security environment, its schema or its base grants
+    trust: semi-trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface in the backend; credentials on the host are assets the cage protects, modelled
+      as threat.base-overreach and threat.service-handoff
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary between the caller and procage; the proxy peer identity is part
+      of threat.loopback-bypass
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: the policy goes from the parent to the OS in process memory; no network transit
+    technique: data-tampering-in-transit
+  - disposition: no-threat-detected
+    reason: procage keeps no store of its own on Windows (bytecode-like plans live in memory); writes by the child
+      outside its grants are threat.path-alias, writes to autorun points are threat.persistence
+    technique: data-tampering-at-rest
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; disclosure by caged code is modelled under
+      STRIDE (threat.base-overreach, threat.env-leak)
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: no model is loaded or distributed
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: no model is trained
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: no model inference; process resource use by caged code is threat.resource-exhaustion
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: no model output is produced or relayed
+    technique: misinformation
+  - disposition: not-applicable
+    reason: no model context exists in the library
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: no retrieval or embeddings
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage does not interpret the child's output; it returns bytes to the caller
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: no model is served
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage runs no agent; the agent is the consumer's, outside this record
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is the containment for an agent's tools, not a tool an agent selects; misuse by caged code is
+      modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage runs no agent identity; the child runs as the user inside the cage, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage loads no agent plugins or MCP servers; its own supply chain is unchanged by this record
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: running untrusted code is the purpose of the cage; its containment is modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: no agent memory
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: no agents communicate through procage
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: no multi-agent pipeline; one run's failure is contained by its job
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage has no user interface; approvals belong to the harness
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage runs no agent
+    technique: rogue-agent
+  exclusions:
+  - entity: Windows base
+    reason: not an asset or a component of its own; it is the OS grant inside component.psec, modelled as threat.base-overreach
+      and recorded by mitigation.measured-base
+  extends: null
+  generated: '2026-11-07T20:07:44Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 7e2ae0d8c6b33c98682c5465ecaf0111ff3f69741115d2e8a94d6b8b150a3c49
+  - path: spec.md
+    sha256: a9c879df620258c0d69f9ecf83753c49c6df494f0922f82fa89b8a815dfcab24
+  surfaces:
+  - external-input
+  - authorization
+  - audit-relevant
+  - persistent-store
+  - shared-tenant
+  version: '0.1'
+trustZones:
+- id: tz.build
+  name: CI that builds and tests the Windows backend on a real host
+  risk:
+    trustRating: 70
+- id: tz.cage
+  name: The caged child and its descendants (one security environment, one job)
+  risk:
+    trustRating: 0
+- id: tz.host
+  name: The user's Windows session outside the cage (profile, desktop, console, services, other processes)
+  risk:
+    trustRating: 80
+- id: tz.os
+  name: The Windows kernel and the process security environment broker
+  risk:
+    trustRating: 100
+assets:
+- id: asset.claims
+  name: What the README, rustdoc, the threat model and receipts promise about Windows
+  risk:
+    availability: 20
+    confidentiality: 0
+    integrity: 90
+  attributes:
+    source: spec.md#Functional-Requirements
+    classification: public
+- id: asset.host-session
+  name: The user's desktop, console, clipboard, other processes, autorun points and local services
+  risk:
+    availability: 60
+    confidentiality: 70
+    integrity: 90
+  attributes:
+    source: spec.md#User-Story-3
+    classification: confidential
+- id: asset.parent
+  name: The calling process, its handles, its environment and its loaded code
+  risk:
+    availability: 60
+    confidentiality: 90
+    integrity: 100
+  attributes:
+    source: spec.md#User-Story-2
+    classification: secret
+- id: asset.policy
+  name: The lowered plan and its encoding for the OS, which decide what the cage holds
+  risk:
+    availability: 40
+    confidentiality: 10
+    integrity: 100
+  attributes:
+    source: spec.md#Functional-Requirements
+    classification: internal
+- id: asset.secrets
+  name: Credentials in the user's profile and services (.ssh, cloud and registry credentials, agent tokens, Credential
+    Manager, the OpenSSH agent pipe)
+  risk:
+    availability: 20
+    confidentiality: 100
+    integrity: 60
+  attributes:
+    source: spec.md#User-Story-1
+    classification: secret
+- id: asset.user-files
+  name: Files outside the policy's grants, and protected or hidden paths inside them
+  risk:
+    availability: 50
+    confidentiality: 80
+    integrity: 90
+  attributes:
+    source: spec.md#User-Story-3
+    classification: confidential
+components:
+- id: component.backend
+  name: Windows backend (probe, encoder, spawn, verify, resume)
+  type: library
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#FR-001
+- id: component.child
+  name: The caged child and its descendants
+  type: process
+  parent:
+    trustZone: tz.cage
+  attributes:
+    source: spec.md#User-Story-1
+- id: component.ci
+  name: The Windows CI lane
+  type: ci
+  parent:
+    trustZone: tz.build
+  attributes:
+    source: spec.md#FR-010
+- id: component.host-services
+  name: Services and state reachable from a process on the host (named pipes, COM/RPC servers, the Task Scheduler,
+    the registry, loopback listeners, the console)
+  type: os-service
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#User-Story-3
+- id: component.job
+  name: Run job, the job object holding every process of a run (lifetime, limits, no breakaway)
+  type: os-service
+  parent:
+    trustZone: tz.os
+  attributes:
+    source: spec.md#FR-006
+- id: component.lowering
+  name: Lowering for the Windows target (gaps, base, path mapping)
+  type: library
+  parent:
+    trustZone: tz.host
+  attributes:
+    source: spec.md#FR-003
+- id: component.psec
+  name: The OS process security environment (per-container file policy, egress filters, UI restrictions)
+  type: os-service
+  parent:
+    trustZone: tz.os
+  attributes:
+    source: spec.md#Context
+dataflows:
+- id: flow.child-to-host
+  name: The child opens files, pipes, registry keys, windows and loopback sockets on the host
+  source: component.child
+  destination: component.host-services
+  assets:
+  - asset.secrets
+  - asset.user-files
+  - asset.host-session
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.host
+- id: flow.ci-evidence
+  name: The CI lane runs the canaries and feeds the claims
+  source: component.ci
+  destination: component.backend
+  assets:
+  - asset.claims
+  attributes:
+    crosses:
+    - tz.build
+    - tz.host
+- id: flow.plan-to-os
+  name: The backend encodes the plan and creates the security environment and job
+  source: component.backend
+  destination: component.psec
+  assets:
+  - asset.policy
+  attributes:
+    crosses:
+    - tz.host
+    - tz.os
+- id: flow.policy-to-lowering
+  name: The consumer's policy and grants reach the lowering
+  source: actor.consumer
+  destination: component.lowering
+  assets:
+  - asset.policy
+  attributes:
+    crosses: []
+- id: flow.spawn
+  name: The backend creates the child suspended with handles, environment and console, verifies it and resumes it
+  source: component.backend
+  destination: component.child
+  assets:
+  - asset.parent
+  attributes:
+    crosses:
+    - tz.host
+    - tz.cage
+threats:
+- id: threat.acl-residue
+  name: The backend changes the ACL of a granted path to make the grant work, and a crash or a killed parent leaves
+    the entry behind, opening the path to every later container
+  categories:
+  - Tampering
+  - Elevation of Privilege
+  risk:
+    impact: 70
+    impactComment: persistent widening of the user's file permissions
+    likelihood: 30
+    likelihoodComment: the older Windows sandboxes (restricted tokens) work exactly this way
+  attributes:
+    source: spec.md#FR-005
+    assets:
+    - asset.user-files
+    status: open
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.backend
+    profile: stride
+    severity: medium
+    technique: privilege-escalation-via-config
+- id: threat.base-overreach
+  name: The OS grants every container read access to locations ACL'd for ALL_APPLICATION_PACKAGES; caged code reads
+    a secret or user file stored there although the policy never granted it
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 80
+    impactComment: credentials or project data outside the grants are disclosed
+    likelihood: 50
+    likelihoodComment: tools and installers grant that group read on their own directories, sometimes with tokens
+      in them
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.secrets
+    - asset.user-files
+    status: open
+    actor: actor.caged-code
+    constitution: II. Types over strings
+    disposition: threat
+    elements:
+    - component.psec
+    - flow.child-to-host
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.cmdline-quoting
+  name: The backend joins argv into a Windows command line that the target parses differently (quotes, backslashes,
+    a .bat/.cmd target re-parsed by cmd.exe), so the caged program runs with arguments the caller never passed
+  categories:
+  - Tampering
+  risk:
+    impact: 50
+    impactComment: the command differs from the caller's intent; the cage still holds
+    likelihood: 40
+    likelihoodComment: Windows has no argv; every runtime has shipped a batch-file quoting bug (BatBadBut, 2024)
+  attributes:
+    source: plan.md#Layout
+    assets:
+    - asset.policy
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - flow.spawn
+    profile: stride
+    severity: medium
+    technique: injection
+- id: threat.cross-run-grants
+  name: Two concurrent runs in one parent share an OS container identity, so one run reads or writes the other's
+    per-spawn grants
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 70
+    impactComment: one workspace's data reaches another run
+    likelihood: 30
+    likelihoodComment: reusing one identity per policy shape is the natural cache
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.user-files
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.psec
+    - component.backend
+    profile: stride
+    severity: medium
+    technique: cross-tenant-leak
+- id: threat.dll-hijack
+  name: The parent loads the OS interface's DLL by a search path that includes the working directory or PATH, and
+    caged code that wrote a DLL of that name into the workspace runs its code in the parent
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 100
+    impactComment: arbitrary code in the uncaged parent
+    likelihood: 40
+    likelihoodComment: the parent's working directory is often the workspace the cage writes
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.parent
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.backend
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.env-leak
+  name: The child receives the parent's environment block (tokens, secret-looking names) because the backend passes
+    none and Windows inherits the parent's
+  categories:
+  - Information Disclosure
+  risk:
+    impact: 85
+    impactComment: tokens in the environment reach the caged code
+    likelihood: 50
+    likelihoodComment: a null environment block inherits the parent's
+  attributes:
+    source: spec.md#User-Story-2
+    assets:
+    - asset.secrets
+    status: open
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - flow.spawn
+    profile: stride
+    severity: high
+    technique: sensitive-data-exposure
+- id: threat.handle-leak
+  name: The child inherits handles the caller did not declare (every inheritable handle of the parent, including
+    ones another thread created at the same moment), and uses one to reach a file, pipe or process outside the cage
+  categories:
+  - Information Disclosure
+  - Elevation of Privilege
+  risk:
+    impact: 85
+    impactComment: an inherited handle bypasses the security environment's access checks
+    likelihood: 60
+    likelihoodComment: Windows inherits every inheritable handle unless an explicit list is passed
+  attributes:
+    source: spec.md#User-Story-2
+    assets:
+    - asset.parent
+    - asset.user-files
+    status: open
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - flow.spawn
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.loopback-bypass
+  name: With Network::None or Proxy, caged code connects to a host loopback listener other than the proxy (local
+    dev servers, debug ports, a Docker TCP socket)
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 85
+    impactComment: unfiltered egress or handoff to a local service
+    likelihood: 40
+    likelihoodComment: the proxy mapping's loopback rules depend on the build and on the proxy's identity
+  attributes:
+    source: spec.md#User-Story-4
+    assets:
+    - asset.host-session
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - flow.child-to-host
+    - component.psec
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.orphaned-run
+  name: A descendant outlives the run because it was created before the child joined the job, broke away from the
+    job, or the parent died without closing the job
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 75
+    impactComment: caged code keeps running after the harness believes it ended
+    likelihood: 50
+    likelihoodComment: job assignment after creation races the first instruction; breakaway is allowed by default
+  attributes:
+    source: spec.md#FR-007
+    assets:
+    - asset.host-session
+    status: open
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - component.job
+    - component.child
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.path-alias
+  name: Caged code reaches a protected, hidden or denied path, or renames a writable root or an anchor, through
+    an 8.3 short name, a case variant, an alternate data stream, a \\?\ or device path, a junction or a symbolic
+    link the lowering or the OS treats as a different path
+  categories:
+  - Elevation of Privilege
+  - Tampering
+  risk:
+    impact: 90
+    impactComment: writes to protected files (git hooks, config) or reads of hidden secrets
+    likelihood: 60
+    likelihoodComment: path aliasing is the most frequent escape class across sandboxes in 2026
+  attributes:
+    source: spec.md#User-Story-3
+    assets:
+    - asset.user-files
+    - asset.secrets
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.lowering
+    - component.psec
+    - flow.child-to-host
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.persistence
+  name: Caged code writes an autorun point (HKCU Run keys, the Startup folder, a scheduled task, a shell profile)
+    that the user's session runs later outside the cage
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: code runs outside the cage at next logon
+    likelihood: 50
+    likelihoodComment: autorun points under the user's profile are writable by the user
+  attributes:
+    source: spec.md#User-Story-3
+    assets:
+    - asset.host-session
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - flow.child-to-host
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.planted-link
+  name: Caged code replaces a directory in its writable tree with a junction or symbolic link to a secret location,
+    and procage, resolving a later grant below it to its final path, grants the link's target to the next spawn
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 90
+    impactComment: a later run reads or writes the user's credentials through a grant procage resolved
+    likelihood: 50
+    likelihoodComment: a standard user creates junctions without privilege; R-33 is the same class on Linux
+  attributes:
+    source: research.md#R7
+    assets:
+    - asset.secrets
+    - asset.user-files
+    status: open
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    disposition: threat
+    elements:
+    - component.backend
+    - flow.policy-to-lowering
+    profile: stride
+    severity: high
+    technique: privilege-escalation-via-config
+- id: threat.resource-exhaustion
+  name: Caged code exhausts the host's process table or CPU because the job carries no limits
+  categories:
+  - Denial of Service
+  risk:
+    impact: 40
+    impactComment: the user's session becomes unusable
+    likelihood: 40
+    likelihoodComment: fork-bomb equivalents and runaway builds
+  attributes:
+    source: spec.md#User-Story-2
+    assets:
+    - asset.host-session
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - component.job
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.schema-mismatch
+  name: procage's encoding of the plan does not match the schema the OS reads (slot order, version, defaults), so
+    the OS drops the denied paths or reads a read-only list as read-write
+  categories:
+  - Tampering
+  risk:
+    impact: 95
+    impactComment: the cage is silently broader than the plan
+    likelihood: 30
+    likelihoodComment: the schema is vendored from an undocumented OS contract and evolves with Windows releases
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.policy
+    status: open
+    actor: actor.os-update
+    constitution: VI. Private interfaces, honestly
+    disposition: threat
+    elements:
+    - component.backend
+    - flow.plan-to-os
+    profile: stride
+    severity: medium
+    technique: injection
+- id: threat.service-handoff
+  name: Caged code hands work to an uncaged service through a named pipe, COM/RPC or the Task Scheduler (the Docker
+    engine pipe, the OpenSSH agent pipe, a scheduled task), or opens another of the user's processes
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    impactComment: code runs outside the cage, or credentials are used
+    likelihood: 50
+    likelihoodComment: service handoff is a shipped 2026 escape class on the other OSes
+  attributes:
+    source: spec.md#User-Story-3
+    assets:
+    - asset.host-session
+    - asset.secrets
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - flow.child-to-host
+    - component.host-services
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.silent-fallback
+  name: On a host without the process security environment, an untested schema version, or a missing optional feature
+    (denied paths, ingress), the backend still starts the child with a weaker cage instead of refusing
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 95
+    impactComment: the caged code runs with the user's full access while the caller believes it is caged
+    likelihood: 50
+    likelihoodComment: Windows 10, Server and pre-August-2026 builds are common; optional features vary by build
+  attributes:
+    source: spec.md#FR-002
+    assets:
+    - asset.user-files
+    - asset.secrets
+    status: open
+    actor: actor.os-update
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - component.backend
+    - component.lowering
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.ui-injection
+  name: Caged code injects input into another window or a shared console (SendInput, window messages, writing the
+    console input buffer with Tty::Inherit), or reads the clipboard
+  categories:
+  - Elevation of Privilege
+  - Information Disclosure
+  risk:
+    impact: 90
+    impactComment: commands typed into the user's uncaged terminal
+    likelihood: 40
+    likelihoodComment: console input injection is the Windows form of TIOCSTI
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.host-session
+    status: open
+    actor: actor.caged-code
+    disposition: threat
+    elements:
+    - flow.child-to-host
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.unrecorded-run
+  name: A receipt or Plan omits the Windows build, the probed features or the base grant, so a reviewer cannot tell
+    what the cage held
+  categories:
+  - Repudiation
+  risk:
+    impact: 50
+    impactComment: evidence overstates the cage
+    likelihood: 40
+    likelihoodComment: the base is implicit OS behaviour, easy to leave out
+  attributes:
+    source: spec.md#User-Story-5
+    assets:
+    - asset.claims
+    status: open
+    actor: actor.contributor
+    disposition: threat
+    elements:
+    - component.backend
+    profile: stride
+    severity: medium
+    technique: missing-audit-trail
+- id: threat.untested-claims
+  name: Docs or the threat model claim Windows enforcement that no caged test on a real host shows, for example
+    because the CI lane skips on a host without the feature
+  categories:
+  - Repudiation
+  risk:
+    impact: 70
+    impactComment: consumers rely on claims that are not true
+    likelihood: 40
+    likelihoodComment: the GitHub Windows images may lag the minimum build
+  attributes:
+    source: spec.md#FR-010
+    assets:
+    - asset.claims
+    status: open
+    actor: actor.contributor
+    constitution: III. The kernel is the oracle
+    disposition: threat
+    elements:
+    - component.ci
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.unverified-child
+  name: The security-environment attribute is ignored or fails silently on some build, and the child runs its target
+    uncaged because nothing checks it before it is resumed
+  categories:
+  - Elevation of Privilege
+  risk:
+    impact: 100
+    impactComment: no cage at all
+    likelihood: 25
+    likelihoodComment: an undocumented attribute on a fast-moving OS feature
+  attributes:
+    source: spec.md#User-Story-2
+    assets:
+    - asset.user-files
+    - asset.secrets
+    status: open
+    actor: actor.os-update
+    constitution: I. Fail closed, never silently weaker
+    disposition: threat
+    elements:
+    - flow.spawn
+    - component.psec
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+mitigations:
+- id: mitigation.argv-quoting
+  name: One quoting function, the exact inverse of CommandLineToArgvW, property-tested; .bat and .cmd targets refused
+    unless the caller passes the shell command line explicitly
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.cmdline-quoting
+    status: required
+    kind: preventive
+    requirements:
+    - SR-015
+    touchpoints:
+    - crates/procage/src/windows/cmdline.rs
+- id: mitigation.environment-per-spawn
+  name: One security environment per spawn, released at the end of the run; per-spawn grants never shared between
+    runs
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.cross-run-grants
+    status: required
+    kind: preventive
+    requirements:
+    - SR-012
+    touchpoints:
+    - crates/procage/src/windows/mod.rs
+    - crates/procage/src/windows/spawn.rs
+- id: mitigation.explicit-handles-env
+  name: Pass an explicit handle list (stdio and declared handles only) and an explicit environment block from the
+    allowlist on every creation; no console unless asked
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.handle-leak
+    - threat.env-leak
+    status: required
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage/src/windows/spawn.rs
+- id: mitigation.hard-deny-windows
+  name: Each hard-deny class is enforced on Windows by denied paths, UI restrictions and the container's isolation,
+    with a canary per class, or is a typed gap
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.service-handoff
+    - threat.persistence
+    - threat.ui-injection
+    status: required
+    kind: preventive
+    requirements:
+    - SR-010
+    touchpoints:
+    - crates/procage-policy/src/presets.rs
+    - crates/procage-policy/src/lower/windows.rs
+    - crates/procage/tests/escape_windows.rs
+- id: mitigation.job-at-creation
+  name: Create the child suspended and already in a kill-on-close job that forbids breakaway and carries the limits
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.orphaned-run
+    - threat.resource-exhaustion
+    status: required
+    kind: preventive
+    requirements:
+    - SR-008
+    - SR-014
+    touchpoints:
+    - crates/procage/src/windows/spawn.rs
+    - crates/procage/src/windows/child.rs
+- id: mitigation.lane-fails-closed
+  name: The Windows lane fails when the feature is missing, and the docs claim only what the lane's canaries show
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.untested-claims
+    status: required
+    kind: detective
+    requirements:
+    - SR-013
+    touchpoints:
+    - .github/workflows/ci.yml
+    - crates/procage/THREAT_MODEL.md
+    - README.md
+- id: mitigation.loopback-canaries
+  name: Lower Loopback and Proxy only where the probe reports support and a canary shows no other loopback listener
+    is reachable; deny host loopback otherwise
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.loopback-bypass
+    status: required
+    kind: preventive
+    requirements:
+    - SR-011
+    touchpoints:
+    - crates/procage-policy/src/lower/windows.rs
+    - crates/procage/tests/escape_windows.rs
+- id: mitigation.measured-base
+  name: Measure the OS base per tested build, record it on the Plan and in receipts, name it in explain, deny the
+    secret classes explicitly, and make Base::None a gap
+  riskReduction: 70
+  attributes:
+    threats:
+    - threat.base-overreach
+    - threat.unrecorded-run
+    status: required
+    kind: detective
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage-policy/src/base.rs
+    - crates/procage-policy/src/lower/windows.rs
+    - crates/procage/src/receipt.rs
+- id: mitigation.no-acl-writes
+  name: The backend never changes ACLs, owners or attributes of caller paths; a residue check after killed runs
+    proves it
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.acl-residue
+    status: required
+    kind: preventive
+    requirements:
+    - SR-005
+    touchpoints:
+    - crates/procage/src/windows/sys.rs
+    - crates/procage/tests/spawn_windows.rs
+- id: mitigation.no-follow-resolution
+  name: Resolve policy and grant paths component by component without following reparse points; a reparse point
+    inside a writable tree refuses the spawn; grants resolved again at every spawn
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.planted-link
+    status: required
+    kind: preventive
+    requirements:
+    - SR-016
+    touchpoints:
+    - crates/procage/src/windows/paths.rs
+    - crates/procage/tests/escape_windows.rs
+- id: mitigation.path-matrix
+  name: Resolve every policy path through the path component (long names, case, prefixes, reparse points) and prove
+    each alias class with a canary on a real host; an alias the OS does not close is a gap
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.path-alias
+    status: required
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage/src/windows/paths.rs
+    - crates/procage-kernel-facts/src/sys/windows.rs
+    - crates/procage/tests/escape_windows.rs
+- id: mitigation.pinned-schema
+  name: Pin the schema version procage encodes, test the encoding against the vendored schema and on the OS, and
+    treat an untested major version as Unsupported
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.schema-mismatch
+    status: required
+    kind: preventive
+    requirements:
+    - SR-004
+    touchpoints:
+    - crates/procage/src/windows/psec.rs
+    - crates/procage/src/windows/psec.fbs
+- id: mitigation.probe-or-refuse
+  name: Probe the interface, the schema version and each optional feature once per process; refuse with Unsupported
+    or a typed gap; no fallback mechanism exists
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.silent-fallback
+    status: required
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage/src/windows/probe.rs
+    - crates/procage-policy/src/lower/windows.rs
+- id: mitigation.system32-load
+  name: Load the OS interface's DLL from the system directory only, never by search path
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.dll-hijack
+    status: required
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - crates/procage/src/windows/probe.rs
+    - crates/procage/src/windows/sys.rs
+- id: mitigation.verify-before-resume
+  name: Before resuming, verify from the parent that the child's token is in the expected security environment and
+    the process is in the run's job; terminate it otherwise
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.unverified-child
+    status: required
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - crates/procage/src/windows/spawn.rs
+requirements:
+- id: SR-001
+  statement: The backend MUST return Unsupported when the OS interface, a tested schema version or a required feature
+    is missing, MUST return a typed gap for any construct whose OS feature the host lacks, and MUST NOT use any
+    other mechanism (restricted tokens, ACL changes, local users) as a fallback.
+  priority: P1
+  mitigations:
+  - mitigation.probe-or-refuse
+  acceptance:
+  - given: a host whose probe reports no process security environment
+    then: Unsupported names what is missing and no process starts
+    when: a cage is built
+  - given: a host without native denied paths and a policy with a Hide rule
+    then: a CapabilityGap names the rule
+    when: it is lowered for that host
+  tasks: []
+- id: SR-002
+  statement: The Windows base MUST be measured per tested build, recorded on the Plan and in every receipt with
+    the build and the probed features, and named by explain; Base::None MUST be a gap; the secret classes MUST be
+    denied explicitly even where the base would allow them.
+  priority: P1
+  mitigations:
+  - mitigation.measured-base
+  acceptance:
+  - given: a cage on Windows
+    then: its receipt names the build, the features and the base version
+    when: a run ends
+  - given: a read of a system DLL
+    then: it answers allowed by the Windows base
+    when: explain is asked
+  - given: a secret-class path readable by the base
+    then: it is refused
+    when: the child reads it
+  tasks: []
+- id: SR-003
+  statement: Protect, Hide, denied paths and rename anchors MUST hold for 8.3 short names, case variants, alternate
+    data streams, \\?\ and device paths, junctions and symbolic links, each proven by a canary on a real host; an
+    alias class the OS does not close MUST be a documented gap.
+  priority: P1
+  mitigations:
+  - mitigation.path-matrix
+  acceptance:
+  - given: a protected file inside a writable workspace
+    then: each write is refused
+    when: the child writes it through its short name, an alternate data stream or a junction
+  - given: a hidden directory inside a readable tree
+    then: each read is refused
+    when: the child reads it with a different case or a \\?\ prefix
+  tasks: []
+- id: SR-004
+  statement: The encoder MUST produce the schema version procage pins, MUST be tested against the vendored schema
+    and on the OS, and an untested major version reported by the OS MUST be Unsupported.
+  priority: P1
+  mitigations:
+  - mitigation.pinned-schema
+  acceptance:
+  - given: a plan with read-only, read-write and denied paths
+    then: every list round-trips exactly
+    when: it is encoded and decoded with the vendored schema
+  - given: an OS reporting an untested major version
+    then: Unsupported is returned
+    when: a cage is built
+  tasks: []
+- id: SR-005
+  statement: The backend MUST NOT change the ACL, owner or attributes of any caller path or any path below it.
+  priority: P1
+  mitigations:
+  - mitigation.no-acl-writes
+  acceptance:
+  - given: a workspace whose security descriptors are recorded
+    then: every security descriptor is byte-identical and no procage process remains
+    when: 1,000 runs complete, some killed and one parent killed abruptly
+  tasks: []
+- id: SR-006
+  statement: The backend MUST load the OS interface's DLL from the system directory only.
+  priority: P1
+  mitigations:
+  - mitigation.system32-load
+  acceptance:
+  - given: a DLL of the interface's name in the parent's working directory and on PATH
+    then: the planted DLL is not loaded
+    when: a cage is built
+  tasks: []
+- id: SR-007
+  statement: Every child MUST be created with an explicit handle list of stdio and declared handles only, an explicit
+    environment block built from the policy's allowlist, and no console unless the policy asks for one.
+  priority: P1
+  mitigations:
+  - mitigation.explicit-handles-env
+  acceptance:
+  - given: an undeclared inheritable handle in the parent, created by another thread during the spawn
+    then: only stdio and declared handles are present
+    when: the child enumerates its handles
+  - given: a secret-looking variable in the parent's environment
+    then: the variable is absent
+    when: the child prints its environment
+  tasks: []
+- id: SR-008
+  statement: With Lifetime::Run, every process of a run MUST be in the run's job from its creation, MUST NOT break
+    away, and MUST be killed when the run ends, its Child is dropped or the parent exits.
+  priority: P1
+  mitigations:
+  - mitigation.job-at-creation
+  acceptance:
+  - given: a run whose grandchild requests breakaway
+    then: every process of the run is gone
+    when: the Child is dropped
+  - given: a running cage
+    then: every process of the run is gone
+    when: the parent is terminated abruptly
+  tasks: []
+- id: SR-009
+  statement: The child MUST be verified from the parent (security environment and job membership) before it is resumed,
+    and terminated without running if the check fails.
+  priority: P1
+  mitigations:
+  - mitigation.verify-before-resume
+  acceptance:
+  - given: a fault injected so the security environment is not attached
+    then: SpawnError is returned and the target never runs
+    when: the child is spawned
+  tasks: []
+- id: SR-010
+  statement: Each hard-deny class MUST be enforced on Windows with a canary that fails without the enforcement,
+    or be a typed gap waivable by name; the threat model MUST state which per class.
+  priority: P1
+  mitigations:
+  - mitigation.hard-deny-windows
+  acceptance:
+  - given: the default policy
+    then: each is refused, or its class is a listed gap
+    when: the child opens the Docker engine pipe, the OpenSSH agent pipe, writes an HKCU Run value or the Startup
+      folder, creates a scheduled task, sends input to another window, or writes the console input buffer
+  - given: a policy with Tty::Inherit and no TerminalInjection waiver
+    then: lowering refuses it, naming the waiver that would accept it
+    when: it is lowered for Windows
+  tasks: []
+- id: SR-011
+  statement: Network::None MUST deny all IP traffic including host loopback; Network::Proxy MUST lower only where
+    the probe reports support and a canary shows the proxy is the only destination reachable; Network::Loopback,
+    Ip and All MUST lower only where the build has the ingress and host-loopback features; otherwise each MUST be
+    a gap.
+  priority: P1
+  mitigations:
+  - mitigation.loopback-canaries
+  acceptance:
+  - given: Network::Proxy on a supported host and an unrelated loopback listener
+    then: the listener and the public address are refused and the proxy connection succeeds
+    when: the child connects to the listener, to a public address and through the proxy
+  - given: Network::None and a host loopback listener
+    then: it is refused
+    when: the child connects to it
+  tasks: []
+- id: SR-012
+  statement: Each spawn MUST get its own security environment, released when the run ends; concurrent runs MUST
+    NOT reach each other's per-spawn grants.
+  priority: P2
+  mitigations:
+  - mitigation.environment-per-spawn
+  acceptance:
+  - given: two concurrent runs of one cage with different per-spawn grants
+    then: both reads are refused
+    when: each reads the other's grant
+  tasks: []
+- id: SR-013
+  statement: The Windows CI lane MUST fail, never skip, when the host lacks the feature, and the README, rustdoc
+    and threat model MUST claim only what the lane's caged tests show.
+  priority: P1
+  mitigations:
+  - mitigation.lane-fails-closed
+  acceptance:
+  - given: the Windows lane on a host without the feature
+    then: they fail
+    when: the tests run
+  tasks: []
+- id: SR-014
+  statement: The policy's process count and CPU time limits MUST be enforced by the run's job; a limit without a
+    Windows equivalent (open files, file size, core size) MUST be a gap.
+  priority: P2
+  mitigations:
+  - mitigation.job-at-creation
+  acceptance:
+  - given: a process-count limit of 4
+    then: the creation fails
+    when: the child starts a fifth process
+  - given: a policy with a core-size limit
+    then: a CapabilityGap names it
+    when: it is lowered for Windows
+  tasks: []
+- id: SR-015
+  statement: The backend MUST build the command line with one quoting function whose output CommandLineToArgvW parses
+    back to the exact argv, and MUST refuse a .bat or .cmd program in argv form.
+  priority: P2
+  mitigations:
+  - mitigation.argv-quoting
+  acceptance:
+  - given: arbitrary argv strings with quotes, backslashes, spaces and empty strings
+    then: the parsed argv equals the input
+    when: they are quoted and parsed back
+  - given: a .cmd program with argv
+    then: SpawnError names the refusal
+    when: it is spawned
+  tasks: []
+- id: SR-016
+  statement: procage MUST resolve policy and grant paths on Windows without following any reparse point inside a
+    tree the policy makes writable, MUST refuse the spawn with GrantError::Link when one is found, and MUST resolve
+    per-spawn grants again at every spawn.
+  priority: P1
+  mitigations:
+  - mitigation.no-follow-resolution
+  acceptance:
+  - given: a run that replaced a granted subdirectory with a junction to the user's .ssh directory
+    then: it fails with GrantError::Link and no process starts
+    when: the next spawn carries that grant
+  - given: the same with a directory symbolic link
+    then: it fails with GrantError::Link
+    when: the next spawn carries that grant
+  tasks: []
+verification: []
+decisions: []
