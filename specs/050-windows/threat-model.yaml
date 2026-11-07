@@ -108,16 +108,16 @@ threatspec:
     reason: not an asset or a component of its own; it is the OS grant inside component.psec, modelled as threat.base-overreach
       and recorded by mitigation.measured-base
   extends: null
-  generated: '2026-11-07T20:07:44Z'
+  generated: '2026-11-07T20:17:54Z'
   profiles:
   - stride
   - llm
   - agent
   sources:
   - path: plan.md
-    sha256: 7e2ae0d8c6b33c98682c5465ecaf0111ff3f69741115d2e8a94d6b8b150a3c49
+    sha256: 21890fd9f68df11b979ff40120890ead0a8b2734017e29fde7ff6babd0604f29
   - path: spec.md
-    sha256: a9c879df620258c0d69f9ecf83753c49c6df494f0922f82fa89b8a815dfcab24
+    sha256: 6ac0c239b47a868ba8b6ab70e1da64ca9f00621c37c1f44a91d39fb1c9741453
   surfaces:
   - external-input
   - authorization

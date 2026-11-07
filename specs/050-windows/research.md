@@ -234,18 +234,19 @@ pipe paths (KF-W9). Otherwise the class is a gap.
 
 ## R9. CI
 
-**[source]** GitHub's `windows-11-arm` image reported 10.0.26200 build 9168
-on 2026-08-30. That is below 26200.9278, and later images were not checked.
-The `windows-2025` image is Windows Server (26100) and is not assumed to
-carry the feature.
+**[source]** GitHub's hosted Windows runners: x64 `windows-latest`,
+`windows-2025`, `windows-2022` (Windows Server) and arm64 `windows-11-arm`
+(Windows 11). The `windows-11-arm` image `win11-arm64/20261006.188`
+(2026-10-14) is 10.0.26200.9457: above 26200.9278, below 26200.9550.
 
-**Decision**: a `windows` job on `windows-11-arm`:
+**Decision**: GitHub-hosted runners only. There is no other machine.
 
-- Its first step prints the build and runs the probe.
-- If the probe reports no feature, the job fails (SR-013).
-- If the hosted image lags, the lane runs on a self-hosted Windows 11
-  arm64 runner with the same labels until it catches up.
-- x64 is claimed only when an x64 Windows 11 lane exists.
+- The `windows` job runs on `windows-11-arm`: it prints the build and runs
+  the probe, and fails if the probe reports no feature (SR-013).
+- A build-only step for `x86_64-pc-windows-msvc` runs on `windows-latest`.
+- x64 and other builds are not claimed. Users' reports from other hosts
+  come in as GitHub issues and are recorded here with their date and
+  build.
 
 ## R10. Dependencies
 

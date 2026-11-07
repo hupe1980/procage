@@ -106,9 +106,11 @@ Decided by the same rule; each answer is applied in the sections it names.
   restriction where a canary proves it, otherwise it is a gap (FR-003,
   SC-001).
 - Q: Which architectures does a release claim? → A: Only those a CI lane
-  runs. arm64 comes first, on GitHub's hosted Windows 11 arm64 image once
-  it carries the minimum build. x64 is claimed when a hosted or
-  self-hosted Windows 11 x64 lane runs it (FR-010, Assumptions).
+  runs. The lane is GitHub's hosted `windows-11-arm` image (Windows 11,
+  arm64). GitHub's x64 Windows images are Windows Server, so x64 is
+  built there but not claimed. There is no self-hosted lane. Reports from
+  users on other hosts arrive as GitHub issues; they inform the record
+  but are not claims (FR-010, Assumptions).
 - Q: Which parts of the API exist on Windows? → A: `Cage::new`,
   `with_options`, `fit`, `spawn`, `spawn_with_handles` (the Windows form of
   `spawn_with_fds`),
@@ -468,10 +470,11 @@ deciding rule, including the OS base grant.
 - The process security environment's schema evolves compatibly, as its
   published evolution rules require. procage pins a tested version and
   treats an untested major version as `Unsupported`.
-- A CI host with a build at or above the minimum is available. The first
-  is GitHub's hosted Windows 11 arm64 image once it carries the August
-  2026 update. x64 needs a Windows 11 x64 lane, hosted or self-hosted. Windows Server images are not assumed to
-  carry the feature.
+- GitHub's hosted `windows-11-arm` image carries the minimum build: image
+  `win11-arm64/20261006.188` is 10.0.26200.9457. It is below 26200.9550, so
+  the loopback-dependent network modes stay gaps there until a later
+  image. The x64 images (`windows-latest`) are Windows Server and are not
+  assumed to carry the feature.
 - The constitution is amended (2.4.0) for this record. Principle IV
   allows `unsafe` in `procage::windows::sys` and states the rule for an OS
   without `fork`: no procage code runs in the child; the child is created

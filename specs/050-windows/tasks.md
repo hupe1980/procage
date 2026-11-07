@@ -7,7 +7,7 @@ to run. Everything else runs on any lane.
 ## Phase 1: Setup
 
 - [ ] T001 Workspace: `windows-sys` and `flatbuffers` as `cfg(windows)` dependencies of `procage`; `tokio`, `futures-core` and `procage-proxy` enabled for `cfg(windows)` too (FR-013) (pinned in the workspace manifest, `cargo-deny` clean); `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc` added to docs.rs targets and the crate description — Cargo.toml, crates/procage/Cargo.toml, deny.toml
-- [ ] T002 [SR-013] CI: a `windows` job on `windows-11-arm`. Its first step prints the OS build and runs `kf-probe`; the job fails when the probe reports no process security environment; `cargo build` for `x86_64-pc-windows-msvc` as a build-only step — .github/workflows/ci.yml
+- [ ] T002 [SR-013] CI: a `windows` job on `windows-11-arm`. Its first step prints the OS build and runs `kf-probe`; the job fails when the probe reports no process security environment; `cargo build` for `x86_64-pc-windows-msvc` on `windows-latest` (build only, no claim) — .github/workflows/ci.yml
 - [ ] T003 Module skeleton: `#[cfg(windows)] pub mod windows`, `pub use windows as native`; `unsafe_code` allowed only in `windows::sys` (the `unsafe_confined` test extended) — crates/procage/src/lib.rs, crates/procage/src/windows/mod.rs, crates/procage/src/windows/sys.rs, crates/procage/tests/unsafe_confined.rs
 
 ## Phase 2: Foundational (blocks every story)

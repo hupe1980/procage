@@ -1,6 +1,6 @@
 # Threat Model: Windows backend
 
-**Feature**: `050-windows` · **Generated**: 2026-11-07T20:07:44Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
+**Feature**: `050-windows` · **Generated**: 2026-11-07T20:17:54Z · **Profiles**: stride, llm, agent · **Canonical**: `threat-model.yaml`
 
 > Rendered by ThreatSpec. Edit `threat-model.yaml`, not this file.
 
