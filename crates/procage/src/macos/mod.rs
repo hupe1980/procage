@@ -100,7 +100,8 @@ use crate::unix::TmpdirGuard;
 /// A step of the in-child sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Step {
-    /// Starting a new session (`setsid`).
+    /// Resetting ignored signals to their default action (a spawn), then
+    /// starting a new session (`setsid`).
     Session,
     /// Setting resource limits.
     Rlimit,
@@ -1325,6 +1326,16 @@ pub mod testing {
     /// Whether `fd` is open in the calling process.
     pub fn fd_is_open(fd: i32) -> bool {
         sys::fd_is_open(fd)
+    }
+
+    /// Whether signal `sig` is ignored in the calling process.
+    pub fn signal_ignored(sig: i32) -> bool {
+        sys::signal_ignored(sig)
+    }
+
+    /// Makes `cmd`'s child ignore `signals` before the cage's own steps.
+    pub fn ignore_before_spawn(cmd: &mut std::process::Command, signals: &[i32]) {
+        sys::ignore_before_spawn(cmd, signals);
     }
 
     /// Whether process `pid` exists.

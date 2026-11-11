@@ -40,6 +40,10 @@ child.kill_all()?; // or just drop `child`
 
 A descriptor opened before the sandbox was applied reads or writes past every path rule (R-21). procage marks every inherited descriptor close-on-exec in the child, so it receives only standard input, output and error, even when the caller forgot `O_CLOEXEC`. `Cage::spawn_with_fds` hands chosen descriptors over at the same numbers, close-on-exec or not; every other descriptor numbered 3 or higher is closed.
 
+## Signals
+
+An ignored signal stays ignored across `execve`. A caller that ignores `SIGCHLD` would hand that to its children, whose `wait` then fails with `ECHILD` (build tools and shells break). A spawned child therefore starts with every ignored signal reset to its default action; the signal mask is empty, as the standard library leaves it. `Cage::exec` and `Cage::exec_session` keep the caller's dispositions, as `execve` does: the caller's own process continues.
+
 ## Environment
 
 The default `EnvPolicy::Allowlist(vec![])` passes **no** variable of the caller; the child gets exactly those set on the `Command`. With an allowlist, the named variables are passed as written.

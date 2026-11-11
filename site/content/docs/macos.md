@@ -33,7 +33,7 @@ libsandbox aborts its caller on very large profiles, so a profile with more rule
 
 `Cage::spawn` forks a child that, using system calls only:
 
-1. starts a new session (or, with `Tty::Inherit`, its own process group) and sets resource limits;
+1. resets ignored signals to their default action, starts a new session (or, with `Tty::Inherit`, its own process group) and sets resource limits;
 2. applies the compiled profile;
 3. confirms that it is sandboxed;
 4. consumes the spawn's grant tokens (sandbox extensions for the bound paths);

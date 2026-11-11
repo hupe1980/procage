@@ -6,6 +6,14 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A spawned child starts with every ignored signal reset to its default
+  action (macOS, Linux). A caller that ignored `SIGCHLD` handed that to the
+  child, whose `wait` for its own children failed with `ECHILD`; bubblewrap
+  0.11.1 fixed the same. `Cage::exec` keeps the caller's dispositions, as
+  `execve` does. A failure is reported as `Step::Session`.
+
 ## [0.7.1] - 2026-11-03
 
 ### Fixed

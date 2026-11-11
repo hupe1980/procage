@@ -159,7 +159,8 @@ pub fn end_session(pid: u32) {
 /// A step of the in-child sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Step {
-    /// Starting a new session or process group.
+    /// Resetting ignored signals to their default action (a spawn), then
+    /// starting a new session or process group.
     Session,
     /// Setting the parent-death signal.
     Lifetime,
@@ -1687,6 +1688,11 @@ pub mod testing {
         sys::fd_is_open(fd)
     }
 
+    /// Whether signal `sig` is ignored in the calling process.
+    pub fn signal_ignored(sig: i32) -> bool {
+        sys::signal_ignored(sig)
+    }
+
     /// Whether process `pid` exists and is not a zombie (in a container
     /// whose first process does not reap orphans, killed orphans stay
     /// zombies).
@@ -1697,6 +1703,11 @@ pub mod testing {
                 == Some("Z")
         });
         !zombie && libc::pid_t::try_from(pid).is_ok_and(sys::alive)
+    }
+
+    /// Makes `cmd`'s child ignore `signals` before the cage's own steps.
+    pub fn ignore_before_spawn(cmd: &mut std::process::Command, signals: &[i32]) {
+        sys::ignore_before_spawn(cmd, signals);
     }
 
     /// Makes `cmd`'s child rename `planned` to `aside` and put `replacement`

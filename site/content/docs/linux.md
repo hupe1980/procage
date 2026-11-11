@@ -22,7 +22,7 @@ Linux has no single sandbox call. procage combines kernel features into a **tier
 
 A `Cage` lowers the policy for the tier and the kernel's Landlock ABI; a construct the tier cannot enforce is a capability gap at preparation. `Cage::spawn` builds everything in the parent (Landlock ruleset, seccomp filter, mounts and id maps) and forks a child that applies it with system calls only, in this order:
 
-1. session (or process group);
+1. ignored signals reset to their default action, then session (or process group);
 2. parent-death signal;
 3. namespaces, id maps and mounts (T1);
 4. capabilities dropped;

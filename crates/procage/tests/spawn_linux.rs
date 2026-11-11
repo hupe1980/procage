@@ -281,6 +281,11 @@ fn child_entry() {
             let open = (3..4096).filter(|&fd| testing::fd_is_open(fd)).count();
             format!("fdcount={open}")
         }
+        "signals" => format!(
+            "chld={} hup={}",
+            testing::signal_ignored(libc::SIGCHLD),
+            testing::signal_ignored(libc::SIGHUP)
+        ),
         fd if fd.starts_with("fd:") => {
             let n: i32 = fd[3..].parse().unwrap();
             format!("open={}", testing::fd_is_open(n))
@@ -813,6 +818,32 @@ fn descriptors_reach_the_child_only_when_handed_over() {
             )
             .unwrap();
         assert_eq!(result(&finish(child, Duration::from_secs(10))), "open=true");
+    }
+}
+
+/// A caller's ignored signals do not reach the caged child (an ignored
+/// `SIGCHLD` makes the child's `wait` fail; bubblewrap 0.11.1 fixed the
+/// same); an uncaged child is the control.
+#[test]
+fn ignored_signals_are_reset_for_the_child() {
+    let ignore = |cmd: &mut Command| {
+        testing::ignore_before_spawn(cmd, &[libc::SIGCHLD, libc::SIGHUP]);
+    };
+    let mut plain = child_command("signals");
+    ignore(&mut plain);
+    assert_eq!(result(&plain.output().unwrap()), "chld=true hup=true");
+    for tier in tiers() {
+        let cage = Cage::with_options(&child_policy(base()), &options(tier)).unwrap();
+        let mut cmd = child_command("signals");
+        ignore(&mut cmd);
+        let child = cage
+            .spawn(&mut cmd, &Grants::new())
+            .unwrap_or_else(|e| panic!("{tier:?} spawn: {e}"));
+        assert_eq!(
+            result(&finish(child, Duration::from_secs(20))),
+            "chld=false hup=false",
+            "{tier:?}"
+        );
     }
 }
 

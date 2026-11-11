@@ -579,6 +579,47 @@ pub(crate) enum Session {
     Terminal,
 }
 
+impl Session {
+    /// Whether the process is a new child (a spawn) rather than the caller
+    /// itself (`Cage::exec`, which keeps what `execve` keeps).
+    fn fresh(self) -> bool {
+        matches!(self, Session::New | Session::Group | Session::Terminal)
+    }
+}
+
+/// One past the highest signal number (`_NSIG`).
+const SIGNALS: c_int = 65;
+
+/// Resets every ignored signal to its default action. An ignored
+/// disposition survives `execve`, so a caller that ignores `SIGCHLD` would
+/// hand that to the child, whose `wait` then fails with `ECHILD`
+/// (bubblewrap 0.11.1 fixed the same for `SIGCHLD`). Caught signals need
+/// nothing: `execve` resets them. System calls only.
+fn reset_ignored_signals() -> Result<(), i32> {
+    for sig in 1..SIGNALS {
+        if sig == libc::SIGKILL || sig == libc::SIGSTOP || !signal_ignored(sig) {
+            continue;
+        }
+        // SAFETY: an all-zero sigaction is a valid value to fill in.
+        let mut default: libc::sigaction = unsafe { std::mem::zeroed() };
+        default.sa_sigaction = libc::SIG_DFL;
+        // SAFETY: sigaction reads a struct on our stack.
+        let rc = unsafe { libc::sigaction(sig, &raw const default, std::ptr::null_mut()) };
+        check_int(rc)?;
+    }
+    Ok(())
+}
+
+/// Whether `sig` is ignored in the calling process. A number the C library
+/// reserves for itself (glibc's 32 and 33) reads as not ignored.
+pub(crate) fn signal_ignored(sig: c_int) -> bool {
+    // SAFETY: an all-zero sigaction is a valid value to fill in.
+    let mut old: libc::sigaction = unsafe { std::mem::zeroed() };
+    // SAFETY: sigaction writes a struct on our stack.
+    let rc = unsafe { libc::sigaction(sig, std::ptr::null(), &raw mut old) };
+    rc == 0 && old.sa_sigaction == libc::SIG_IGN
+}
+
 /// Everything the child needs between `fork` and `execve`, prepared in the
 /// parent.
 pub(crate) struct ChildPlan {
@@ -952,6 +993,9 @@ impl ChildPlan {
     fn run(&mut self) -> std::io::Result<()> {
         let fail =
             |step: u32, errno: i32| std::io::Error::from_raw_os_error(step_code(step, errno));
+        if self.session.fresh() {
+            reset_ignored_signals().map_err(|e| fail(steps::SESSION, e))?;
+        }
         // SAFETY: setsid and setpgid are system calls without pointers.
         let rc = unsafe {
             match self.session {
@@ -1077,7 +1121,7 @@ impl ChildPlan {
     pub(crate) fn install(self, command: &mut std::process::Command) {
         use std::os::unix::process::CommandExt;
         let mut plan = self;
-        // SAFETY: `run` issues only system calls (setsid or setpgid, prctl,
+        // SAFETY: `run` issues only system calls (sigaction, setsid or setpgid, prctl,
         // getppid, unshare, open/write/close on /proc/self, mount, openat2,
         // fstat, open_tree, mount_setattr, fsopen, fsconfig, fsmount,
         // move_mount and close, with a proxy socket/ioctl/bind/listen/sendmsg/close,
@@ -1233,6 +1277,24 @@ pub(crate) fn spawn_sleeper(setsid: bool) -> std::io::Result<u32> {
     }
     let child = cmd.spawn()?;
     Ok(child.id())
+}
+
+/// Makes `cmd`'s child ignore `signals` before any later `pre_exec` step
+/// (for procage's tests: a caller whose children inherit ignored signals).
+pub(crate) fn ignore_before_spawn(cmd: &mut std::process::Command, signals: &[c_int]) {
+    use std::os::unix::process::CommandExt;
+    let signals = signals.to_vec();
+    // SAFETY: signal is a system call; the list was allocated before the fork.
+    unsafe {
+        cmd.pre_exec(move || {
+            for &sig in &signals {
+                if libc::signal(sig, libc::SIG_IGN) == libc::SIG_ERR {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+            Ok(())
+        });
+    }
 }
 
 /// Makes `cmd`'s child rename `planned` to `aside` and put `replacement` in

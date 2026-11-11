@@ -563,6 +563,11 @@ fn child_entry() {
             let open = (3..4096).filter(|&fd| testing::fd_is_open(fd)).count();
             format!("fdcount={open}")
         }
+        "signals" => format!(
+            "chld={} hup={}",
+            testing::signal_ignored(libc::SIGCHLD),
+            testing::signal_ignored(libc::SIGHUP)
+        ),
         fd if fd.starts_with("fd:") => {
             let n: i32 = fd[3..].parse().unwrap();
             format!("open={}", testing::fd_is_open(n))
@@ -700,6 +705,24 @@ fn a_thousand_open_descriptors_are_all_closed() {
         assert!(testing::clear_cloexec(f.as_raw_fd()));
     }
     assert_eq!(in_child("fdcount", base()), "fdcount=0");
+}
+
+/// A caller's ignored signals do not reach the caged child (an ignored
+/// `SIGCHLD` makes the child's `wait` fail); an uncaged child is the control.
+#[test]
+fn ignored_signals_are_reset_for_the_child() {
+    let ignore = |cmd: &mut Command| {
+        testing::ignore_before_spawn(cmd, &[libc::SIGCHLD, libc::SIGHUP]);
+    };
+    let mut plain = child_command("signals");
+    ignore(&mut plain);
+    let out = plain.output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("procage-result: chld=true hup=true"), "{stdout}");
+    assert_eq!(
+        in_child_with("signals", base(), &[], ignore),
+        "chld=false hup=false"
+    );
 }
 
 #[test]
