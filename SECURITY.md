@@ -22,7 +22,7 @@ pointer to the upstream vendor.
 
 | Version | Supported |
 |---|---|
-| 0.4.x | Yes |
+| 0.7.x | Yes |
 | Earlier | No |
 
 Before 1.0 only the latest minor version gets fixes; there are no backports.
