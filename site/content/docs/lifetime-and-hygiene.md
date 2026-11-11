@@ -42,7 +42,7 @@ A descriptor opened before the sandbox was applied reads or writes past every pa
 
 ## Signals
 
-An ignored signal stays ignored across `execve`. A caller that ignores `SIGCHLD` would hand that to its children, whose `wait` then fails with `ECHILD` (build tools and shells break). A spawned child therefore starts with every ignored signal reset to its default action; the signal mask is empty, as the standard library leaves it. `Cage::exec` and `Cage::exec_session` keep the caller's dispositions, as `execve` does: the caller's own process continues.
+An ignored signal stays ignored across `execve`. A caller that ignores `SIGCHLD` would hand that to its children, whose `wait` then fails with `ECHILD` (build tools and shells break). A spawned child therefore starts with every ignored signal reset to its default action; the signal mask is empty, as the standard library leaves it. The job-control signals (`SIGTSTP`, `SIGTTIN`, `SIGTTOU`) stay as you set them: ignoring them gives a `Tty::Inherit` child `EIO` on terminal access instead of a stop. If your process reaps children it did not wait for (it ignores `SIGCHLD` or calls `waitpid(-1)`), ending a run still kills its session and process group. `Cage::exec` and `Cage::exec_session` keep the caller's dispositions, as `execve` does: the caller's own process continues.
 
 ## Environment
 

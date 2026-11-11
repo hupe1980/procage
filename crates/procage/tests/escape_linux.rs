@@ -1239,6 +1239,25 @@ fn r23_descendants_of_an_exited_child_die_with_the_run() {
     }
 }
 
+/// A child reaped behind the run's back (the caller ignores `SIGCHLD` or
+/// waits for any child) still takes its session with it.
+#[test]
+fn r23_descendants_die_when_the_child_was_reaped_elsewhere() {
+    for tier in tiers() {
+        let mut p = policy();
+        p.process.fork = true;
+        let (child, pid) = start(&cage(&p, tier), "session-sleeper");
+        let pid: u32 = pid.parse().unwrap();
+        assert!(testing::reap(child.id()), "{tier}: reaped elsewhere");
+        assert!(
+            testing::alive(pid),
+            "{tier}: the descendant must outlive the child"
+        );
+        drop(child);
+        assert_dies(pid, &format!("{tier}: descendant"));
+    }
+}
+
 /// By default no process of the run can start a session; it can start a
 /// process group, which stays in the child's session.
 #[test]

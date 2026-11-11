@@ -594,10 +594,16 @@ const SIGNALS: c_int = 65;
 /// disposition survives `execve`, so a caller that ignores `SIGCHLD` would
 /// hand that to the child, whose `wait` then fails with `ECHILD`
 /// (bubblewrap 0.11.1 fixed the same for `SIGCHLD`). Caught signals need
-/// nothing: `execve` resets them. System calls only.
+/// nothing: `execve` resets them. The job-control signals stay as the
+/// caller set them: ignoring them chooses `EIO` over stopping on terminal
+/// access (`Tty::Inherit`). System calls only.
 fn reset_ignored_signals() -> Result<(), i32> {
     for sig in 1..SIGNALS {
-        if sig == libc::SIGKILL || sig == libc::SIGSTOP || !signal_ignored(sig) {
+        if matches!(
+            sig,
+            libc::SIGKILL | libc::SIGSTOP | libc::SIGTSTP | libc::SIGTTIN | libc::SIGTTOU
+        ) || !signal_ignored(sig)
+        {
             continue;
         }
         // SAFETY: an all-zero sigaction is a valid value to fill in.
@@ -1277,6 +1283,14 @@ pub(crate) fn spawn_sleeper(setsid: bool) -> std::io::Result<u32> {
     }
     let child = cmd.spawn()?;
     Ok(child.id())
+}
+
+/// Reaps the caller's child `pid`, blocking; whether it was reaped (for
+/// procage's tests: a caller that reaps a run's child behind its back).
+pub(crate) fn reap(pid: libc::pid_t) -> bool {
+    let mut status: c_int = 0;
+    // SAFETY: waitpid writes the status into a value on our stack.
+    unsafe { libc::waitpid(pid, &raw mut status, 0) == pid }
 }
 
 /// Makes `cmd`'s child ignore `signals` before any later `pre_exec` step

@@ -316,6 +316,17 @@ impl Proc {
         }
     }
 
+    /// Whether the process was not reaped yet. One reaped elsewhere (the
+    /// caller ignores `SIGCHLD`, or waits for any child) reads as exited,
+    /// so its session and group still die with the run.
+    pub(crate) fn running(&mut self) -> io::Result<bool> {
+        match self.try_wait() {
+            Ok(status) => Ok(status.is_none()),
+            Err(e) if e.raw_os_error() == Some(libc::ECHILD) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Waits for the process, blocking. A tokio child is polled (it may not
     /// be waited for twice); only the end of a run calls this, after the
     /// run's processes were killed.

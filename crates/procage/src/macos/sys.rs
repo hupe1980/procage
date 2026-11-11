@@ -431,10 +431,16 @@ const SIGNALS: c_int = 32;
 /// Resets every ignored signal to its default action. An ignored
 /// disposition survives `execve`, so a caller that ignores `SIGCHLD` would
 /// hand that to the child. Caught signals need nothing: `execve` resets
-/// them. System calls only.
+/// them. The job-control signals stay as the caller
+/// set them: ignoring them chooses `EIO` over stopping on terminal access
+/// (`Tty::Inherit`). System calls only.
 fn reset_ignored_signals() -> Result<(), i32> {
     for sig in 1..SIGNALS {
-        if sig == libc::SIGKILL || sig == libc::SIGSTOP || !signal_ignored(sig) {
+        if matches!(
+            sig,
+            libc::SIGKILL | libc::SIGSTOP | libc::SIGTSTP | libc::SIGTTIN | libc::SIGTTOU
+        ) || !signal_ignored(sig)
+        {
             continue;
         }
         // SAFETY: an all-zero sigaction is a valid value to fill in.
@@ -712,6 +718,14 @@ pub(crate) fn on_read_only_volume(path: &CStr) -> Result<bool, i32> {
     // SAFETY: statfs returned 0, so the buffer is initialised.
     let fs = unsafe { fs.assume_init() };
     Ok(fs.f_flags & libc::MNT_RDONLY as u32 != 0)
+}
+
+/// Reaps the caller's child `pid`, blocking; whether it was reaped (for
+/// procage's tests: a caller that reaps a run's child behind its back).
+pub(crate) fn reap(pid: libc::pid_t) -> bool {
+    let mut status: c_int = 0;
+    // SAFETY: waitpid writes the status into a value on our stack.
+    unsafe { libc::waitpid(pid, &raw mut status, 0) == pid }
 }
 
 /// Makes `cmd`'s child ignore `signals` before any later `pre_exec` step

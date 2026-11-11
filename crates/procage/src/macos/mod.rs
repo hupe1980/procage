@@ -1333,6 +1333,11 @@ pub mod testing {
         sys::signal_ignored(sig)
     }
 
+    /// Reaps the caller's child `pid`, blocking; whether it was reaped.
+    pub fn reap(pid: u32) -> bool {
+        libc::pid_t::try_from(pid).is_ok_and(sys::reap)
+    }
+
     /// Makes `cmd`'s child ignore `signals` before the cage's own steps.
     pub fn ignore_before_spawn(cmd: &mut std::process::Command, signals: &[i32]) {
         sys::ignore_before_spawn(cmd, signals);

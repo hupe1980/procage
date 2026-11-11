@@ -977,6 +977,18 @@ fn r23_descendants_of_an_exited_child_die_with_the_run() {
     assert_dies(pid, "descendant");
 }
 
+/// A child reaped behind the run's back (the caller ignores `SIGCHLD` or
+/// waits for any child) still takes its descendants with it.
+#[test]
+fn r23_descendants_die_when_the_child_was_reaped_elsewhere() {
+    let (child, pid) = start("session-sleeper", &forking(), &Grants::new());
+    let pid: u32 = pid.parse().unwrap();
+    assert!(testing::reap(child.id()), "reaped elsewhere");
+    assert!(testing::alive(pid), "the descendant must outlive the child");
+    drop(child);
+    assert_dies(pid, "descendant");
+}
+
 /// Two runs of one cage at the same time have different markers: ending one
 /// leaves the other's escaped descendant alive.
 #[test]

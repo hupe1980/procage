@@ -177,7 +177,7 @@ impl Child {
     pub(crate) fn signal(&mut self) -> io::Result<()> {
         let pid =
             libc::pid_t::try_from(self.pid).map_err(|_| io::Error::other("pid out of range"))?;
-        let running = self.inner_mut().try_wait()?.is_none();
+        let running = self.inner_mut().running()?;
         if running {
             // Found before the child dies (its children are reparented when
             // it exits); the child is killed first, so it cannot see a

@@ -12,7 +12,12 @@ All notable changes to procage are listed here. The format follows
   action (macOS, Linux). A caller that ignored `SIGCHLD` handed that to the
   child, whose `wait` for its own children failed with `ECHILD`; bubblewrap
   0.11.1 fixed the same. `Cage::exec` keeps the caller's dispositions, as
-  `execve` does. A failure is reported as `Step::Session`.
+  `execve` does. The job-control signals (`SIGTSTP`, `SIGTTIN`, `SIGTTOU`)
+  stay as the caller set them: ignoring them gives a `Tty::Inherit` child
+  `EIO` rather than a stop. A failure is reported as `Step::Session`.
+- Ending a run whose child was already reaped elsewhere (the caller ignores
+  `SIGCHLD` or waits for any child) returned early and left its session and
+  process group running (macOS, Linux; R-23). The run now ends them.
 
 ## [0.7.1] - 2026-11-03
 
