@@ -157,15 +157,21 @@ impl Child {
     pub(crate) fn signal(&mut self) -> io::Result<()> {
         let pid =
             libc::pid_t::try_from(self.pid).map_err(|_| io::Error::other("pid out of range"))?;
-        if self.inner_mut().running()? {
+        let running = self.inner_mut().running()?;
+        if running {
             self.killed = true;
             for descendant in sys::descendants(pid) {
                 sys::kill(descendant);
             }
         }
         // The group outlives a reaped leader while members remain, and its
-        // id cannot be handed to another process while it exists.
-        sys::killpg(pid);
+        // id cannot be handed to another process while it exists. Once the
+        // child is reaped, a live process with its pid means no member is
+        // left and a group of that id is another's (macOS reuses pids
+        // below 100,000 soon).
+        if running || !sys::alive(pid) {
+            sys::killpg(pid);
+        }
         Ok(())
     }
 

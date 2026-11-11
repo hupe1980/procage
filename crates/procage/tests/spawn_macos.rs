@@ -720,7 +720,10 @@ fn ignored_signals_are_reset_for_the_child() {
     ignore(&mut plain);
     let out = plain.output().unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("procage-result: chld=true hup=true ttou=true"), "{stdout}");
+    assert!(
+        stdout.contains("procage-result: chld=true hup=true ttou=true"),
+        "{stdout}"
+    );
     assert_eq!(
         in_child_with("signals", base(), &[], ignore),
         "chld=false hup=false ttou=true"

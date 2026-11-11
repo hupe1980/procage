@@ -190,8 +190,13 @@ impl Child {
         }
         // The child leads its own session unless it shares the caller's
         // terminal; under `Lifetime::Run` no descendant can leave it, though
-        // it may start process groups.
-        kill_session(pid);
+        // it may start process groups. Once the child is reaped its pid may
+        // be reused, but not while the session has a member: a live process
+        // with that pid means no member is left, and the session or group
+        // of that id is another's.
+        if running || !sys::alive(pid) {
+            kill_session(pid);
+        }
         self.killed |= running;
         Ok(())
     }

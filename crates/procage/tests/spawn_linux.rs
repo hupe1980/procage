@@ -833,7 +833,10 @@ fn ignored_signals_are_reset_for_the_child() {
     };
     let mut plain = child_command("signals");
     ignore(&mut plain);
-    assert_eq!(result(&plain.output().unwrap()), "chld=true hup=true ttou=true");
+    assert_eq!(
+        result(&plain.output().unwrap()),
+        "chld=true hup=true ttou=true"
+    );
     for tier in tiers() {
         let cage = Cage::with_options(&child_policy(base()), &options(tier)).unwrap();
         let mut cmd = child_command("signals");
