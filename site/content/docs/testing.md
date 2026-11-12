@@ -52,20 +52,21 @@ just bench         # the spawn benchmark (indicative)
 `just bench` spawns a no-op program 300 times per case and prints median,
 p90 and p99 (`-- --quick` for 30; CI runs that and never fails on timing).
 It refuses to run inside another sandbox. Median overhead over a plain
-spawn, procage 0.3.0:
+spawn:
 
 | Case | macOS 26.6.2, M4 Pro | Linux 7.0 T1 (Docker) | Linux 7.0 T2 (Docker) |
 |---|---|---|---|
-| cached cage | 1.03 ms | 0.99 ms | 0.27 ms |
-| cached cage, link check off | 0.58 ms | 0.95 ms | 0.25 ms |
-| new policy per spawn | 11.6 ms (profile compiled) | 1.17 ms | 0.50 ms |
-| with violation reporting | 1.81 ms | 0.98 ms | 0.26 ms |
-| `sandbox-exec -p` / `bwrap --unshare-all` | 10.9 ms | 1.45 ms | — |
+| cached cage | 0.80 ms | 1.05 ms | 0.35 ms |
+| cached cage, `Exec::Never` | 0.86 ms | 1.19 ms | 0.40 ms |
+| cached cage, link check off | 0.50 ms | 1.01 ms | 0.31 ms |
+| new policy per spawn | 9.26 ms (profile compiled) | 1.33 ms | 0.56 ms |
+| with violation reporting | 1.53 ms | 1.09 ms | 0.34 ms |
+| `sandbox-exec -p` (same profile) | 9.30 ms | | |
 
-On macOS the link check (R-08) is about half the cached cost; a cage reused
+On macOS the link check (R-08) is about a third of the cached cost; a cage reused
 across spawns compiles its profile once.
 
-The bench also times `Cage::explain`'s evaluator: 0.61 ms per question for a
+The bench also times `Cage::explain`'s evaluator: 0.56 ms per question for a
 4,000-byte path under `agent_workspace` v3 on macOS.
 
 ## Where they have run

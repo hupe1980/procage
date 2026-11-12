@@ -82,18 +82,18 @@ The order of rules never changes the result. `AbsPath` is an absolute path held 
 | Setting | The run may execute | For |
 |---|---|---|
 | `Exec::Granted` (default) | what an `Exec` rule, grant or the base allows | shells, builds, agent commands |
-| `Exec::Any` | any file it can read | trusted tools that run arbitrary programs |
-| `Exec::Program` | its program, as often as it likes | programs that start copies of themselves: Python `multiprocessing`, Node's `child_process.fork`, `/proc/self/exe` |
-| `Exec::Never` | its program, once: nothing after the start | a JIT engine's content process, a converter, an evaluator |
+| `Exec::Any` | any file it can read | trusted tools |
+| `Exec::Program` | its program, as often as it likes | programs that start copies of themselves (Python `multiprocessing`, `child_process.fork`) |
+| `Exec::Never` | its program, once | a JIT engine's content process, a converter, an evaluator |
 
-Under `Program` and `Never` the base keeps reading and mapping its code but executes nothing, no `Exec` rule or grant may exist, and each spawn allows its own program, found as `execvp` finds it. A script (`#!`) cannot be the program (its interpreter would let the run execute any script): start the interpreter as the program, `python3 script.py`. On macOS `/bin/sh` is a launcher that executes another shell, so name the shell itself (`/bin/bash`, `/bin/zsh`).
+Under `Program` and `Never` each spawn allows its own program, the base executes nothing and no `Exec` rule or grant may exist. A script cannot be the program: run `python3 script.py`, not `./script.py`. On macOS `/bin/sh` is a launcher for another shell; name `/bin/bash` or `/bin/zsh`.
 
-Per platform:
+| | macOS | Linux |
+|---|---|---|
+| `Never` | needs a base; the program may execute itself again | exact (a seccomp supervisor passes only the first exec); `Cage::exec` or an enclosing seccomp listener: gap `exec-never` |
+| `Program` | exact; needs a base | gap `exec-program`: the ELF interpreter stays executable |
 
-- **macOS** needs a base for both (every macOS program maps the system's code, which only a base allows when no `Exec` rule may exist; without one the cage says so). `Program` is exact. Under `Never` the program may execute itself again, and nothing else: the sandbox cannot count executions.
-- **Linux** needs no base (Landlock does not check mapping code). `Never` is exact: the run's seccomp supervisor lets through the exec that starts the program and refuses every later one (EPERM), the program itself and its ELF interpreter included; a refusal is a violation with `DeniedBy::Exec`. Where no supervisor can run (an enclosing seccomp filter already has a listener, or `Cage::exec`) the cage refuses with the gap `exec-never`. `Program` is an approximation: the program's ELF interpreter stays executable and can start any ELF file the run can read. Accept either by name, `LowerOptions::allow(Construct::ExecProgram)` (Python `allow=["exec-program"]`, Node.js `allow: ["exec-program"]`); the receipt lists it.
-
-Both limit the exec call, not code: a process that can read and map a file can run its code without exec.
+Accept a gap with `LowerOptions::allow(Construct::ExecProgram)` (Python `allow=["exec-program"]`, Node.js `allow: ["exec-program"]`); the receipt lists it. Both settings limit exec, not code: a process that can read and map a file can run it without exec.
 
 ## IPC
 

@@ -6,47 +6,36 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-12
+
 ### Security
 
-- `Exec::Never` did not keep the child from executing programs (macOS,
-  Linux; R-38). With any base, the base's system code stayed executable,
-  so a caged shell under `Base::V3` + `Exec::Never` ran `/bin/echo` and
-  `/usr/bin/env`; and without a base no program could start at all. It now
-  means what its name says: the run executes its program, found as
-  `execvp` finds it, and nothing after the start. The base keeps reading
-  and mapping its code but executes nothing. On Linux the run's seccomp
-  supervisor lets through only the exec that starts the program
-  (recognised by a close-on-exec sentinel the child makes) and refuses
-  every later one with `EPERM`, the program itself and its ELF interpreter
-  included; where no supervisor can run (an enclosing seccomp filter
-  already has a listener, or `Cage::exec`) the cage refuses with the gap
-  `exec-never` unless it is accepted by name. On macOS the program may
-  execute itself again (the sandbox cannot count executions), and a base
-  is needed (every macOS program maps the system's code). Scripts are
-  refused as the program (`SpawnError::Script`). **Migration**: a program
-  that starts copies of itself uses `Exec::Program`; one that runs other
-  programs uses `Exec::Granted` with `Exec` rules.
+- `Exec::Never` let the child execute the base's programs (a caged shell
+  under `Base::V3` ran `/bin/echo`), and without a base nothing started
+  (macOS, Linux; R-38). It now runs the spawned program and nothing after
+  it: the base executes nothing, and on Linux a seccomp supervisor passes
+  only the exec that starts the program (`ld.so` and the program itself
+  included). Without a supervisor (`Cage::exec`, an enclosing seccomp
+  listener) the cage is the gap `exec-never`. On macOS it needs a base,
+  and the program may execute itself again. Scripts are refused as the
+  program (`SpawnError::Script`). **Migration**: programs that start
+  copies of themselves use `Exec::Program`; others use `Exec::Granted`
+  with `Exec` rules.
 
 ### Added
 
-- `Exec::Program` (policy JSON `"program"`): the run executes its program,
-  as often as it likes, and nothing else, for programs that start copies of
-  themselves (Python `multiprocessing`, Node.js `child_process.fork`,
-  `/proc/self/exe`). Exact on macOS; on Linux an approximation accepted by
-  name (`exec-program`): the program's ELF interpreter stays executable.
-- Python `Cage(..., allow=[...])` and Node.js `new Cage(policy, { allow })`
-  accept approximations by construct name; a gap's `accept` lists the
-  spelling.
-- `DeniedBy::Exec` for an exec refused under `Exec::Never` on Linux.
+- `Exec::Program` (JSON `"program"`): the program, as often as it likes.
+  Exact on macOS; on Linux the gap `exec-program` (the ELF interpreter
+  stays executable).
+- Python `Cage(..., allow=[...])`, Node.js `new Cage(policy, { allow })`:
+  accept approximations by construct name.
+- `DeniedBy::Exec`.
 
 ### Changed
 
-- `Exec`, `linux::Action` (`Supervise`), `linux::RuleTarget` (`Program`),
-  `linux::Syscall` (`Execve`, `Execveat`) and `DenyReason` (`Exec`) gain
-  variants; exhaustive matches on `Exec`, `Action` and `RuleTarget` need
-  an arm. `Hygiene` carries the exec setting.
-- On Linux the run's seccomp supervisor starts before the spawn, for every
-  run whose filter notifies (violation reporting or `Exec::Never`).
+- New variants: `Exec::Program`, `linux::Action::Supervise`,
+  `linux::RuleTarget::Program`, `linux::Syscall::{Execve, Execveat}`,
+  `DenyReason::Exec`; `Hygiene` carries the exec setting.
 
 ## [0.7.2] - 2026-11-11
 
@@ -375,7 +364,8 @@ All notable changes to procage are listed here. The format follows
 
 Name reservation; no code.
 
-[Unreleased]: https://github.com/hupe1980/procage/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/hupe1980/procage/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/hupe1980/procage/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/hupe1980/procage/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/hupe1980/procage/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/hupe1980/procage/compare/v0.6.1...v0.7.0

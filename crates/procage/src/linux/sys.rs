@@ -1108,13 +1108,9 @@ impl ChildPlan {
             // listener, which goes to the parent before the exec; the child
             // keeps no copy. Without a listener (a filter of an outer
             // sandbox already has one), the plain filter, and the reason.
-            //
-            // With supervised exec (`Exec::Never`) the child also makes the
-            // exec sentinel: a pipe whose write end only this process holds,
-            // close-on-exec. The kernel closes it in the exec, before the new
-            // program runs, so the supervisor tells this sequence's own exec
-            // (sentinel open) from every later one (hung up). No listener
-            // means no exec at all can be answered: the spawn fails.
+            // With supervised exec (`Exec::Never`) the child also hands over
+            // the exec sentinel (see `supervisor`); without a listener no exec
+            // could be answered, so the spawn fails.
             Some(notify) => {
                 let socket = notify.socket.as_raw_fd();
                 match install_filter(&mut notify.filter, libc::SECCOMP_FILTER_FLAG_NEW_LISTENER) {

@@ -125,8 +125,8 @@ Median overhead of a caged spawn over a plain one (`just bench`):
 
 | Host | procage, cached cage | Comparison |
 |---|---|---|
-| Apple M4 Pro, macOS 26.6.2 | 1.0 ms | `sandbox-exec -p`: 10.9 ms |
-| Linux 7.0 aarch64 (Docker) | T1 1.0 ms, T2 0.27 ms | `bwrap`: 1.4 ms |
+| Apple M4 Pro, macOS 26.6.2 | 0.8 ms | `sandbox-exec -p`: 9.3 ms |
+| Linux 7.0 aarch64 (Docker) | T1 1.05 ms, T2 0.35 ms | |
 
 On macOS a new policy costs 11.6 ms once, to compile its profile.
 Details: [benchmarks](https://hupe1980.github.io/procage/docs/testing/#benchmarks).

@@ -123,18 +123,10 @@ pub enum Network {
 
 /// Where the child may execute programs.
 ///
-/// | Setting | The run may execute |
-/// |---|---|
-/// | [`Granted`](Exec::Granted) | what an `Exec` rule, grant or the base allows |
-/// | [`Any`](Exec::Any) | any file it can read |
-/// | [`Program`](Exec::Program) | its program, as often as it likes |
-/// | [`Never`](Exec::Never) | its program, once: nothing after the start |
-///
-/// Under `Program` and `Never` the base keeps its read and map rights but
-/// executes nothing, and no `Exec` rule or grant may exist; the spawned
-/// program, resolved as `execvp` finds it, is allowed for that spawn only.
-/// A script (`#!`) cannot be the program under either: start its
-/// interpreter as the program instead.
+/// Under [`Program`](Exec::Program) and [`Never`](Exec::Never) each spawn
+/// allows its own program (found as `execvp` finds it); the base executes
+/// nothing, and no `Exec` rule or grant may exist. A script cannot be the
+/// program: start its interpreter instead.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(
     feature = "serde",
@@ -142,34 +134,22 @@ pub enum Network {
     serde(rename_all = "kebab-case")
 )]
 pub enum Exec {
-    /// Only where an [`Access::Exec`] rule or grant (or the base) allows it.
+    /// Where an [`Access::Exec`] rule, a grant or the base allows it.
     #[default]
     Granted,
     /// Anywhere the child can read.
     Any,
-    /// Only the program the run was started as, once: no process of the run
-    /// executes anything after the start. For programs that never start
-    /// others (a JIT engine's content process, a converter, an evaluator).
+    /// The program, once: nothing executes after the start.
     ///
-    /// - **Linux**: exact. The run's own exec is the only one the seccomp
-    ///   supervisor lets through; the program cannot execute itself or its
-    ///   ELF interpreter again. Where no supervisor can run (an enclosing
-    ///   seccomp filter already has a listener, or [`Cage::exec`]), the
-    ///   cage refuses with the gap `exec-never` unless it is accepted by
-    ///   name; Landlock alone then applies, as for [`Exec::Program`].
-    /// - **macOS**: the sandbox cannot count executions, so the program may
-    ///   execute itself again (and nothing else).
-    ///
-    /// [`Cage::exec`]: https://docs.rs/procage/latest/procage/native/struct.Cage.html#method.exec
+    /// Linux: exact; where no seccomp supervisor can run (an enclosing
+    /// filter has a listener, or `Cage::exec`) it is the gap `exec-never`.
+    /// macOS: needs a base; the program may execute itself again.
     Never,
-    /// Only the program the run was started as, as often as it likes: for
-    /// programs that start copies of themselves (Python `multiprocessing`,
-    /// Node.js `child_process.fork`, `/proc/self/exe`).
+    /// The program, as often as it likes (Python `multiprocessing`,
+    /// `child_process.fork`, `/proc/self/exe`).
     ///
-    /// - **macOS**: exact.
-    /// - **Linux**: an approximation, accepted by name (construct
-    ///   `exec-program`): the program's ELF interpreter must stay
-    ///   executable, and it can start any ELF file the run can read.
+    /// macOS: exact, needs a base. Linux: the gap `exec-program`, since the
+    /// program's ELF interpreter can start any ELF file the run can read.
     Program,
 }
 

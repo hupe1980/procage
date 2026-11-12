@@ -96,7 +96,7 @@ backed by a caged test on a real kernel, never by the profile text alone.
 | [017-grant-on-denial](017-grant-on-denial/spec.md) | Grant on denial | 0.5.0 |
 | [020-python](020-python/spec.md) | Python bindings | 0.6.0 |
 | [049-nodejs](049-nodejs/spec.md) | Node.js bindings | 0.7.1 |
-| [051-exec-never](051-exec-never/spec.md) | `Exec::Never` and `Exec::Program`: the child executes only its program | unreleased |
+| [051-exec-never](051-exec-never/spec.md) | `Exec::Never` and `Exec::Program`: the child executes only its program | 0.8.0 |
 
 ## Reading order
 

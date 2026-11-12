@@ -1,33 +1,21 @@
-//! The supervisor of a run whose seccomp filter notifies: it answers every
-//! call the filter hands it, and records the refused ones when the run
-//! reports violations.
+//! The supervisor of a run whose seccomp filter notifies
+//! (`SECCOMP_RET_USER_NOTIF`). It answers:
 //!
-//! The filter notifies a listener instead of failing at once
-//! (`SECCOMP_RET_USER_NOTIF`) for two kinds of rules:
+//! - with violation reporting, every `EPERM` deny: `EPERM`, then records it;
+//! - under `Exec::Never`, `execve` and `execveat`: `CONTINUE` while the exec
+//!   sentinel is open, `EPERM` once it has hung up.
 //!
-//! - with violation reporting, every `EPERM` deny: the supervisor answers
-//!   `EPERM` (what the call returns without reporting), then records it;
-//! - under `Exec::Never`, `execve` and `execveat` (`Action::Supervise`):
-//!   the exec the child sequence issues to start the program goes through
-//!   (`CONTINUE`), every later one is refused (`EPERM`).
-//!
-//! The child hands the listener to the parent before its exec and keeps no
-//! copy. With supervised exec it also hands over the read end of the *exec
-//! sentinel*, a pipe whose write end only the child holds, close-on-exec:
-//! the kernel closes it while it replaces the child with the program,
-//! before any instruction of the program runs. A supervised call while the
-//! sentinel is open comes from the child sequence (std's `execvp`, any
-//! `PATH` candidate), where nothing of the caller runs; once it has hung up,
-//! the program runs, and every exec is refused. No argument is checked, so
-//! the `CONTINUE` race (arguments changed after the check) does not apply.
+//! The child hands over the listener (and with `Exec::Never` the read end of
+//! the sentinel, a pipe whose close-on-exec write end only the child holds)
+//! before its exec. The kernel closes the write end before the program's
+//! first instruction, so an open sentinel means the call comes from the
+//! child sequence itself. No argument is checked, so the `CONTINUE` race
+//! does not apply.
 //!
 //! `Command::spawn` returns only after the exec, so the supervisor starts
-//! before it: it waits for the hand-over until the child sends it or the
-//! parent wakes it (the spawn returned, or failed). When no process of the
-//! run uses the filter any more, the listener hangs up: every call of the
-//! run has then been answered (and recorded), which is what makes the
-//! record complete. If the supervisor were gone, the kernel would answer
-//! `ENOSYS`: the call stays refused, an exec included.
+//! before it. The listener hangs up when no process of the run is left: the
+//! record is then complete. Without a supervisor the kernel answers
+//! `ENOSYS`, so a call stays refused.
 
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
