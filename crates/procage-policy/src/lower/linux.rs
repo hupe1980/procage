@@ -48,6 +48,20 @@ fn enosys(syscall: Syscall) -> SeccompRule {
     }
 }
 
+/// `syscall`, answered by the run's supervisor.
+fn supervise(syscall: Syscall) -> SeccompRule {
+    SeccompRule {
+        syscall,
+        condition: Condition::Always,
+        action: Action::Supervise,
+        reason: None,
+    }
+}
+
+/// Why `Exec::Program` is an approximation on Linux.
+pub const EXEC_PROGRAM_NOTE: &str = "the program's ELF interpreter stays executable, and it can start any \
+     ELF file the run can read";
+
 /// `rule`, refused for `reason`.
 fn because(mut rule: SeccompRule, reason: DenyReason) -> SeccompRule {
     rule.reason = Some(reason);
@@ -465,8 +479,32 @@ pub(super) fn lower(
         Exec::Any => {
             ledger.outcome(Construct::ExecAny, Outcome::Exact, None, "");
         }
-        Exec::Never => {
-            ledger.outcome(Construct::ExecNever, Outcome::Exact, None, "");
+        // The program of each spawn (and its ELF interpreter, which the kernel
+        // opens for execution too), resolved by the backend; the base
+        // executes nothing (below).
+        Exec::Never | Exec::Program => {
+            landlock.rules.push(LandlockRule {
+                target: RuleTarget::Program,
+                access: AccessFs::READ_FILE
+                    .union(AccessFs::EXECUTE)
+                    .intersect(handled),
+            });
+            if policy.process.exec == Exec::Never {
+                // One exec per run: the supervisor lets through the one that
+                // starts the program and refuses every later one. Where no
+                // supervisor can run, the backend raises the gap.
+                ledger.outcome(Construct::ExecNever, Outcome::Exact, None, "");
+                for syscall in [Syscall::Execve, Syscall::Execveat] {
+                    seccomp.push(because(supervise(syscall), DenyReason::Exec));
+                }
+            } else {
+                ledger.outcome(
+                    Construct::ExecProgram,
+                    Outcome::Approximated,
+                    None,
+                    EXEC_PROGRAM_NOTE,
+                );
+            }
         }
     }
     if !policy.process.fork {
@@ -599,6 +637,7 @@ pub(super) fn lower(
         }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
+    let base_from = landlock.rules.len();
     match policy.base {
         Base::None => {}
         Base::V1 => {
@@ -617,6 +656,13 @@ pub(super) fn lower(
             landlock
                 .rules
                 .extend(crate::base::linux_v2(policy.tty, handled));
+        }
+    }
+    // Under `Never` and `Program` the base keeps reading its code but
+    // executes nothing: only the spawn's program runs.
+    if policy.process.exec.program_only() {
+        for rule in &mut landlock.rules[base_from..] {
+            rule.access = rule.access.without(AccessFs::EXECUTE);
         }
     }
     // A new terminal: `/dev/tty`, which names the controlling terminal,

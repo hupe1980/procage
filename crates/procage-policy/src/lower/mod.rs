@@ -14,7 +14,7 @@ use core::str::FromStr;
 
 use crate::linux::LinuxPlan;
 use crate::name::GrantName;
-use crate::policy::{Access, EnvPolicy, HardDenyClass, Policy, PolicyError, Rlimits, Tty};
+use crate::policy::{Access, EnvPolicy, Exec, HardDenyClass, Policy, PolicyError, Rlimits, Tty};
 use crate::sbpl::EscapeError;
 
 /// A Linux tier (see the lowering table).
@@ -118,6 +118,7 @@ constructs! {
     NetAll => "net-all",
     ExecAny => "exec-any",
     ExecNever => "exec-never",
+    ExecProgram => "exec-program",
     ForkDenied => "fork-denied",
     LifetimeRun => "lifetime-run",
     LifetimeTree => "lifetime-tree",
@@ -275,8 +276,44 @@ impl fmt::Display for CapabilityGap {
                     "only approximated from the file system as it is at spawn (accept it with \
                      LowerOptions::accept_spawn_snapshot, or allow it by name)",
                 )?,
+            GapKind::Approximation
+                if matches!(
+                    self.construct,
+                    Construct::ExecNever | Construct::ExecProgram
+                ) =>
+            {
+                let why = if self.construct == Construct::ExecProgram {
+                    "the program's ELF interpreter stays executable and can start any ELF \
+                     file the run can read"
+                } else {
+                    "no seccomp supervisor can count the run's exec here (an enclosing \
+                     filter already has a listener, or Cage::exec), so Landlock alone \
+                     applies: the program and its ELF interpreter stay executable"
+                };
+                let name = self.construct.as_str();
+                write!(
+                    f,
+                    "only approximated: {why}. Accept it with \
+                     LowerOptions::allow(Construct::{:?}) (Python: allow=[\"{name}\"], \
+                     Node.js: allow: [\"{name}\"])",
+                    self.construct
+                )?
+            }
             GapKind::Approximation => {
                 f.write_str("only approximated (allow it by name to accept)")?
+            }
+            GapKind::Unsupported
+                if self.target == Target::MacOs
+                    && matches!(
+                        self.construct,
+                        Construct::ExecNever | Construct::ExecProgram
+                    ) =>
+            {
+                f.write_str(
+                    "not supported without a base: every macOS program maps the system's \
+                     code, which only a base allows when no Exec rule may exist; use \
+                     Base::V1 or later",
+                )?
             }
             GapKind::Unsupported => f.write_str("not supported")?,
             GapKind::Unrepresentable(e) => write!(f, "{e}")?,
@@ -450,8 +487,8 @@ impl LowerOptions {
     }
 }
 
-/// Environment, limits and terminal, carried unchanged into a plan for the
-/// spawn backend.
+/// Environment, limits, terminal and exec setting, carried unchanged into a
+/// plan for the spawn backend.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hygiene {
     /// The environment policy.
@@ -460,6 +497,9 @@ pub struct Hygiene {
     pub limits: Rlimits,
     /// Terminal mode.
     pub tty: Tty,
+    /// The exec setting: under [`Exec::Never`] and [`Exec::Program`] the
+    /// backend allows the spawned program per spawn.
+    pub exec: Exec,
 }
 
 impl Hygiene {
@@ -468,6 +508,7 @@ impl Hygiene {
             env: policy.env.clone(),
             limits: policy.limits.clone(),
             tty: policy.tty,
+            exec: policy.process.exec,
         }
     }
 }
@@ -521,6 +562,11 @@ pub const RUN_MARKER_PARAM: &str = "procage-run-marker";
 /// (`Tty::NewPty`): each spawn issues it for its device. Grant classes are
 /// `procage.<name>` without a dot in the name, so none can equal it.
 pub const PTY_EXTENSION_CLASS: &str = "procage.pty.device";
+
+/// The sandbox-extension class of a run's program under [`Exec::Never`] and
+/// [`Exec::Program`]: each spawn issues it for the program it starts. Dotted,
+/// like [`PTY_EXTENSION_CLASS`], so no grant class can equal it.
+pub const PROGRAM_EXTENSION_CLASS: &str = "procage.exec.program";
 
 /// The parameter for the address a `Network::Proxy` profile allows for HTTP
 /// (`localhost:<port>`). The plan's `params` give the policy's port; a spawn

@@ -40,6 +40,8 @@ fn rule_path(
         RuleTarget::Path(p) => Ok(Some((from_bytes(p.as_bytes()), false))),
         RuleTarget::PathIfExists(p) => Ok(Some((from_bytes(p.as_bytes()), true))),
         RuleTarget::Grant(name) => Ok(grants.get(name.as_str()).map(|p| (p.clone(), false))),
+        // Resolved per spawn by `ruleset` (the program allowance).
+        RuleTarget::Program => Ok(None),
         // The lowering reports glob rules as gaps on Linux.
         RuleTarget::ExpandGlob(_) => Err(SpawnError::Unsupported(Unsupported::Setting {
             setting: "glob rules on Linux",
@@ -94,12 +96,17 @@ pub(super) fn rule_paths(plan: &LinuxPlan) -> Vec<(PathBuf, bool)> {
 /// the way except the hidden path, as listed now (symbolic links are
 /// skipped: they could lead into the hidden path). At most `limit` entries
 /// are visited.
+///
+/// `program` is the spawn's program allowance (`Exec::Never`,
+/// `Exec::Program`): the program and its ELF interpreter, each opened now,
+/// so the rule stays with the file that was resolved.
 pub(super) fn ruleset(
     plan: &LinuxPlan,
     grants: &BTreeMap<String, PathBuf>,
     terminal: Option<&Path>,
     hidden: &[PathBuf],
     limit: usize,
+    program: Option<&crate::unix::Allowance>,
 ) -> Result<OwnedFd, SpawnError> {
     let ll = &plan.landlock;
     let ruleset = sys::landlock_ruleset(ll.handled_fs.0, ll.handled_net.0, ll.scopes.0)
@@ -110,6 +117,16 @@ pub(super) fn ruleset(
         .union(AccessFs::RESOLVE_UNIX);
     let mut budget = limit;
     for rule in &ll.rules {
+        if rule.target == RuleTarget::Program {
+            let Some(allowance) = program else { continue };
+            let files = [Some(&allowance.program), allowance.interpreter.as_ref()];
+            for file in files.into_iter().flatten() {
+                if !hidden.iter().any(|h| file.starts_with(h)) {
+                    allow_path(&ruleset, file, rule.access, false)?;
+                }
+            }
+            continue;
+        }
         let Some((path, optional)) = rule_path(&rule.target, grants)? else {
             continue;
         };

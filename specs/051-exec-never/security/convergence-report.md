@@ -1,0 +1,29 @@
+## Security Convergence — 051-exec-never
+
+Commit `9d48fc7` · 2026-11-12T20:02:55Z
+
+| Metric | Value |
+|---|---|
+| Threats (active) | 13 |
+| Open blocking threats | 0  |
+| Security requirements | 9 |
+| verified | 9 |
+| implemented, unverified | 0  |
+| partial | 0  |
+| missing | 0  |
+| Expired decisions | 0  |
+| Source drift | none |
+
+**Status: CONVERGED**
+
+| Requirement | Verdict | Method | Evidence | Justification |
+|---|---|---|---|---|
+| SR-001 | verified | test | `crates/procage/tests/escape_macos.rs::r38_only_the_program_executes, crates/procage/tests/escape_linux.rs::r38_only_the_program_executes, crates/procage/tests/spawn_linux.rs::program_only_settings_start_the_program, crates/procage/tests/spawn_macos.rs::program_only_settings_start_the_program` | Bases V1-V3 with Exec::Never and Exec::Program and fork; a forked bash executes /bin/echo, /usr/bin/env and /bin/sh and each is refused (EPERM or EACCES), while Exec::Granted runs them, on macOS, T1, T2 and T1 with reporting. The program starts under Base::None on Linux and Base::V1 on macOS (macOS Base::None is refused by design, spec US2). The interpreter and self routes are SR-007's canary. Passed 2026-11-12 (macOS 26.6.2, Linux 7.0.14). |
+| SR-002 | verified | test | `crates/procage/tests/spawn_macos.rs::the_program_allowance_is_per_spawn, crates/procage/tests/spawn_linux.rs::the_program_allowance_is_per_spawn_and_per_file` | Under Exec::Program, while one run of a cage executes zsh (macOS) or sh (Linux), a bash run of the same cage cannot execute it; on Linux a program renamed over by another file cannot execute its path again (inode-bound rule). Passed on macOS, T1 and T2. |
+| SR-003 | verified | test | `crates/procage/tests/spawn_macos.rs::program_only_settings_refuse_a_script, crates/procage/tests/spawn_linux.rs::program_only_settings_refuse_scripts_and_bad_interpreters` | An executable |
+| SR-004 | verified | test | `crates/procage/tests/oracle.rs::explain_agrees_with_the_kernel` | The oracle adds exec never/program with bases V1 and V3 and asks every tree program for exec; the running caged child executes each one (X probe) and explain agrees with the kernel on macOS (1,278 questions per policy), T1 and T2 (1,277). |
+| SR-005 | verified | test | `crates/procage-policy/tests/lowering_table.rs::every_row_matches_the_lowering, crates/procage/tests/spawn_linux.rs::program_reexecutes_itself_and_nothing_else, crates/procage/tests/spawn_linux.rs::exec_never_without_a_listener_is_a_gap` | The table rows exec-never and exec-program are checked against the lowering on every target and ABI; accepted exec-program and exec-never approximations appear in the run receipt's approximations. |
+| SR-006 | verified | test | `crates/procage-policy/src/elf.rs::tests::every_truncation_is_an_error_not_a_panic, crates/procage-policy/src/elf.rs::tests::bounds_hold, crates/procage-policy/fuzz/fuzz_targets/elf.rs, crates/procage/tests/spawn_linux.rs::program_only_settings_refuse_scripts_and_bad_interpreters` | Every truncation is an error, header counts and path length are bounded, the fuzz target ran 40,426,256 inputs in 301 s without a panic, and an ELF with a relative interpreter fails with SpawnError::Interpreter before forking. |
+| SR-007 | verified | test | `crates/procage/tests/escape_linux.rs::r38_never_refuses_every_exec_after_the_first, crates/procage/tests/spawn_linux.rs::a_refused_exec_is_reported` | Under Exec::Never on T1 and T2 the started program's exec of itself, of its ELF interpreter loading /bin/echo, and its own exec replacement all fail with EPERM; with reporting the refused execve is one violation with DeniedBy::Exec and the program had started. |
+| SR-008 | verified | test | `crates/procage/tests/exec.rs::exec_never_runs_the_command_and_nothing_else, crates/procage/tests/spawn_linux.rs::exec_never_without_a_listener_is_a_gap, crates/procage/tests/spawn_linux.rs::program_reexecutes_itself_and_nothing_else` | Cage::exec under Exec::Never on Linux fails before anything is applied with the gap; accepted, it runs and other programs are refused. With an outer listener the cage is a gap naming allow(Construct::ExecNever); accepted it runs and the receipt lists it. Exec::Program's gap names allow=["exec-program"]. |
+| SR-009 | verified | test | `crates/procage/tests/spawn_linux.rs::exec_never_spawns_from_many_threads, crates/procage/tests/escape_linux.rs::r38_the_program_holds_no_supervisor_descriptor` | 8 threads spawn 12 programs each under Exec::Never, without and with reporting, and every spawn returns and runs; the started program holds no descriptor beyond stdio. |

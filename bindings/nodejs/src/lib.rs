@@ -58,7 +58,25 @@ fn accept(construct: Construct) -> Vec<String> {
             out.push(format!("relax: [\"{name}\"]"));
         }
     }
+    // Accepted only by name: the exec settings' approximations on Linux.
+    if matches!(construct, Construct::ExecNever | Construct::ExecProgram) {
+        out.push(format!("allow: [\"{}\"]", construct.as_str()));
+    }
     out
+}
+
+/// The constructs named in `allow`, accepted as approximated.
+fn allowed(names: &[String]) -> Result<Vec<Construct>> {
+    names
+        .iter()
+        .map(|name| {
+            Construct::ALL
+                .iter()
+                .copied()
+                .find(|c| c.as_str() == name)
+                .ok_or_else(|| policy_error(format!("no construct {name}")))
+        })
+        .collect()
 }
 
 fn lower_error(e: &LowerError) -> Error {
@@ -181,6 +199,8 @@ pub struct CageOptionsJs {
     pub relax: Option<Vec<String>>,
     /// Accept the Linux approximations taken from the file system at spawn.
     pub accept_spawn_snapshot: Option<bool>,
+    /// Constructs accepted as approximated, by name (`exec-program`).
+    pub allow: Option<Vec<String>>,
 }
 
 fn relax(names: &[String]) -> Result<Relax> {
@@ -236,12 +256,16 @@ impl Cage {
             violations: None,
             relax: None,
             accept_spawn_snapshot: None,
+            allow: None,
         });
-        let lower = if o.accept_spawn_snapshot.unwrap_or(false) {
+        let mut lower = if o.accept_spawn_snapshot.unwrap_or(false) {
             LowerOptions::default().accept_spawn_snapshot()
         } else {
             LowerOptions::default()
         };
+        for construct in allowed(&o.allow.unwrap_or_default())? {
+            lower = lower.allow(construct);
+        }
         let mut options = CageOptions::default().with_lower(lower);
         if o.violations.unwrap_or(false) {
             options = options.with_violations();

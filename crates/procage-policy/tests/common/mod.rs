@@ -197,7 +197,16 @@ pub fn reference_policy(construct: Construct) -> Policy {
         Construct::NetIp => p.net = Network::Ip,
         Construct::NetAll => p.net = Network::All,
         Construct::ExecAny => p.process.exec = Exec::Any,
-        Construct::ExecNever => p.process.exec = Exec::Never,
+        // With a base: on macOS no program starts without one under these
+        // settings (`program_only_settings_need_a_base_on_macos`).
+        Construct::ExecNever => {
+            p.process.exec = Exec::Never;
+            p.base = Base::V1;
+        }
+        Construct::ExecProgram => {
+            p.process.exec = Exec::Program;
+            p.base = Base::V1;
+        }
         Construct::ForkDenied => p.process.fork = false,
         Construct::LifetimeRun => p.process.fork = true,
         Construct::LifetimeTree => {

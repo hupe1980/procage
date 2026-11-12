@@ -88,7 +88,8 @@ class Cage:
     `leave-out-protect`, `leave-out-hide`, `no-unix-sockets`,
     `signals-same-user`, `no-loopback` or `waive:<class>`; the ones applied
     are in `relaxed`. `accept_spawn_snapshot=True` accepts the Linux
-    approximations taken from the file system at spawn. A policy the host
+    approximations taken from the file system at spawn; `allow` accepts
+    approximations by construct name (`exec-program`). A policy the host
     cannot enforce raises `CapabilityGapError`.
     """
 
@@ -99,12 +100,14 @@ class Cage:
         violations: bool = False,
         relax: Sequence[str] = (),
         accept_spawn_snapshot: bool = False,
+        allow: Sequence[str] = (),
     ) -> None:
         self._native = _native.Cage(
             policy,
             violations=violations,
             relax=list(relax),
             accept_spawn_snapshot=accept_spawn_snapshot,
+            allow=list(allow),
         )
 
     @property

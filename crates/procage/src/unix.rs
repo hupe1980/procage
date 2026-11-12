@@ -144,6 +144,82 @@ pub(crate) fn find_program(command: &Command) -> io::Result<PathBuf> {
         .ok_or_else(|| not_found(&searched))
 }
 
+/// The bytes read from the start of a program to find out what it is.
+const PROGRAM_HEAD: u64 = 64 * 1024;
+
+/// What a spawn under `Exec::Never` or `Exec::Program` may execute: the
+/// program, as `execvp` finds it, and on Linux the ELF interpreter the
+/// kernel loads for it.
+#[derive(Debug, Clone)]
+pub(crate) struct Allowance {
+    /// The program, canonical.
+    pub(crate) program: PathBuf,
+    /// Its ELF interpreter, canonical (Linux; `None` for a static program).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) interpreter: Option<PathBuf>,
+}
+
+/// Why a program cannot be the one a run may execute.
+#[derive(Debug)]
+pub(crate) enum AllowanceError {
+    /// Not found, or not readable.
+    Io(io::Error),
+    /// A script (`#!`): allowing its interpreter would allow every script.
+    Script(PathBuf),
+    /// Its ELF interpreter cannot be used.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Interpreter(PathBuf, String),
+}
+
+/// The allowance for `command`'s program. Call it after the environment is
+/// final: the search uses the command's `PATH`, as [`find_program`] does.
+pub(crate) fn program_allowance(command: &Command) -> Result<Allowance, AllowanceError> {
+    use std::io::Read;
+    let program = std::fs::canonicalize(find_program(command).map_err(AllowanceError::Io)?)
+        .map_err(AllowanceError::Io)?;
+    let mut head = Vec::new();
+    std::fs::File::open(&program)
+        .and_then(|f| f.take(PROGRAM_HEAD).read_to_end(&mut head))
+        .map_err(AllowanceError::Io)?;
+    if head.starts_with(b"#!") {
+        return Err(AllowanceError::Script(program));
+    }
+    #[cfg(target_os = "linux")]
+    let interpreter = linux_interpreter(&program, &head)?;
+    #[cfg(not(target_os = "linux"))]
+    let interpreter = None;
+    Ok(Allowance {
+        program,
+        interpreter,
+    })
+}
+
+/// The canonical ELF interpreter of `program`, whose first bytes are `head`.
+#[cfg(target_os = "linux")]
+fn linux_interpreter(
+    program: &std::path::Path,
+    head: &[u8],
+) -> Result<Option<PathBuf>, AllowanceError> {
+    use std::os::unix::ffi::OsStrExt;
+    let bad = |reason: String| AllowanceError::Interpreter(program.to_owned(), reason);
+    let Some(raw) = procage_policy::elf::interpreter(head).map_err(|e| bad(e.to_string()))? else {
+        return Ok(None);
+    };
+    let named = std::path::Path::new(std::ffi::OsStr::from_bytes(raw));
+    if !named.is_absolute() {
+        return Err(bad(format!(
+            "interpreter {} is not absolute",
+            named.display()
+        )));
+    }
+    let path = std::fs::canonicalize(named)
+        .map_err(|e| bad(format!("interpreter {}: {e}", named.display())))?;
+    if !std::fs::metadata(&path).is_ok_and(|m| m.is_file()) {
+        return Err(bad(format!("interpreter {} is not a file", path.display())));
+    }
+    Ok(Some(path))
+}
+
 /// A fresh directory, accessible only to the user, under the caller's
 /// temporary directory.
 pub(crate) fn private_tmpdir() -> io::Result<PathBuf> {
@@ -245,6 +321,27 @@ mod tests {
         let mut c = Command::new("sh");
         c.env_clear();
         assert!(find_program(&c).is_ok());
+    }
+
+    #[test]
+    fn a_program_is_allowed_and_a_script_is_not() {
+        let a = program_allowance(&Command::new("/bin/sh")).unwrap();
+        assert!(a.program.is_absolute());
+        #[cfg(target_os = "linux")]
+        if let Some(i) = &a.interpreter {
+            assert!(i.is_absolute() && i.is_file(), "{}", i.display());
+        }
+        let dir = std::env::temp_dir().join(format!("procage-script-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("s");
+        std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let err = program_allowance(&Command::new(&script)).unwrap_err();
+        assert!(matches!(err, AllowanceError::Script(_)), "{err:?}");
+        let _ = std::fs::remove_dir_all(dir);
+        let err = program_allowance(&Command::new("procage-no-such-program")).unwrap_err();
+        assert!(matches!(err, AllowanceError::Io(_)), "{err:?}");
     }
 
     #[test]

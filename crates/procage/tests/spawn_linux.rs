@@ -27,7 +27,7 @@ use procage::linux::{
     Cage, CageOptions, Child, GrantError, Grants, SpawnError, Step, Unsupported, probe, testing,
 };
 use procage::policy::{
-    AbsPath, Access, Base, Construct, EnvPolicy, FsRule, FsTarget, GapKind, Grant, GrantName,
+    AbsPath, Access, Base, Construct, EnvPolicy, Exec, FsRule, FsTarget, GapKind, Grant, GrantName,
     HardDenyClass, LowerError, LowerOptions, Network, Policy, Signals, Tier,
 };
 
@@ -1934,4 +1934,342 @@ fn a_socket_removed_during_the_spawn_does_not_fail_it() {
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     let rounds = churner.join().unwrap();
     assert!(rounds > 300, "the socket barely changed ({rounds} rounds)");
+}
+
+// ---- Exec::Never and Exec::Program ----
+
+/// A cage for `exec` on `tier`, with `base` and fork; `Exec::Program`'s and
+/// (with `unsupervised`) `Exec::Never`'s approximations accepted.
+fn exec_cage(tier: Tier, exec: Exec, base: Base, reporting: bool) -> Result<Cage, SpawnError> {
+    let mut p = Policy::default();
+    p.base = base;
+    p.process.exec = exec;
+    p.process.fork = true;
+    if base == Base::None {
+        // What a dynamically linked program reads to start.
+        for dir in ["/usr", "/etc"] {
+            p.fs.push(FsRule::new(Access::Read, FsTarget::Subpath(abs(dir))));
+        }
+    }
+    let mut opts = CageOptions::default()
+        .with_tier(tier)
+        .with_lower(masked().allow(Construct::ExecProgram));
+    if reporting {
+        opts = opts.with_violations();
+    }
+    Cage::with_options(&p, &opts)
+}
+
+/// Runs `program` with `args` in `cage`; its output and success.
+fn run_program(cage: &Cage, program: &str, args: &[&str]) -> (String, bool) {
+    let mut c = Command::new(program);
+    c.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cage
+        .spawn(&mut c, &Grants::new())
+        .unwrap_or_else(|e| panic!("{program}: {e}"));
+    let mut out = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
+    (out, child.wait().unwrap().success())
+}
+
+/// The program starts under both settings, with no base (Linux needs
+/// none: Landlock does not check mapping code) and by bare name.
+#[test]
+fn program_only_settings_start_the_program() {
+    for tier in tiers() {
+        for exec in [Exec::Never, Exec::Program] {
+            for base in [Base::None, Base::V1] {
+                let cage = exec_cage(tier, exec, base, false).unwrap();
+                for program in ["/bin/echo", "echo"] {
+                    let (out, ok) = run_program(&cage, program, &["started"]);
+                    assert!(
+                        ok && out == "started\n",
+                        "{tier} {exec:?} {base:?} {program}: {out}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// A script, and an ELF file whose interpreter cannot be allowed, are
+/// refused before forking.
+#[test]
+fn program_only_settings_refuse_scripts_and_bad_interpreters() {
+    let d = scratch("exec-refusals");
+    let script = d.join("s.sh");
+    std::fs::write(&script, "#!/bin/sh\necho ran\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // A little-endian ELF64 header whose interpreter is relative.
+    let mut elf = vec![0u8; 64 + 56];
+    elf[..4].copy_from_slice(b"\x7fELF");
+    elf[4] = 2;
+    elf[5] = 1;
+    elf[32..40].copy_from_slice(&64u64.to_le_bytes());
+    elf[54..56].copy_from_slice(&56u16.to_le_bytes());
+    elf[56..58].copy_from_slice(&1u16.to_le_bytes());
+    elf[64..68].copy_from_slice(&3u32.to_le_bytes());
+    elf[72..80].copy_from_slice(&120u64.to_le_bytes());
+    elf[96..104].copy_from_slice(&7u64.to_le_bytes());
+    elf.extend_from_slice(b"ld.so1\0");
+    let bad = d.join("bad");
+    std::fs::write(&bad, &elf).unwrap();
+    std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let cage = exec_cage(host_tier(), Exec::Never, Base::V1, false).unwrap();
+    let err = cage
+        .spawn(&mut Command::new(&script), &Grants::new())
+        .map(|_| ())
+        .unwrap_err();
+    assert!(matches!(err, SpawnError::Script { .. }), "{err}");
+    let err = cage
+        .spawn(&mut Command::new(&bad), &Grants::new())
+        .map(|_| ())
+        .unwrap_err();
+    assert!(
+        matches!(&err, SpawnError::Interpreter { reason, .. } if reason.contains("not absolute")),
+        "{err}"
+    );
+}
+
+/// A refused exec is a violation with its reason; the program had started.
+#[test]
+fn a_refused_exec_is_reported() {
+    use procage::DeniedBy;
+    for tier in tiers() {
+        let cage = exec_cage(tier, Exec::Never, Base::V1, true).unwrap();
+        let mut c = Command::new("/bin/bash");
+        c.args(["-c", "echo started; /bin/echo no 2>/dev/null; exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped());
+        let mut child = cage.spawn(&mut c, &Grants::new()).unwrap();
+        let mut out = String::new();
+        child
+            .stdout
+            .take()
+            .unwrap()
+            .read_to_string(&mut out)
+            .unwrap();
+        assert!(child.wait().unwrap().success(), "{tier}");
+        assert_eq!(out, "started\n", "{tier}");
+        let record = child.violations();
+        let execs = by_op(&record, "execve");
+        assert_eq!(execs.len(), 1, "{tier}: {record:#?}");
+        assert_eq!(execs[0].denied_by, DeniedBy::Exec, "{tier}");
+    }
+}
+
+/// Constitution IV: spawns under `Exec::Never` from many threads at once
+/// all return (the supervisor answers each run's exec), with and without
+/// reporting.
+#[test]
+fn exec_never_spawns_from_many_threads() {
+    for reporting in [false, true] {
+        let cage =
+            std::sync::Arc::new(exec_cage(host_tier(), Exec::Never, Base::V1, reporting).unwrap());
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let cage = cage.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..12 {
+                        let (out, ok) = run_program(&cage, "/bin/echo", &["x"]);
+                        assert!(ok && out == "x\n");
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+    }
+}
+
+/// Without a listener (an enclosing filter has one) `Exec::Never` is a gap;
+/// accepted, Landlock alone keeps other programs out, and the receipt says
+/// so.
+#[test]
+fn exec_never_without_a_listener_is_a_gap() {
+    // The outer filter stays on this test's thread only.
+    let _outer = testing::install_outer_listener().unwrap();
+    let tier = host_tier();
+    let mut p = Policy::default();
+    p.base = Base::V1;
+    p.process.exec = Exec::Never;
+    p.process.fork = true;
+    let opts = CageOptions::default().with_tier(tier).with_lower(masked());
+    let Err(SpawnError::Lower(LowerError::Gaps(gaps))) = Cage::with_options(&p, &opts) else {
+        panic!("expected the exec-never gap");
+    };
+    assert_eq!(
+        (gaps[0].construct, gaps[0].kind.clone()),
+        (Construct::ExecNever, GapKind::Approximation)
+    );
+    assert!(
+        gaps[0].to_string().contains("allow(Construct::ExecNever)"),
+        "{}",
+        gaps[0]
+    );
+    let opts = CageOptions::default()
+        .with_tier(tier)
+        .with_lower(masked().allow(Construct::ExecNever));
+    let cage = Cage::with_options(&p, &opts).unwrap();
+    let mut c = Command::new("/bin/bash");
+    c.args(["-c", "/bin/echo no 2>/dev/null || echo refused"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cage.spawn(&mut c, &Grants::new()).unwrap();
+    let (mut out, mut err) = (String::new(), String::new());
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut err)
+        .unwrap();
+    let status = child.wait().unwrap();
+    assert_eq!(out, "refused\n", "{status}: {err}");
+    let receipt = child.receipt().unwrap();
+    assert!(
+        receipt
+            .approximations
+            .iter()
+            .any(|a| a.construct == Construct::ExecNever),
+        "{receipt:?}"
+    );
+}
+
+/// `Exec::Program` on Linux: a gap whose message names the call that
+/// accepts it; accepted, the program executes itself again, nothing else,
+/// and the receipt lists the approximation.
+#[test]
+fn program_reexecutes_itself_and_nothing_else() {
+    let tier = host_tier();
+    let mut p = Policy::default();
+    p.base = Base::V1;
+    p.process.exec = Exec::Program;
+    let opts = CageOptions::default().with_tier(tier).with_lower(masked());
+    let Err(SpawnError::Lower(LowerError::Gaps(gaps))) = Cage::with_options(&p, &opts) else {
+        panic!("expected the exec-program gap");
+    };
+    assert!(
+        gaps[0].to_string().contains("allow=[\"exec-program\"]"),
+        "{}",
+        gaps[0]
+    );
+    for tier in tiers() {
+        let cage = exec_cage(tier, Exec::Program, Base::V1, false).unwrap();
+        let mut c = Command::new("/bin/bash");
+        c.args([
+            "-c",
+            "/bin/bash -c 'echo copy'; /bin/echo no 2>/dev/null || echo echo-refused",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped());
+        let mut child = cage.spawn(&mut c, &Grants::new()).unwrap();
+        let mut out = String::new();
+        child
+            .stdout
+            .take()
+            .unwrap()
+            .read_to_string(&mut out)
+            .unwrap();
+        child.wait().unwrap();
+        assert_eq!(out, "copy\necho-refused\n", "{tier}");
+        let receipt = child.receipt().unwrap();
+        assert!(
+            receipt
+                .approximations
+                .iter()
+                .any(|a| a.construct == Construct::ExecProgram),
+            "{tier}"
+        );
+    }
+}
+
+/// The allowance is the spawn's own, and stays with the file it resolved:
+/// another run of the same cage cannot execute this run's program, and a
+/// program renamed over by another file cannot execute the new one.
+#[test]
+fn the_program_allowance_is_per_spawn_and_per_file() {
+    let d = scratch("exec-allowance");
+    let tier = host_tier();
+    let mut p = Policy::default();
+    p.base = Base::V1;
+    p.process.exec = Exec::Program;
+    p.process.fork = true;
+    p.fs.push(FsRule::new(Access::Write, FsTarget::Subpath(abs(&*d))));
+    if tier == Tier::T2 {
+        p.waive.insert(HardDenyClass::TrustHandoff);
+    }
+    let opts = CageOptions::default()
+        .with_tier(tier)
+        .with_lower(masked().allow(Construct::ExecProgram));
+    let cage = Cage::with_options(&p, &opts).unwrap();
+    // A run of /bin/sh (dash) while a run of bash tries to execute it.
+    let mut sh = Command::new("/bin/sh");
+    sh.args(["-c", "while :; do :; done"]);
+    let mut other = cage.spawn(&mut sh, &Grants::new()).unwrap();
+    let (out, _) = run_program(
+        &cage,
+        "/bin/bash",
+        &["-c", "/bin/sh -c 'echo ran' 2>/dev/null || echo sh-refused"],
+    );
+    let _ = other.kill();
+    let _ = other.wait();
+    assert_eq!(out, "sh-refused\n");
+    // A copy of bash in the writable tree replaces itself by rename and
+    // tries to execute the new file at its path.
+    // The caged program waits (builtins only) while the caller renames
+    // another file over its path, then executes the path.
+    let prog = d.join("prog");
+    let next = d.join("next");
+    let go = d.join("go");
+    std::fs::copy("/bin/bash", &prog).unwrap();
+    std::fs::copy("/bin/bash", &next).unwrap();
+    let script = format!(
+        "while [ ! -e {go} ]; do :; done; {prog} -c 'echo ran' 2>/dev/null || echo replaced-refused",
+        go = go.display(),
+        prog = prog.display()
+    );
+    let mut c = Command::new(&prog);
+    c.args(["-c", &script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped());
+    // A file just written can be busy for a moment: a test running in
+    // parallel may have forked while it was open for writing, and its child
+    // holds that descriptor until it executes (ETXTBSY).
+    let mut tries = 0;
+    let mut child = loop {
+        match cage.spawn(&mut c, &Grants::new()) {
+            Err(SpawnError::Io(e)) if e.raw_os_error() == Some(libc::ETXTBSY) && tries < 100 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            other => break other.unwrap(),
+        }
+    };
+    std::fs::rename(&next, &prog).unwrap();
+    std::fs::write(&go, "").unwrap();
+    let mut out = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
+    child.wait().unwrap();
+    assert_eq!(out, "replaced-refused\n");
 }

@@ -127,6 +127,15 @@ fn main() {
             format!("procage, cached cage{label}"),
             measure(n, || spawn_in(&cage)),
         ));
+        // `Exec::Never`: on Linux every spawn installs the filter with a
+        // listener and its supervisor answers the run's exec.
+        let mut never = policy.clone();
+        never.process.exec = procage::policy::Exec::Never;
+        let never = Cage::with_options(&never, &options).expect("cage, exec never");
+        rows.push((
+            format!("procage, cached cage, exec never{label}"),
+            measure(n, || spawn_in(&never)),
+        ));
         let unchecked = Cage::with_options(
             &policy,
             &options.clone().with_link_audit(procage::LinkAudit::Off),

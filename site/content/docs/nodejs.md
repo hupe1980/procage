@@ -22,7 +22,7 @@ console.log(done.exitCode, done.stdout, done.violations);
 
 - `Policy.preset(name, version, { workspace })`: `minimal`, `agent_readonly`, `agent_workspace`, `build`, versions 1 to 3 (use 3). The workspace becomes the runs' working directory. See [presets](@/docs/presets.md).
 - `Policy.fromJSON(doc)` and `policy.toJSON()`: the versioned serialised format; unknown fields are refused.
-- `new Cage(policy, { violations, relax, acceptSpawnSnapshot })`: a policy the host cannot enforce throws `CapabilityGapError`, whose `gaps` name each construct and, in `accept`, the option that would accept it; the message lists them. Nothing is accepted unless passed. See [fitting](@/docs/fitting.md).
+- `new Cage(policy, { violations, relax, acceptSpawnSnapshot, allow })`: a policy the host cannot enforce throws `CapabilityGapError`, whose `gaps` name each construct and, in `accept`, the option that would accept it; the message lists them. Nothing is accepted unless passed. `allow` accepts approximations by construct name, such as `allow: ["exec-program"]` for `"exec": "program"` on Linux (see [which exec setting](@/docs/policies.md#which-exec-setting)). See [fitting](@/docs/fitting.md).
 
 ## Runs
 

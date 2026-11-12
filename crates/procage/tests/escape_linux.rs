@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 
 use procage::linux::{Cage, CageOptions, Child, Grants, SpawnError, probe, testing};
 use procage::policy::{
-    AbsPath, Access, Base, Construct, EnvPolicy, FsRule, FsTarget, GapKind, Grant, GrantName,
+    AbsPath, Access, Base, Construct, EnvPolicy, Exec, FsRule, FsTarget, GapKind, Grant, GrantName,
     HardDenyClass, Lifetime, LowerError, LowerOptions, Network, Policy, Port, Ports, Tier, Tty,
 };
 
@@ -2514,4 +2514,138 @@ fn r36_a_proxy_only_child_has_no_other_route() {
     assert!(host_udp.recv(&mut buf).is_err(), "a datagram left the run");
     let control = via_proxy(&p, &entries, &format!("via-http:allowed.test:{port}"));
     assert_eq!(control, "ok");
+}
+
+// ---- R-38: execution beyond the program ----
+
+/// The programs a caged shell tries to execute; each one runs in the base.
+const EXEC_PROBES: [&str; 3] = ["/bin/echo", "/usr/bin/env", "/bin/sh"];
+
+/// The ELF interpreter of the host's programs.
+const LOADERS: &str =
+    "for l in /lib64/ld-linux-x86-64.so.2 /lib/ld-linux-aarch64.so.1; do [ -e $l ] && ld=$l; done";
+
+/// Runs `script` in `/bin/bash` (the program) under `exec` and `base`, with
+/// fork, on `tier`; `Exec::Program` is accepted as approximated. Its output.
+fn bash_under(tier: Tier, exec: Exec, base: Base, script: &str) -> String {
+    let mut p = Policy::default();
+    p.base = base;
+    p.process.exec = exec;
+    p.process.fork = true;
+    let mut lower = LowerOptions::default().allow(Construct::ExecProgram);
+    if tier == Tier::T1 {
+        lower = lower
+            .allow(Construct::HdSecrets)
+            .allow(Construct::HdTrustHandoff)
+            .allow(Construct::HdPersistence);
+    }
+    let mut opts = CageOptions::default().with_tier(tier).with_lower(lower);
+    if std::env::var_os("PROCAGE_ESCAPE_VIOLATIONS").is_some_and(|v| v == "1") {
+        opts = opts.with_violations();
+    }
+    let cage = Cage::with_options(&p, &opts).unwrap_or_else(|e| panic!("{tier} {exec:?}: {e}"));
+    let mut c = Command::new("/bin/bash");
+    c.args(["-c", script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = cage
+        .spawn(&mut c, &Grants::new())
+        .unwrap_or_else(|e| panic!("{tier} {exec:?}: {e}"));
+    let out = finish(child, Duration::from_secs(30));
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// A script that executes each probe from a forked shell (a descendant) and
+/// prints `<probe>:ran` or `<probe>:<error>`.
+fn probe_script() -> String {
+    let mut s = String::new();
+    for t in EXEC_PROBES {
+        s.push_str(&format!(
+            "e=$( \"{t}\" </dev/null 2>&1 >/dev/null ) && echo '{t}:ran' || echo \"{t}:$e\"\n"
+        ));
+    }
+    s
+}
+
+fn exec_refused(line: &str) -> bool {
+    line.contains("Operation not permitted") || line.contains("Permission denied")
+}
+
+/// Under `Exec::Never` and `Exec::Program` no base executes anything but the
+/// program, on both tiers: a descendant's exec of a system program is
+/// refused. The same probes under `Exec::Granted` run.
+#[test]
+fn r38_only_the_program_executes() {
+    for tier in tiers() {
+        for base in [Base::V1, Base::V2, Base::V3] {
+            let control = bash_under(tier, Exec::Granted, base, &probe_script());
+            for t in EXEC_PROBES {
+                assert!(
+                    control.contains(&format!("{t}:ran")),
+                    "{tier} {base:?}: {control}"
+                );
+            }
+            for exec in [Exec::Never, Exec::Program] {
+                let out = bash_under(tier, exec, base, &probe_script());
+                for t in EXEC_PROBES {
+                    let line = out
+                        .lines()
+                        .find(|l| l.starts_with(&format!("{t}:")))
+                        .unwrap_or("");
+                    assert!(
+                        exec_refused(line),
+                        "{tier} {exec:?} {base:?}: {t} ran: {out}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Under `Exec::Never` nothing executes after the run's first exec: not the
+/// program itself, not its ELF interpreter asked to load another program
+/// (`ld.so /bin/echo`), not from the program or a descendant (EPERM from
+/// the supervisor).
+#[test]
+fn r38_never_refuses_every_exec_after_the_first() {
+    let script = format!(
+        "{LOADERS}\n\
+         e=$( /bin/bash -c true 2>&1 ) && echo self:ran || echo \"self:$e\"\n\
+         e=$( \"$ld\" /bin/echo x 2>&1 ) && echo loader:ran || echo \"loader:$e\"\n\
+         exec /bin/bash -c 'echo replaced'\n"
+    );
+    for tier in tiers() {
+        let out = bash_under(tier, Exec::Never, Base::V1, &script);
+        for probe in ["self", "loader"] {
+            let line = out
+                .lines()
+                .find(|l| l.starts_with(&format!("{probe}:")))
+                .unwrap_or("");
+            assert!(
+                line.contains("Operation not permitted"),
+                "{tier}: {probe} was not refused by the supervisor: {out}"
+            );
+        }
+        // The program itself (not a fork) cannot replace itself either.
+        assert!(!out.contains("replaced"), "{tier}: {out}");
+        // `Exec::Program` lets the program execute itself (control).
+        let out = bash_under(tier, Exec::Program, Base::V1, &script);
+        assert!(out.contains("self:ran"), "{tier} program: {out}");
+    }
+}
+
+/// The exec sentinel and the listener stay out of the program: it holds
+/// only its standard streams.
+#[test]
+fn r38_the_program_holds_no_supervisor_descriptor() {
+    for tier in tiers() {
+        let out = bash_under(
+            tier,
+            Exec::Never,
+            Base::V1,
+            "for f in /proc/self/fd/*; do n=${f##*/}; [ \"$n\" -gt 2 ] && [ \"$n\" != 255 ] && echo extra:$n; done; echo done",
+        );
+        assert_eq!(out.trim(), "done", "{tier}: {out}");
+    }
 }

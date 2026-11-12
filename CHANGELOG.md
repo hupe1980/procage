@@ -6,6 +6,48 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- `Exec::Never` did not keep the child from executing programs (macOS,
+  Linux; R-38). With any base, the base's system code stayed executable,
+  so a caged shell under `Base::V3` + `Exec::Never` ran `/bin/echo` and
+  `/usr/bin/env`; and without a base no program could start at all. It now
+  means what its name says: the run executes its program, found as
+  `execvp` finds it, and nothing after the start. The base keeps reading
+  and mapping its code but executes nothing. On Linux the run's seccomp
+  supervisor lets through only the exec that starts the program
+  (recognised by a close-on-exec sentinel the child makes) and refuses
+  every later one with `EPERM`, the program itself and its ELF interpreter
+  included; where no supervisor can run (an enclosing seccomp filter
+  already has a listener, or `Cage::exec`) the cage refuses with the gap
+  `exec-never` unless it is accepted by name. On macOS the program may
+  execute itself again (the sandbox cannot count executions), and a base
+  is needed (every macOS program maps the system's code). Scripts are
+  refused as the program (`SpawnError::Script`). **Migration**: a program
+  that starts copies of itself uses `Exec::Program`; one that runs other
+  programs uses `Exec::Granted` with `Exec` rules.
+
+### Added
+
+- `Exec::Program` (policy JSON `"program"`): the run executes its program,
+  as often as it likes, and nothing else, for programs that start copies of
+  themselves (Python `multiprocessing`, Node.js `child_process.fork`,
+  `/proc/self/exe`). Exact on macOS; on Linux an approximation accepted by
+  name (`exec-program`): the program's ELF interpreter stays executable.
+- Python `Cage(..., allow=[...])` and Node.js `new Cage(policy, { allow })`
+  accept approximations by construct name; a gap's `accept` lists the
+  spelling.
+- `DeniedBy::Exec` for an exec refused under `Exec::Never` on Linux.
+
+### Changed
+
+- `Exec`, `linux::Action` (`Supervise`), `linux::RuleTarget` (`Program`),
+  `linux::Syscall` (`Execve`, `Execveat`) and `DenyReason` (`Exec`) gain
+  variants; exhaustive matches on `Exec`, `Action` and `RuleTarget` need
+  an arm. `Hygiene` carries the exec setting.
+- On Linux the run's seccomp supervisor starts before the spawn, for every
+  run whose filter notifies (violation reporting or `Exec::Never`).
+
 ## [0.7.2] - 2026-11-11
 
 ### Fixed

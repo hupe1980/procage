@@ -39,8 +39,8 @@ use std::time::{Duration, Instant};
 use procage::macos::{Cage, CageOptions, Child, Grants, SpawnError, testing};
 use procage::policy::seatbelt::{self, Effect, Filter, Operation};
 use procage::policy::{
-    AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Lifetime,
-    Network, Policy, Port, Ports, Signals, Tty,
+    AbsPath, Access, Base, EnvPolicy, Exec, FsRule, FsTarget, Grant, GrantName, HardDenyClass,
+    Lifetime, Network, Policy, Port, Ports, Signals, Tty,
 };
 
 const EPERM: &str = "1";
@@ -1453,4 +1453,95 @@ fn r37_an_allow_on_a_case_sensitive_volume_is_refused() {
     let d = m.display();
     let got = in_child(&format!("read:{d}/a;read:{d}/A;read:{d}/b"), &p);
     assert_eq!(got, format!("{EPERM} {EPERM} ok"));
+}
+
+// ---- R-38: execution beyond the program ----
+
+/// The programs a caged shell tries to execute; each one runs in the base.
+const EXEC_PROBES: [&str; 3] = ["/bin/echo", "/usr/bin/env", "/bin/sh"];
+
+/// Runs `script` in `/bin/bash` (the program; `/bin/sh` is a launcher that
+/// executes another shell) under `exec` and `base`, with fork; its output.
+fn bash_under(exec: Exec, base: Base, script: &str) -> String {
+    let mut p = Policy::default();
+    p.base = base;
+    p.process.exec = exec;
+    p.process.fork = true;
+    let cage = cage_for(&p).unwrap();
+    let mut c = Command::new("/bin/bash");
+    c.args(["-c", script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let out = finish(
+        cage.spawn(&mut c, &Grants::new()).unwrap(),
+        Duration::from_secs(20),
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// A script that executes each probe from a forked shell (a descendant) and
+/// prints `<probe>:ran` or `<probe>:<error>`.
+fn probe_script() -> String {
+    let mut s = String::new();
+    for t in EXEC_PROBES {
+        s.push_str(&format!(
+            "e=$( \"{t}\" </dev/null 2>&1 >/dev/null ) && echo '{t}:ran' || echo \"{t}:$e\"\n"
+        ));
+    }
+    s
+}
+
+/// Under `Exec::Never` and `Exec::Program` no base executes anything but the
+/// program: a descendant's exec of a system program is refused (EPERM). The
+/// same probes under `Exec::Granted` run, so the refusal is the setting's.
+#[test]
+fn r38_only_the_program_executes() {
+    for base in [Base::V1, Base::V2, Base::V3] {
+        let control = bash_under(Exec::Granted, base, &probe_script());
+        for t in EXEC_PROBES {
+            assert!(
+                control.contains(&format!("{t}:ran")),
+                "{base:?} control: {control}"
+            );
+        }
+        for exec in [Exec::Never, Exec::Program] {
+            let out = bash_under(exec, base, &probe_script());
+            for t in EXEC_PROBES {
+                let line = out
+                    .lines()
+                    .find(|l| l.starts_with(&format!("{t}:")))
+                    .unwrap_or("");
+                assert!(
+                    line.contains("Operation not permitted"),
+                    "{exec:?} {base:?}: {t} was not refused: {out}"
+                );
+            }
+        }
+    }
+}
+
+/// The documented macOS contract of `Exec::Never`: the sandbox cannot count
+/// executions, so the program may execute itself again, and only itself.
+#[test]
+fn r38_never_on_macos_lets_the_program_execute_itself_only() {
+    let script = "shopt -s execfail\n\
+                  [ -n \"$AGAIN\" ] && { echo again; exec /bin/echo no; echo echo-refused; exit 0; }\n\
+                  AGAIN=1 exec /bin/bash -c \"$0\" 2>/dev/null; echo self-refused";
+    let mut p = Policy::default();
+    p.base = Base::V3;
+    p.process.exec = Exec::Never;
+    p.env = EnvPolicy::Passthrough { deny: vec![] };
+    let cage = cage_for(&p).unwrap();
+    let mut c = Command::new("/bin/bash");
+    c.args(["-c", script, script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let out = finish(
+        cage.spawn(&mut c, &Grants::new()).unwrap(),
+        Duration::from_secs(20),
+    );
+    let out = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out, "again\necho-refused\n", "{out}");
 }

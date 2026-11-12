@@ -723,7 +723,7 @@ impl Bridge {
                 if rc == 0 { libc::listen(l, 128) } else { rc }
             };
             let sent = if rc == 0 {
-                send(self.socket.as_raw_fd(), &[1], Some(l), &mut self.control)
+                send(self.socket.as_raw_fd(), &[1], &[l], &mut self.control)
             } else {
                 Err(errno())
             };
@@ -736,24 +736,29 @@ impl Bridge {
     }
 }
 
-/// The child's side of violation reporting: the notifying filter, its end
-/// of the socket pair, and a control buffer for the listener, all
-/// allocated in the parent.
+/// The child's side of the run's supervisor: the notifying filter, its end
+/// of the socket pair, whether exec is supervised (`Exec::Never`), and a
+/// control buffer for the listener and the exec sentinel, all allocated in
+/// the parent.
 pub(crate) struct Notify {
     pub(crate) filter: Vec<Insn>,
     pub(crate) socket: OwnedFd,
     pub(crate) control: Vec<u8>,
+    /// The plan supervises exec: the child makes the exec sentinel, and a
+    /// refused listener fails the spawn (no filter without the exec rules).
+    pub(crate) exec: bool,
 }
 
 impl Notify {
     /// The hand-over for `filter`, with the child's end `socket`.
-    pub(crate) fn new(filter: Vec<Insn>, socket: OwnedFd) -> Notify {
+    pub(crate) fn new(filter: Vec<Insn>, socket: OwnedFd, exec: bool) -> Notify {
         // SAFETY: CMSG_SPACE only computes a size.
-        let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as u32) } as usize;
+        let space = unsafe { libc::CMSG_SPACE(2 * std::mem::size_of::<c_int>() as u32) } as usize;
         Notify {
             filter,
             socket,
             control: vec![0; space],
+            exec,
         }
     }
 }
@@ -782,9 +787,10 @@ fn install_filter(filter: &mut [Insn], flags: libc::c_ulong) -> Result<c_int, i3
     }
 }
 
-/// Sends `bytes` on `socket`, with descriptor `fd` attached when given.
-/// System calls only; `control` was allocated in the parent.
-fn send(socket: c_int, bytes: &[u8], fd: Option<c_int>, control: &mut [u8]) -> Result<(), i32> {
+/// Sends `bytes` on `socket`, with descriptors `fds` attached (at most as
+/// many as `control` was sized for). System calls only; `control` was
+/// allocated in the parent.
+fn send(socket: c_int, bytes: &[u8], fds: &[c_int], control: &mut [u8]) -> Result<(), i32> {
     let mut iov = libc::iovec {
         iov_base: bytes.as_ptr().cast_mut().cast(),
         iov_len: bytes.len(),
@@ -793,17 +799,26 @@ fn send(socket: c_int, bytes: &[u8], fd: Option<c_int>, control: &mut [u8]) -> R
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
     msg.msg_iov = &raw mut iov;
     msg.msg_iovlen = 1;
-    if let Some(fd) = fd {
+    if !fds.is_empty() {
+        let data = std::mem::size_of_val(fds) as u32;
+        // SAFETY: CMSG_SPACE only computes a size.
+        let space = unsafe { libc::CMSG_SPACE(data) } as usize;
+        if space > control.len() {
+            return Err(libc::EINVAL);
+        }
         msg.msg_control = control.as_mut_ptr().cast();
-        msg.msg_controllen = control.len() as _;
-        // SAFETY: the control buffer holds CMSG_SPACE(sizeof(int)) bytes, so
-        // the first header and its data fit.
+        msg.msg_controllen = space as _;
+        // SAFETY: the control buffer holds CMSG_SPACE(size of fds) bytes
+        // (checked above), so the first header and its data fit.
         unsafe {
             let header = libc::CMSG_FIRSTHDR(&raw const msg);
             (*header).cmsg_level = libc::SOL_SOCKET;
             (*header).cmsg_type = libc::SCM_RIGHTS;
-            (*header).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<c_int>() as u32) as _;
-            std::ptr::write_unaligned(libc::CMSG_DATA(header).cast::<c_int>(), fd);
+            (*header).cmsg_len = libc::CMSG_LEN(data) as _;
+            let out = libc::CMSG_DATA(header).cast::<c_int>();
+            for (i, &fd) in fds.iter().enumerate() {
+                std::ptr::write_unaligned(out.add(i), fd);
+            }
         }
     }
     // SAFETY: msg and everything it points to live on this frame or in the
@@ -1093,20 +1108,48 @@ impl ChildPlan {
             // listener, which goes to the parent before the exec; the child
             // keeps no copy. Without a listener (a filter of an outer
             // sandbox already has one), the plain filter, and the reason.
+            //
+            // With supervised exec (`Exec::Never`) the child also makes the
+            // exec sentinel: a pipe whose write end only this process holds,
+            // close-on-exec. The kernel closes it in the exec, before the new
+            // program runs, so the supervisor tells this sequence's own exec
+            // (sentinel open) from every later one (hung up). No listener
+            // means no exec at all can be answered: the spawn fails.
             Some(notify) => {
                 let socket = notify.socket.as_raw_fd();
                 match install_filter(&mut notify.filter, libc::SECCOMP_FILTER_FLAG_NEW_LISTENER) {
                     Ok(listener) => {
-                        let sent = send(socket, &[1], Some(listener), &mut notify.control);
-                        // SAFETY: closing the listener this sequence created.
-                        unsafe { libc::close(listener) };
+                        let mut ends = [-1 as c_int; 2];
+                        let sent = if notify.exec {
+                            // SAFETY: pipe2 fills two descriptors on this frame.
+                            match check_int(unsafe {
+                                libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC)
+                            }) {
+                                Ok(()) => {
+                                    send(socket, &[1], &[listener, ends[0]], &mut notify.control)
+                                }
+                                Err(e) => Err(e),
+                            }
+                        } else {
+                            send(socket, &[1], &[listener], &mut notify.control)
+                        };
+                        // SAFETY: closing the listener and the sentinel's read
+                        // end this sequence created; the write end stays until
+                        // the exec.
+                        unsafe {
+                            libc::close(listener);
+                            if ends[0] >= 0 {
+                                libc::close(ends[0]);
+                            }
+                        }
                         sent.map_err(|e| fail(steps::LISTENER, e))?;
                     }
+                    Err(refused) if notify.exec => return Err(fail(steps::LISTENER, refused)),
                     Err(refused) => {
                         install_filter(&mut self.filter, 0).map_err(|e| fail(steps::SECCOMP, e))?;
                         let mut status = [0u8; 5];
                         status[1..].copy_from_slice(&refused.to_le_bytes());
-                        send(socket, &status, None, &mut notify.control)
+                        send(socket, &status, &[], &mut notify.control)
                             .map_err(|e| fail(steps::LISTENER, e))?;
                     }
                 }
@@ -1132,8 +1175,8 @@ impl ChildPlan {
         // fstat, open_tree, mount_setattr, fsopen, fsconfig, fsmount,
         // move_mount and close, with a proxy socket/ioctl/bind/listen/sendmsg/close,
         // capset, setrlimit, close_range or fcntl, getrlimit,
-        // landlock_restrict_self, seccomp, and with reporting sendmsg and
-        // close). Everything it reads was
+        // landlock_restrict_self, seccomp, with a supervisor pipe2, sendmsg
+        // and close). Everything it reads was
         // allocated in the parent and is owned by the closure.
         unsafe {
             command.pre_exec(move || plan.run());
@@ -1554,8 +1597,8 @@ pub(crate) fn socket_pair() -> std::io::Result<(OwnedFd, OwnedFd)> {
 
 /// What the child sent before its exec.
 pub(crate) enum HandOver {
-    /// The seccomp listener.
-    Listener(OwnedFd),
+    /// The seccomp listener, and the exec sentinel when exec is supervised.
+    Listener(OwnedFd, Option<OwnedFd>),
     /// No listener: the errno the kernel gave; the plain filter is in force.
     Refused(i32),
 }
@@ -1569,7 +1612,7 @@ pub(crate) fn receive(socket: &OwnedFd) -> Result<HandOver, i32> {
         iov_len: bytes.len(),
     };
     // SAFETY: CMSG_SPACE only computes a size.
-    let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as u32) } as usize;
+    let space = unsafe { libc::CMSG_SPACE(2 * std::mem::size_of::<c_int>() as u32) } as usize;
     let mut control = vec![0u8; space];
     // SAFETY: a zeroed msghdr is a valid empty message.
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
@@ -1590,21 +1633,29 @@ pub(crate) fn receive(socket: &OwnedFd) -> Result<HandOver, i32> {
     }
     // SAFETY: the kernel filled msg; CMSG_FIRSTHDR checks the length.
     let header = unsafe { libc::CMSG_FIRSTHDR(&raw const msg) };
-    let fd = if header.is_null() {
-        None
-    } else {
+    let mut fds: Vec<OwnedFd> = Vec::new();
+    if !header.is_null() {
         // SAFETY: a non-null header lies within the control buffer.
         let h = unsafe { &*header };
-        (h.cmsg_level == libc::SOL_SOCKET && h.cmsg_type == libc::SCM_RIGHTS).then(|| {
-            // SAFETY: an SCM_RIGHTS header carries at least one descriptor.
-            unsafe { std::ptr::read_unaligned(libc::CMSG_DATA(header).cast::<c_int>()) }
-        })
-    };
-    // SAFETY: the kernel installed this descriptor for us; owned at once so
-    // that a malformed message does not leak it.
-    let fd = fd.map(|fd| unsafe { OwnedFd::from_raw_fd(fd) });
+        if h.cmsg_level == libc::SOL_SOCKET && h.cmsg_type == libc::SCM_RIGHTS {
+            // SAFETY: CMSG_LEN only computes a size.
+            let empty = unsafe { libc::CMSG_LEN(0) } as usize;
+            let count = (h.cmsg_len as usize).saturating_sub(empty) / std::mem::size_of::<c_int>();
+            // SAFETY: a non-null SCM_RIGHTS header has its data within the
+            // control buffer.
+            let data = unsafe { libc::CMSG_DATA(header) }.cast::<c_int>();
+            for i in 0..count.min(2) {
+                // SAFETY: the header carries `count` descriptors, which the
+                // kernel installed for us; owned at once so that a malformed
+                // message does not leak them.
+                fds.push(unsafe { OwnedFd::from_raw_fd(std::ptr::read_unaligned(data.add(i))) });
+            }
+        }
+    }
+    let mut fds = fds.into_iter();
+    let (fd, sentinel) = (fds.next(), fds.next());
     match (bytes[0], fd) {
-        (1, Some(fd)) => Ok(HandOver::Listener(fd)),
+        (1, Some(fd)) => Ok(HandOver::Listener(fd, sentinel)),
         (0, None) if n == 5 => Ok(HandOver::Refused(i32::from_le_bytes([
             bytes[1], bytes[2], bytes[3], bytes[4],
         ]))),
@@ -1699,6 +1750,113 @@ pub(crate) fn answer_eperm(listener: &OwnedFd, id: u64) -> Result<(), i32> {
         )
     };
     if rc != 0 { Err(errno()) } else { Ok(()) }
+}
+
+/// Answers notification `id`: the call runs (`SECCOMP_USER_NOTIF_FLAG_CONTINUE`).
+/// Used only for the exec of a supervised run that its own child sequence
+/// issues before the program starts (the exec sentinel is still open): no
+/// code of the program runs yet, so no argument can change under the
+/// check, and none is checked.
+pub(crate) fn answer_continue(listener: &OwnedFd, id: u64) -> Result<(), i32> {
+    let mut resp = libc::seccomp_notif_resp {
+        id,
+        val: 0,
+        error: 0,
+        flags: libc::SECCOMP_USER_NOTIF_FLAG_CONTINUE as u32,
+    };
+    // SAFETY: the ioctl reads the structure on this frame.
+    let rc = unsafe {
+        libc::ioctl(
+            listener.as_raw_fd(),
+            libc::SECCOMP_IOCTL_NOTIF_SEND,
+            &raw mut resp,
+        )
+    };
+    if rc != 0 { Err(errno()) } else { Ok(()) }
+}
+
+/// Whether the write end of the pipe whose read end is `fd` is closed (or
+/// `fd` cannot be polled, which counts as closed).
+pub(crate) fn hung_up(fd: &OwnedFd) -> bool {
+    let mut pfd = libc::pollfd {
+        fd: fd.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: poll on one pollfd on this frame, without waiting.
+    let rc = unsafe { libc::poll(&raw mut pfd, 1, 0) };
+    rc != 0
+}
+
+/// Waits until `socket` is readable or `wake` hangs up (or `timeout_ms`
+/// passes); `true` when the socket is readable.
+pub(crate) fn wait_either(socket: &OwnedFd, wake: &OwnedFd, timeout_ms: c_int) -> bool {
+    let mut pfds = [
+        libc::pollfd {
+            fd: socket.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: wake.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        },
+    ];
+    // SAFETY: poll on two pollfds on this frame.
+    let rc = unsafe { libc::poll(pfds.as_mut_ptr(), 2, timeout_ms) };
+    rc > 0 && pfds[0].revents & libc::POLLIN != 0
+}
+
+/// A pipe, both ends close-on-exec: (read, write).
+pub(crate) fn pipe() -> std::io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0 as c_int; 2];
+    // SAFETY: pipe2 fills two descriptors on this frame.
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors are new and owned here.
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+}
+
+/// Whether a child of this process can install a seccomp filter with a
+/// listener (`SECCOMP_FILTER_FLAG_NEW_LISTENER`): `EBUSY` when an enclosing
+/// filter already has one. Tried in a throwaway child.
+pub(crate) fn probe_listener() -> Result<(), i32> {
+    let (read, write) = pipe().map_err(|e| e.raw_os_error().unwrap_or(libc::EIO))?;
+    let mut allow = [Insn {
+        code: 0x06,
+        jt: 0,
+        jf: 0,
+        k: super::seccomp::RET_ALLOW,
+    }];
+    // SAFETY: the child runs system calls only on data allocated above and
+    // leaves with _exit; the parent waits for it.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(errno());
+    }
+    if pid == 0 {
+        let code = prctl(libc::PR_SET_NO_NEW_PRIVS, 1)
+            .and_then(|_| install_filter(&mut allow, libc::SECCOMP_FILTER_FLAG_NEW_LISTENER))
+            .err()
+            .unwrap_or(0);
+        // SAFETY: write four bytes from our stack, then leave without running
+        // any destructor.
+        unsafe {
+            libc::write(write.as_raw_fd(), (&raw const code).cast(), 4);
+            libc::_exit(0);
+        }
+    }
+    drop(write);
+    let mut code: i32 = libc::EIO;
+    // SAFETY: read into a 4-byte integer on our stack; then reap the child.
+    unsafe {
+        libc::read(read.as_raw_fd(), (&raw mut code).cast(), 4);
+        let mut status = 0;
+        libc::waitpid(pid, &raw mut status, 0);
+    }
+    if code == 0 { Ok(()) } else { Err(code) }
 }
 
 /// Whether notification `id` is still pending (its caller still blocked).

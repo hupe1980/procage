@@ -88,7 +88,25 @@ fn accept(construct: Construct) -> Vec<String> {
             out.push(format!("relax=[\"{name}\"]"));
         }
     }
+    // Accepted only by name: the exec settings' approximations on Linux.
+    if matches!(construct, Construct::ExecNever | Construct::ExecProgram) {
+        out.push(format!("allow=[\"{}\"]", construct.as_str()));
+    }
     out
+}
+
+/// The constructs named in `allow`, accepted as approximated.
+fn allowed(names: &[String]) -> PyResult<Vec<Construct>> {
+    names
+        .iter()
+        .map(|name| {
+            Construct::ALL
+                .iter()
+                .copied()
+                .find(|c| c.as_str() == name)
+                .ok_or_else(|| PolicyError::new_err(format!("no construct {name}")))
+        })
+        .collect()
 }
 
 /// The gaps as dicts: `construct`, `target`, `kind`, `subject` and
@@ -279,19 +297,23 @@ struct Cage {
 #[pymethods]
 impl Cage {
     #[new]
-    #[pyo3(signature = (policy, *, violations=false, relax=Vec::new(), accept_spawn_snapshot=false))]
+    #[pyo3(signature = (policy, *, violations=false, relax=Vec::new(), accept_spawn_snapshot=false, allow=Vec::new()))]
     fn new(
         py: Python<'_>,
         policy: &Policy,
         violations: bool,
         relax: Vec<String>,
         accept_spawn_snapshot: bool,
+        allow: Vec<String>,
     ) -> PyResult<Cage> {
-        let lower = if accept_spawn_snapshot {
+        let mut lower = if accept_spawn_snapshot {
             LowerOptions::default().accept_spawn_snapshot()
         } else {
             LowerOptions::default()
         };
+        for construct in allowed(&allow)? {
+            lower = lower.allow(construct);
+        }
         let mut options = CageOptions::default().with_lower(lower);
         if violations {
             options = options.with_violations();

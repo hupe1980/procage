@@ -167,12 +167,13 @@ export class Cage {
   /**
    * `violations` records what the sandbox denied. `relax` names
    * relaxations to fit a host that cannot enforce everything;
-   * `acceptSpawnSnapshot` accepts the Linux approximations taken at spawn.
-   * A gap throws `CapabilityGapError`, naming the option that would accept
+   * `acceptSpawnSnapshot` accepts the Linux approximations taken at spawn;
+   * `allow` accepts approximations by construct name (`exec-program`). A
+   * gap throws `CapabilityGapError`, naming the option that would accept
    * it; nothing is accepted unless passed.
    */
-  constructor(policy, { violations = false, relax = [], acceptSpawnSnapshot = false } = {}) {
-    this.#native = call(() => new native.Cage(policy.handle, { violations, relax, acceptSpawnSnapshot }));
+  constructor(policy, { violations = false, relax = [], acceptSpawnSnapshot = false, allow = [] } = {}) {
+    this.#native = call(() => new native.Cage(policy.handle, { violations, relax, acceptSpawnSnapshot, allow }));
   }
   /** The relaxations applied, as sentences. */
   get relaxed() {

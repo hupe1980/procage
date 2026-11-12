@@ -47,6 +47,8 @@
 extern crate alloc;
 
 pub mod base;
+#[doc(hidden)]
+pub mod elf;
 pub mod explain;
 #[cfg(feature = "serde")]
 mod format;
@@ -65,9 +67,9 @@ pub use glob::{Glob, GlobError};
 pub use linux::LinuxPlan;
 pub use lower::{
     CapabilityGap, Construct, Degradation, GapKind, Lift, LowerError, LowerOptions, Outcome,
-    PROXY_HTTP_PARAM, PROXY_SOCKS_PARAM, PTY_EXTENSION_CLASS, Plan, RUN_MARKER_PARAM,
-    RUN_PREFIX_PARAM, Relax, Relaxation, Relaxed, SeatbeltPlan, Target, TargetError, Tier, lift,
-    lower,
+    PROGRAM_EXTENSION_CLASS, PROXY_HTTP_PARAM, PROXY_SOCKS_PARAM, PTY_EXTENSION_CLASS, Plan,
+    RUN_MARKER_PARAM, RUN_PREFIX_PARAM, Relax, Relaxation, Relaxed, SeatbeltPlan, Target,
+    TargetError, Tier, lift, lower,
 };
 pub use name::{GrantName, NameError, Port, Tag};
 pub use path::{AbsPath, PathError};

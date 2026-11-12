@@ -397,3 +397,145 @@ fn v3_lowers_like_v2_on_linux() {
         }
     }
 }
+
+/// Under `Exec::Never` and `Exec::Program` the base reads and maps its code
+/// but executes nothing; the spawn's program is the one exec allowance.
+#[test]
+fn program_only_settings_take_exec_from_the_base() {
+    for exec in [Exec::Never, Exec::Program] {
+        for b in [Base::V1, Base::V2, Base::V3] {
+            let mut p = Policy::default();
+            p.base = b;
+            p.process.exec = exec;
+            let profile = macos_profile(&p);
+            let exec_lines: Vec<&str> = profile
+                .lines()
+                .filter(|l| l.starts_with("(allow") && l.contains("process-exec"))
+                .collect();
+            assert_eq!(
+                exec_lines,
+                [format!(
+                    "(allow file-read* process-exec* file-map-executable (extension \"{PROGRAM_EXTENSION_CLASS}\"))"
+                )],
+                "{exec:?} {b:?}"
+            );
+            assert!(
+                profile.contains("(allow file-read* file-map-executable"),
+                "{exec:?} {b:?}"
+            );
+
+            let target = Target::Linux {
+                tier: Tier::T2,
+                landlock_abi: 6,
+            };
+            let Ok(Plan::Linux(plan)) = lower(&p, target, &allow_all()) else {
+                panic!("no Linux plan");
+            };
+            for rule in &plan.landlock.rules {
+                let executes = rule.access.contains(linux::AccessFs::EXECUTE);
+                assert_eq!(executes, rule.target == RuleTarget::Program, "{rule:?}");
+            }
+            let supervised: Vec<_> = plan
+                .seccomp
+                .iter()
+                .filter(|r| r.action == linux::Action::Supervise)
+                .map(|r| (r.syscall.as_str().to_string(), r.reason))
+                .collect();
+            if exec == Exec::Never {
+                assert_eq!(
+                    supervised,
+                    [
+                        ("execve".to_string(), Some(DenyReason::Exec)),
+                        ("execveat".to_string(), Some(DenyReason::Exec))
+                    ]
+                );
+            } else {
+                assert!(supervised.is_empty());
+            }
+        }
+    }
+}
+
+/// `Exec::Program` is exact on macOS and an approximation on Linux;
+/// `Exec::Never` is exact in the lowering on both (the Linux backend raises
+/// the gap where no supervisor can run).
+#[test]
+fn program_is_approximated_on_linux_only() {
+    let mut p = Policy::default();
+    p.base = Base::V1;
+    p.process.exec = Exec::Program;
+    assert!(lower(&p, Target::MacOs, &LowerOptions::default()).is_ok());
+    let target = Target::Linux {
+        tier: Tier::T1,
+        landlock_abi: 6,
+    };
+    let Err(LowerError::Gaps(gaps)) = lower(&p, target, &LowerOptions::default()) else {
+        panic!("expected the exec-program gap");
+    };
+    assert_eq!(gaps.len(), 1);
+    assert_eq!(
+        (gaps[0].construct, gaps[0].kind.clone()),
+        (Construct::ExecProgram, GapKind::Approximation)
+    );
+    let Ok(Plan::Linux(plan)) = lower(
+        &p,
+        target,
+        &LowerOptions::default().allow(Construct::ExecProgram),
+    ) else {
+        panic!("accepted, the plan lowers");
+    };
+    assert!(
+        plan.degradations
+            .iter()
+            .any(|d| d.construct == Construct::ExecProgram)
+    );
+    p.process.exec = Exec::Never;
+    assert!(lower(&p, target, &LowerOptions::default()).is_ok());
+}
+
+/// Every macOS program maps the system's code, which only a base allows
+/// when no `Exec` rule may exist: without a base, the settings are refused
+/// with a message that names the fix. Linux needs no base (Landlock does
+/// not check mapping code).
+#[test]
+fn program_only_settings_need_a_base_on_macos() {
+    for exec in [Exec::Never, Exec::Program] {
+        let mut p = Policy::default();
+        p.process.exec = exec;
+        let Err(LowerError::Gaps(gaps)) = lower(&p, Target::MacOs, &allow_all()) else {
+            panic!("{exec:?}: expected a gap");
+        };
+        assert_eq!(gaps[0].kind, GapKind::Unsupported);
+        assert!(
+            gaps[0].to_string().contains("use Base::V1 or later"),
+            "{}",
+            gaps[0]
+        );
+        let target = Target::Linux {
+            tier: Tier::T2,
+            landlock_abi: 6,
+        };
+        assert!(lower(&p, target, &allow_all()).is_ok(), "{exec:?}");
+    }
+}
+
+#[test]
+fn exec_gaps_name_the_call_that_accepts_them() {
+    let mut p = Policy::default();
+    p.process.exec = Exec::Program;
+    let target = Target::Linux {
+        tier: Tier::T1,
+        landlock_abi: 6,
+    };
+    let Err(LowerError::Gaps(gaps)) = lower(&p, target, &LowerOptions::default()) else {
+        panic!("expected a gap");
+    };
+    let message = gaps[0].to_string();
+    for part in [
+        "LowerOptions::allow(Construct::ExecProgram)",
+        "allow=[\"exec-program\"]",
+        "allow: [\"exec-program\"]",
+    ] {
+        assert!(message.contains(part), "{message}");
+    }
+}

@@ -155,6 +155,25 @@ class Policies(unittest.TestCase):
         self.assertTrue(hinted, caught.exception.gaps)
         self.assertIn("accepts it", str(caught.exception))
 
+    def test_exec_program_runs_the_program_only(self) -> None:
+        # The program only, by the policy JSON; on Linux an approximation
+        # accepted by name, which the gap spells out.
+        doc = {"version": 1, "base": "v1", "process": {"exec": "program", "fork": True}}
+        policy = procage.Policy.from_json(json.dumps(doc))
+        if MACOS:
+            c = procage.Cage(policy)
+        else:
+            with self.assertRaises(procage.CapabilityGapError) as caught:
+                procage.Cage(policy, accept_spawn_snapshot=True)
+            self.assertIn('allow=["exec-program"]', caught.exception.gaps[0]["accept"])
+            c = procage.Cage(policy, accept_spawn_snapshot=True, allow=["exec-program"])
+        done = procage.run(c, ["/bin/bash", "-c", "/bin/echo no 2>/dev/null || echo refused"], timeout=60)
+        self.assertEqual(done.stdout, b"refused\n")
+
+    def test_an_allowed_construct_is_checked(self) -> None:
+        with self.assertRaises(procage.PolicyError):
+            procage.Cage(procage.Policy.preset("minimal", 3), allow=["no-such-construct"])
+
     def test_a_relaxation_name_is_checked(self) -> None:
         with self.assertRaises(procage.PolicyError):
             procage.Cage(procage.Policy.preset("minimal", 3), relax=["waive:nope"])

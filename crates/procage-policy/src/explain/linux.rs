@@ -85,7 +85,8 @@ impl Model {
         match target {
             RuleTarget::Path(p) | RuleTarget::PathIfExists(p) => Some(bytes(p)),
             RuleTarget::Grant(name) => context.grant(name.as_str()).map(bytes),
-            RuleTarget::ExpandGlob(_) => None,
+            // Known only at spawn; explain answers for every other path.
+            RuleTarget::ExpandGlob(_) | RuleTarget::Program => None,
         }
     }
 
@@ -152,6 +153,7 @@ impl Model {
         let p = match target {
             RuleTarget::Grant(name) => return Decider::Grant(name.clone()),
             RuleTarget::ExpandGlob(_) => return Decider::Layer,
+            RuleTarget::Program => return Decider::Setting("exec"),
             RuleTarget::Path(p) | RuleTarget::PathIfExists(p) => p,
         };
         let handled = self.plan.landlock.handled_fs;

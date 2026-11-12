@@ -250,6 +250,8 @@ syscalls! {
     Bpf => "bpf",
     Clone => "clone",
     Clone3 => "clone3",
+    Execve => "execve",
+    Execveat => "execveat",
     Fork => "fork",
     Fsmount => "fsmount",
     Fsopen => "fsopen",
@@ -410,6 +412,12 @@ pub enum Action {
     /// Fail with `ENOSYS`, so libc falls back to an older call that can be
     /// filtered (used for `clone3`).
     Enosys,
+    /// Ask the run's supervisor, whatever the reporting setting
+    /// (`SECCOMP_RET_USER_NOTIF`). Used for `execve` and `execveat` under
+    /// [`Exec::Never`](crate::Exec::Never): the supervisor lets through the
+    /// exec that starts the program and refuses every later one with
+    /// `EPERM`.
+    Supervise,
 }
 
 /// One seccomp deny.
@@ -570,6 +578,10 @@ pub enum RuleTarget {
     /// Every path the glob matches at spawn (an approximation: later files
     /// are not covered).
     ExpandGlob(Glob),
+    /// The program of this spawn, as `execvp` finds it, and the ELF
+    /// interpreter the kernel loads for it ([`Exec::Never`](crate::Exec::Never)
+    /// and [`Exec::Program`](crate::Exec::Program)).
+    Program,
 }
 
 /// A Landlock path-beneath rule.

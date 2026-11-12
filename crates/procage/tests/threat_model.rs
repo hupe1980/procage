@@ -25,10 +25,10 @@ use std::path::Path;
 
 /// Every escape-class id ever published. Append-only: an id is never removed,
 /// renumbered or reused; a class that no longer applies becomes `retired`.
-const PUBLISHED: [&str; 27] = [
+const PUBLISHED: [&str; 28] = [
     "R-02", "R-03", "R-04", "R-05", "R-06", "R-07", "R-08", "R-09", "R-10", "R-11", "R-12", "R-21",
     "R-22", "R-23", "R-24", "R-25", "R-26", "R-28", "R-29", "R-30", "R-31", "R-32", "R-34", "R-35",
-    "R-36", "R-33", "R-37",
+    "R-36", "R-33", "R-37", "R-38",
 ];
 
 /// The `## ` headings the threat model must contain, in this order.

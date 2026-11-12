@@ -357,8 +357,35 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
                 Decider::Setting("exec"),
             ));
         }
-        Exec::Never => {
-            ledger.outcome(Construct::ExecNever, Outcome::Exact, None, "");
+        // The program of each spawn, by an extension the spawn issues for it;
+        // the base executes nothing (below). macOS cannot count executions,
+        // so under `Never` the program may execute itself again: the
+        // documented contract of the setting.
+        Exec::Never | Exec::Program => {
+            let construct = if policy.process.exec == Exec::Never {
+                Construct::ExecNever
+            } else {
+                Construct::ExecProgram
+            };
+            // Every macOS program maps the system's libraries, which only a
+            // base allows when no `Exec` rule may exist: without one, no
+            // program could start (dyld aborts).
+            let outcome = if policy.base == Base::None {
+                Outcome::Unsupported
+            } else {
+                Outcome::Exact
+            };
+            ledger.outcome(construct, outcome, None, "");
+            allow.push((
+                Rule::new(
+                    Effect::Allow,
+                    ops(Access::Exec),
+                    vec![Filter::Extension(
+                        super::PROGRAM_EXTENSION_CLASS.to_string(),
+                    )],
+                ),
+                Decider::Setting("exec"),
+            ));
         }
     }
     // The run-marker block, last so no other rule overrides it: the run's
@@ -471,7 +498,20 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
         }
     }
     ledger.outcome(Construct::Hygiene, Outcome::Exact, None, "");
-    let base = |rules: Vec<Rule>| rules.into_iter().map(|r| (r, Decider::Base(policy.base)));
+    // Under `Never` and `Program` the base keeps reading and mapping its code
+    // but executes nothing: only the spawn's program runs.
+    let program_only = policy.process.exec.program_only();
+    let base = |rules: Vec<Rule>| {
+        rules
+            .into_iter()
+            .filter_map(move |mut r| {
+                if program_only {
+                    r.ops.retain(|op| op != "process-exec*");
+                }
+                (!r.ops.is_empty()).then_some((r, Decider::Base(policy.base)))
+            })
+            .collect::<Vec<_>>()
+    };
     match policy.base {
         Base::None => {}
         Base::V1 => {

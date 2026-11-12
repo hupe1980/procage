@@ -32,7 +32,7 @@ if let Some(remedy) = answer.remedy {
 | `write` | proven | proven | proven |
 | `exec` | proven | proven | proven |
 
-`read` is opening a file for reading, `write` opening an existing file for writing, `exec` executing a file. Any other operation answers `NotModelled`, and so does a rule the evaluator cannot read for the operation asked; neither is ever a guess.
+`read` is opening a file for reading, `write` opening an existing file for writing, `exec` executing a file. Under `Exec::Never` and `Exec::Program` the question is whether the running child may execute the file: every file answers denied, since each spawn allows only its own program, which is not known before the spawn. Any other operation answers `NotModelled`, and so does a rule the evaluator cannot read for the operation asked; neither is ever a guess.
 
 ## What an answer holds
 

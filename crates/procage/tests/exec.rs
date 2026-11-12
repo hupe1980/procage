@@ -60,6 +60,24 @@ fn options(_tier: &str) -> CageOptions {
     CageOptions::default().with_lower(LowerOptions::default())
 }
 
+/// [`options`], also accepting `construct`'s approximation.
+fn options_allowing(tier: &str, construct: procage::policy::Construct) -> CageOptions {
+    #[cfg(target_os = "linux")]
+    let (options, lower) = {
+        let t = if tier == "T1" { Tier::T1 } else { Tier::T2 };
+        (
+            CageOptions::default().with_tier(t),
+            LowerOptions::default().accept_spawn_snapshot(),
+        )
+    };
+    #[cfg(target_os = "macos")]
+    let (options, lower) = {
+        let _ = tier;
+        (CageOptions::default(), LowerOptions::default())
+    };
+    options.with_lower(lower.allow(construct))
+}
+
 /// On T2 a write rule reaches trust-handoff names, which only T1 can mask.
 #[cfg(target_os = "linux")]
 fn for_tier(mut p: Policy, tier: &str) -> Policy {
@@ -184,6 +202,11 @@ fn as_helper(role: &str) -> ! {
             cmd = Command::new("/usr/bin/env");
             cmd.env_clear().env("A", "1");
         }
+        "never" => {
+            p.process.exec = Exec::Never;
+            cmd = Command::new("/bin/bash");
+            cmd.args(["-c", &var("SCRIPT")]);
+        }
         "threads" => {
             std::thread::spawn(|| std::thread::sleep(Duration::from_secs(60)));
             cmd.args(["-c", "echo ok"]);
@@ -195,6 +218,9 @@ fn as_helper(role: &str) -> ! {
     let mut options = options(&tier);
     if var("REPORT") == "1" {
         options = options.with_violations();
+    }
+    if var("ALLOW") == "1" {
+        options = options_allowing(&tier, procage::policy::Construct::ExecNever);
     }
     let cage = Cage::with_options(&p, &options).unwrap_or_else(|e| panic!("{e}"));
     let err = if role == "session-shell" {
@@ -485,6 +511,34 @@ fn a_session_exec_from_a_group_leader_is_refused(tier: &str) {
     assert!(out.is_empty(), "{tier}: {out:?}");
 }
 
+/// `Cage::exec` under `Exec::Never`: on macOS the command runs and executes
+/// nothing else; on Linux no supervisor can count its exec, so the helper is
+/// refused (the gap `exec-never`) unless it accepts the approximation, and
+/// then Landlock alone keeps other programs out.
+fn exec_never_runs_the_command_and_nothing_else(tier: &str) {
+    let dir = scratch(&format!("never-{tier}"));
+    let script = "echo started; /bin/echo no 2>/dev/null || echo echo-refused";
+    let env = [("IN", dir.to_str().unwrap()), ("SCRIPT", script)];
+    let expected = ["started".to_string(), "echo-refused".to_string()];
+    if cfg!(target_os = "linux") {
+        let mut h = helper("never", tier, &env);
+        let out: Vec<String> = lines(&mut h).collect();
+        assert_eq!(h.wait().unwrap().code(), Some(126), "{tier}: {out:?}");
+        assert!(out.is_empty(), "{tier}: {out:?}");
+        let mut env = env.to_vec();
+        env.push(("ALLOW", "1"));
+        let mut h = helper("never", tier, &env);
+        let out: Vec<String> = lines(&mut h).collect();
+        assert!(h.wait().unwrap().success(), "{tier}: {out:?}");
+        assert_eq!(out, expected, "{tier}");
+    } else {
+        let mut h = helper("never", tier, &env);
+        let out: Vec<String> = lines(&mut h).collect();
+        assert!(h.wait().unwrap().success(), "{tier}: {out:?}");
+        assert_eq!(out, expected, "{tier}");
+    }
+}
+
 type Case = (&'static str, fn(&str));
 
 fn cases() -> Vec<Case> {
@@ -496,6 +550,10 @@ fn cases() -> Vec<Case> {
         ("a_threaded_helper_execs", a_threaded_helper_execs),
         ("the_tmpdir_grant_is_refused", the_tmpdir_grant_is_refused),
         ("a_missing_program_is_refused", a_missing_program_is_refused),
+        (
+            "exec_never_runs_the_command_and_nothing_else",
+            exec_never_runs_the_command_and_nothing_else,
+        ),
         (
             "a_session_exec_allows_groups_and_ends_by_session",
             a_session_exec_allows_groups_and_ends_by_session,

@@ -70,6 +70,8 @@ pub enum DeniedBy {
     /// Linux below Landlock ABI 3: truncation is refused everywhere, because
     /// Landlock cannot confine it on this kernel.
     OlderKernel,
+    /// Linux `Exec::Never`: an exec after the one that started the program.
+    Exec,
     /// The run's proxy refused the host (feature `proxy`): it is not on the
     /// allowlist, or resolves only to addresses that are not public.
     Allowlist,
@@ -98,6 +100,7 @@ impl DeniedBy {
             Some(DenyReason::Layer) => DeniedBy::Layer,
             Some(DenyReason::Lifetime) => DeniedBy::Lifetime,
             Some(DenyReason::OlderKernel) => DeniedBy::OlderKernel,
+            Some(DenyReason::Exec) => DeniedBy::Exec,
             Some(other) => DeniedBy::Unknown(other.code()),
         }
     }
@@ -116,6 +119,10 @@ impl fmt::Display for DeniedBy {
             ),
             DeniedBy::OlderKernel => f.write_str(
                 "refused because this kernel's Landlock cannot confine truncation (below ABI 3)",
+            ),
+            DeniedBy::Exec => f.write_str(
+                "refused because the run executes nothing after its program started \
+                 (Exec::Never; Exec::Program lets the program execute itself)",
             ),
             DeniedBy::Allowlist => f.write_str("refused by the proxy's allowlist"),
             DeniedBy::Unknown(code) => write!(f, "denied ({code})"),

@@ -78,6 +78,8 @@ fn native_number(call: &Syscall) -> Result<Option<u32>, ()> {
         Syscall::Bpf => SYS_bpf,
         Syscall::Clone => SYS_clone,
         Syscall::Clone3 => SYS_clone3,
+        Syscall::Execve => SYS_execve,
+        Syscall::Execveat => SYS_execveat,
         #[cfg(target_arch = "x86_64")]
         Syscall::Fork => SYS_fork,
         #[cfg(target_arch = "x86_64")]
@@ -152,9 +154,11 @@ const fn ret(k: u32) -> Insn {
 }
 
 /// The return value of a deny; with `notify`, an `EPERM` deny goes to the
-/// supervisor, which answers `EPERM` and records it.
+/// supervisor, which answers `EPERM` and records it. A `Supervise` rule
+/// always goes to the supervisor.
 fn verdict(action: Action, notify: bool) -> u32 {
     let errno = match action {
+        Action::Supervise => return libc::SECCOMP_RET_USER_NOTIF,
         Action::Eperm if notify => return libc::SECCOMP_RET_USER_NOTIF,
         Action::Eperm => libc::EPERM,
         Action::Enosys => libc::ENOSYS,

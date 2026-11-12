@@ -25,7 +25,7 @@ use std::process::{Command, Stdio};
 use procage::native::{Cage, CageOptions, Grants, SpawnError};
 use procage::policy::explain::{Answer, Decider, Decision, MODELLED, Op};
 use procage::policy::{
-    AbsPath, Access, Base, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Policy, presets,
+    AbsPath, Access, Base, Exec, FsRule, FsTarget, Grant, GrantName, HardDenyClass, Policy, presets,
 };
 use scratch::Scratch;
 
@@ -47,7 +47,8 @@ fn exe() -> PathBuf {
 }
 
 /// The caged child: reads `R path` and `W path` lines from stdin and prints
-/// the errno of opening each (0 for success).
+/// the errno of opening each (0 for success); `X path` executes the program
+/// from inside the cage (a forked child) and prints the errno of the exec.
 #[test]
 fn oracle_child() {
     if std::env::var_os("PROCAGE_ORACLE_CHILD").is_none() {
@@ -58,6 +59,19 @@ fn oracle_child() {
     for line in stdin.lock().lines() {
         let line = line.unwrap();
         let (op, path) = line.split_at(2);
+        if op == "X " {
+            let errno = match Command::new(path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+            {
+                Ok(_) => 0,
+                Err(e) => e.raw_os_error().unwrap_or(-1),
+            };
+            writeln!(out, "\nprocage-errno: {errno}").unwrap();
+            continue;
+        }
         let mut options = std::fs::OpenOptions::new();
         if op == "W " {
             options.write(true);
@@ -327,6 +341,17 @@ fn policies(lane: Lane, tree: &Tree) -> Vec<(String, Policy)> {
     ];
     out = out.into_iter().map(|(n, p)| (n, runnable(p))).collect();
     out.push(("rule kinds".into(), kinds(lane, tree)));
+    // The two program-only settings: the test binary is the program, and
+    // nothing else executes.
+    for (n, exec) in [("never", Exec::Never), ("program", Exec::Program)] {
+        for (v, base) in [("v1", Base::V1), ("v3", Base::V3)] {
+            let mut p = Policy::default();
+            p.base = base;
+            p.process.exec = exec;
+            p.process.fork = true;
+            out.push((format!("exec {n} {v}"), p));
+        }
+    }
     out
 }
 
@@ -448,7 +473,11 @@ fn open_all(cage: &Cage, grants: &Grants, questions: &[(Op, PathBuf)]) -> Vec<Ke
         .expect("spawn the oracle child");
     let mut input = String::new();
     for (op, path) in questions {
-        let tag = if *op == Op::Write { "W" } else { "R" };
+        let tag = match op {
+            Op::Write => "W",
+            Op::Exec => "X",
+            _ => "R",
+        };
         input.push_str(&format!("{tag} {}\n", path.display()));
     }
     let mut stdin = child.stdin.take().unwrap();
@@ -570,12 +599,29 @@ fn explain_agrees_with_the_kernel() {
                     kernel: k,
                 });
             }
-            for program in &tree.programs {
+            // Under `Exec::Never` and `Exec::Program` any program can be
+            // spawned (it is the run's program); the question is whether the
+            // running child can execute it, which the child answers.
+            let inside = if policy.process.exec.program_only() {
+                let execs: Vec<(Op, PathBuf)> = tree
+                    .programs
+                    .iter()
+                    .map(|p| (Op::Exec, p.clone()))
+                    .collect();
+                open_all(&cage, &grants, &execs)
+            } else {
+                Vec::new()
+            };
+            for (i, program) in tree.programs.iter().enumerate() {
                 let answer = cage.explain(Op::Exec, program, &grants).unwrap();
+                let kernel = match inside.get(i) {
+                    Some(k) => *k,
+                    None => exec(&cage, &grants, program),
+                };
                 asked.push(Asked {
                     question: format!("{lane} {name}: exec {}", program.display()),
                     answer,
-                    kernel: exec(&cage, &grants, program),
+                    kernel,
                 });
             }
             for a in &asked {

@@ -190,6 +190,7 @@ fn linux_keys(policy: &Policy, plan: &LinuxPlan) -> Vec<(Key, Decider)> {
             }
             RuleTarget::Grant(g) => PathSet::Grant(g.clone()),
             RuleTarget::ExpandGlob(g) => PathSet::Glob(g.clone()),
+            RuleTarget::Program => PathSet::Other("the spawned program".into()),
         };
         let ops = alloc::vec![format!("landlock {:#x}", rule.access.0)];
         let by = model.origin(&rule.target, AccessFs::NONE);

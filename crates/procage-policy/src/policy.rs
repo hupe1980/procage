@@ -122,6 +122,19 @@ pub enum Network {
 }
 
 /// Where the child may execute programs.
+///
+/// | Setting | The run may execute |
+/// |---|---|
+/// | [`Granted`](Exec::Granted) | what an `Exec` rule, grant or the base allows |
+/// | [`Any`](Exec::Any) | any file it can read |
+/// | [`Program`](Exec::Program) | its program, as often as it likes |
+/// | [`Never`](Exec::Never) | its program, once: nothing after the start |
+///
+/// Under `Program` and `Never` the base keeps its read and map rights but
+/// executes nothing, and no `Exec` rule or grant may exist; the spawned
+/// program, resolved as `execvp` finds it, is allowed for that spawn only.
+/// A script (`#!`) cannot be the program under either: start its
+/// interpreter as the program instead.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(
     feature = "serde",
@@ -129,13 +142,42 @@ pub enum Network {
     serde(rename_all = "kebab-case")
 )]
 pub enum Exec {
-    /// Only where an [`Access::Exec`] rule or grant allows it.
+    /// Only where an [`Access::Exec`] rule or grant (or the base) allows it.
     #[default]
     Granted,
     /// Anywhere the child can read.
     Any,
-    /// Nowhere (no `Exec` rule or grant may exist).
+    /// Only the program the run was started as, once: no process of the run
+    /// executes anything after the start. For programs that never start
+    /// others (a JIT engine's content process, a converter, an evaluator).
+    ///
+    /// - **Linux**: exact. The run's own exec is the only one the seccomp
+    ///   supervisor lets through; the program cannot execute itself or its
+    ///   ELF interpreter again. Where no supervisor can run (an enclosing
+    ///   seccomp filter already has a listener, or [`Cage::exec`]), the
+    ///   cage refuses with the gap `exec-never` unless it is accepted by
+    ///   name; Landlock alone then applies, as for [`Exec::Program`].
+    /// - **macOS**: the sandbox cannot count executions, so the program may
+    ///   execute itself again (and nothing else).
+    ///
+    /// [`Cage::exec`]: https://docs.rs/procage/latest/procage/native/struct.Cage.html#method.exec
     Never,
+    /// Only the program the run was started as, as often as it likes: for
+    /// programs that start copies of themselves (Python `multiprocessing`,
+    /// Node.js `child_process.fork`, `/proc/self/exe`).
+    ///
+    /// - **macOS**: exact.
+    /// - **Linux**: an approximation, accepted by name (construct
+    ///   `exec-program`): the program's ELF interpreter must stay
+    ///   executable, and it can start any ELF file the run can read.
+    Program,
+}
+
+impl Exec {
+    /// Whether the run may execute only its program (`Program` or `Never`).
+    pub fn program_only(self) -> bool {
+        matches!(self, Exec::Program | Exec::Never)
+    }
 }
 
 /// Which processes the child may signal.
@@ -522,7 +564,8 @@ pub struct Policy {
 /// A policy whose parts contradict each other.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PolicyError {
-    /// `Exec::Never` together with an `Exec` rule or grant.
+    /// `Exec::Never` or `Exec::Program` together with an `Exec` rule or
+    /// grant.
     ExecConflict,
     /// `Network::Proxy` with neither port set.
     EmptyProxy,
@@ -553,9 +596,10 @@ pub enum PolicyError {
 impl fmt::Display for PolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PolicyError::ExecConflict => {
-                f.write_str("exec is `never` but a rule or grant allows exec")
-            }
+            PolicyError::ExecConflict => f.write_str(
+                "exec is `never` or `program` (only the spawned program) but a rule or \
+                     grant allows exec: remove it, or use `granted`",
+            ),
             PolicyError::EmptyProxy => {
                 f.write_str("proxy network names neither an http nor a socks port")
             }
@@ -590,7 +634,7 @@ impl Policy {
         let mut errors = Vec::new();
         let grants_exec = self.grants.iter().any(|g| g.access == Access::Exec);
         let rules_exec = self.fs.iter().any(|r| r.access == Access::Exec);
-        if self.process.exec == Exec::Never && (grants_exec || rules_exec) {
+        if self.process.exec.program_only() && (grants_exec || rules_exec) {
             errors.push(PolicyError::ExecConflict);
         }
         match &self.net {

@@ -86,6 +86,7 @@ the option that would accept each gap, for example on Linux:
 ```text
 hd-secrets: new Cage(policy, { acceptSpawnSnapshot: true }) accepts it
 hd-trust-handoff: new Cage(policy, { relax: ["waive:trust-handoff"] }) accepts it
+exec-program: new Cage(policy, { allow: ["exec-program"] }) accepts it
 ```
 
 Nothing is accepted unless you pass it.

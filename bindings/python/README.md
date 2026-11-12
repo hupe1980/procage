@@ -61,6 +61,7 @@ each gap, for example on Linux:
 ```text
 hd-secrets: Cage(..., accept_spawn_snapshot=True) accepts it
 hd-trust-handoff: Cage(..., relax=["waive:trust-handoff"]) accepts it
+exec-program: Cage(..., allow=["exec-program"]) accepts it
 ```
 
 Nothing is accepted unless you pass it.

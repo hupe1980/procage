@@ -28,8 +28,8 @@ use procage::macos::{
 };
 use procage::policy::presets;
 use procage::policy::{
-    AbsPath, Access, Base, EnvPolicy, FsRule, FsTarget, Glob, Grant, GrantName, HardDenyClass,
-    Network, Policy, Port, Ports, Tty,
+    AbsPath, Access, Base, EnvPolicy, Exec, FsRule, FsTarget, Glob, Grant, GrantName,
+    HardDenyClass, Network, Policy, Port, Ports, Tty,
 };
 use procage::policy::{linux, seatbelt};
 
@@ -2311,4 +2311,92 @@ fn v3_shrinks_developer_tool_records() {
         "{runs:?} (bound {percent} %)"
     );
     let _ = std::fs::remove_dir_all(root);
+}
+
+// ---- Exec::Never and Exec::Program ----
+
+fn program_only(exec: Exec) -> Cage {
+    let mut p = Policy::default();
+    p.base = Base::V1;
+    p.process.exec = exec;
+    p.process.fork = true;
+    Cage::new(&p).unwrap()
+}
+
+/// The program starts under both settings, named by path or found in the
+/// default search path as `execvp` finds it.
+#[test]
+fn program_only_settings_start_the_program() {
+    for exec in [Exec::Never, Exec::Program] {
+        let cage = program_only(exec);
+        for program in ["/bin/echo", "echo"] {
+            let mut c = command(program, &[]);
+            c.arg("started");
+            let out = run(&cage, c, &Grants::new());
+            assert!(out.status.success(), "{exec:?} {program}: {out:?}");
+            assert_eq!(out.stdout, b"started\n", "{exec:?} {program}");
+        }
+    }
+}
+
+/// Without a base no macOS program could map the system's code: the cage
+/// says so instead of every program aborting.
+#[test]
+fn program_only_settings_need_a_base() {
+    let mut p = Policy::default();
+    p.process.exec = Exec::Never;
+    let err = Cage::new(&p).map(|_| ()).unwrap_err();
+    assert!(err.to_string().contains("use Base::V1 or later"), "{err}");
+}
+
+/// A script would make its interpreter executable: refused before forking,
+/// with the fix in the message.
+#[test]
+fn program_only_settings_refuse_a_script() {
+    let dir = scratch("script");
+    let script = dir.join("s.sh");
+    std::fs::write(&script, "#!/bin/bash\necho ran\n").unwrap();
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    for exec in [Exec::Never, Exec::Program] {
+        let cage = program_only(exec);
+        let err = cage
+            .spawn(&mut command(script.to_str().unwrap(), &[]), &Grants::new())
+            .map(|_| ())
+            .unwrap_err();
+        assert!(matches!(err, SpawnError::Script { .. }), "{exec:?}: {err}");
+        assert!(err.to_string().contains("start its interpreter"), "{err}");
+    }
+}
+
+/// `Exec::Program`: the program executes itself again (as Python's
+/// `multiprocessing` and `child_process.fork` do), and nothing else.
+#[test]
+fn program_reexecutes_itself_and_nothing_else() {
+    let cage = program_only(Exec::Program);
+    let mut c = command("/bin/bash", &[]);
+    c.args([
+        "-c",
+        "/bin/bash -c 'echo copy'; /bin/echo no 2>/dev/null || echo echo-refused",
+    ]);
+    let out = run(&cage, c, &Grants::new());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "copy\necho-refused\n");
+}
+
+/// The allowance is the spawn's own: while one run of a cage executes
+/// zsh, another run of the same cage cannot.
+#[test]
+fn the_program_allowance_is_per_spawn() {
+    let cage = program_only(Exec::Program);
+    let mut zsh = command("/bin/zsh", &[]);
+    zsh.args(["-c", "while :; do :; done"]);
+    let mut other = cage.spawn(&mut zsh, &Grants::new()).unwrap();
+    let mut c = command("/bin/bash", &[]);
+    c.args([
+        "-c",
+        "/bin/zsh -c 'echo ran' 2>/dev/null || echo zsh-refused",
+    ]);
+    let out = run(&cage, c, &Grants::new());
+    let _ = other.kill();
+    let _ = other.wait();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "zsh-refused\n");
 }

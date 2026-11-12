@@ -119,6 +119,10 @@ fn contradictions_are_reported_together() {
         panic!("expected invalid");
     };
     assert!(errors.contains(&PolicyError::ExecConflict));
+    let mut program = Policy::default();
+    program.process.exec = Exec::Program;
+    program.grants.push(grant("tool", Access::Exec));
+    assert_eq!(program.validate(), Err(vec![PolicyError::ExecConflict]));
     assert!(errors.contains(&PolicyError::EmptyProxy));
     assert!(errors.contains(&PolicyError::GrantAccess {
         name: GrantName::new("bad").unwrap()

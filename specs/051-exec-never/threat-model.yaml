@@ -1,0 +1,1032 @@
+otmVersion: 0.2.0
+project:
+  id: 051-exec-never
+  name: Exec::Never and Exec::Program — the child executes only its program
+threatspec:
+  actors:
+  - id: actor.caged-code
+    name: Arbitrary code in the caged child and its descendants (untrusted JIT code, an agent's commands)
+    trust: untrusted
+  - id: actor.harness
+    name: The caller that builds the policy, spawns runs and reads explain and receipts
+    trust: trusted
+  dispositions:
+  - disposition: not-applicable
+    reason: no authentication surface; the change is to exec rights and a per-spawn allowance
+    technique: credential-theft
+  - disposition: not-applicable
+    reason: no authentication or network boundary
+    technique: identity-spoofing
+  - disposition: not-applicable
+    reason: no data in transit
+    technique: data-tampering-in-transit
+  - disposition: not-applicable
+    reason: no data is stored; the program file is the caller's input, covered by threat.program-path-replaced
+    technique: data-tampering-at-rest
+  - disposition: no-threat-detected
+    reason: 'checked component.receipt-explain: the receipt gains the program path the caller itself chose; nothing
+      of the child reaches it'
+    technique: sensitive-data-exposure
+  - disposition: not-applicable
+    reason: single caller; separation between runs of one caller is modelled as threat.allowance-crosses-runs
+    technique: cross-tenant-leak
+  - disposition: no-threat-detected
+    reason: 'checked component.lowering: an Exec rule or grant under Exec::Never stays a PolicyError (ExecConflict);
+      the allowance is bound by procage, not by policy'
+    technique: privilege-escalation-via-config
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-direct
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: prompt-injection-indirect
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: sensitive-information-disclosure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: excessive-agency
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: training-data-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unbounded-consumption
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: misinformation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: hidden-context-exposure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: vector-embedding-weakness
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: improper-output-handling
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: model-extraction
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: goal-hijack
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: tool-misuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: identity-privilege-abuse
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: agentic-supply-chain
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: unexpected-code-execution
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: memory-context-poisoning
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: insecure-inter-agent-communication
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: cascading-failure
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: human-agent-trust-exploitation
+  - disposition: not-applicable
+    reason: procage is a library that calls no model and runs no agent; LLM-written code is the adversary inside
+      the child, modelled under STRIDE
+    technique: rogue-agent
+  exclusions: []
+  extends: null
+  generated: '2026-11-12T20:02:55Z'
+  profiles:
+  - stride
+  - llm
+  - agent
+  sources:
+  - path: plan.md
+    sha256: 2b1f76da80e7b3d293bb2f086075a660102d0f849f68e09d0436a12741b74c9e
+  - path: spec.md
+    sha256: 1bc642bbae63b989a75823da4578e89f458bb2f07cec23326f16e70c60807da8
+  surfaces:
+  - external-input
+  - authorization
+  version: '0.1'
+trustZones:
+- id: tz.cage
+  name: The caged child and its descendants
+  risk:
+    trustRating: 5
+- id: tz.harness
+  name: The caller process, where policies are lowered and spawns prepared
+  risk:
+    trustRating: 90
+- id: tz.kernel
+  name: Seatbelt, Landlock and the exec path of the kernel
+  risk:
+    trustRating: 95
+assets:
+- id: asset.exec-boundary
+  name: 'What a run may execute: under Exec::Never, only its program'
+  risk:
+    availability: 30
+    confidentiality: 40
+    integrity: 85
+  attributes:
+    type: capability
+    source: spec.md#Context
+    classification: internal
+- id: asset.harness
+  name: The caller process that prepares the spawn
+  risk:
+    availability: 60
+    confidentiality: 60
+    integrity: 80
+  attributes:
+    type: capability
+    source: spec.md#FR-003
+    classification: internal
+- id: asset.reports
+  name: The truth of explain, the lowering table and the receipt about exec
+  risk:
+    availability: 20
+    confidentiality: 10
+    integrity: 80
+  attributes:
+    type: log
+    source: spec.md#US3
+    classification: internal
+components:
+- id: component.bindings
+  name: Python and Node.js bindings
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#US3
+- id: component.exec-supervisor
+  name: 'Linux one-exec supervisor: seccomp notification for execve and execveat, CONTINUE for the run first exec
+    only'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#Clarifications
+- id: component.lowering
+  name: Exec::Never lowering (base exec rights removed, read and map kept)
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-002
+- id: component.program-allowance
+  name: 'Per-spawn program allowance: resolve as execvp, script check, ELF interpreter, bind'
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-003
+- id: component.receipt-explain
+  name: explain, the lowering table and the receipt
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: spec.md#FR-007
+- id: component.spawn-handshake
+  name: Supervisor started before spawn; handover of listener and exec sentinel; spawn-done flag
+  type: library
+  parent:
+    trustZone: tz.harness
+  attributes:
+    source: plan.md#Design
+dataflows:
+- id: flow.exec-calls
+  name: Processes of the run call execve and execveat
+  source: actor.caged-code
+  destination: tz.kernel
+  assets:
+  - asset.exec-boundary
+  attributes:
+    crosses:
+    - tz.cage
+    - tz.kernel
+- id: flow.program-file
+  name: The spawn reads the program file (resolution, first bytes, ELF program headers)
+  source: component.program-allowance
+  destination: tz.cage
+  assets:
+  - asset.harness
+  - asset.exec-boundary
+  attributes:
+    crosses:
+    - tz.harness
+- id: flow.report
+  name: The caller reads explain and the receipt
+  source: component.receipt-explain
+  destination: actor.harness
+  assets:
+  - asset.reports
+  attributes:
+    crosses: []
+threats:
+- id: threat.allowance-crosses-runs
+  name: The program allowance of one spawn reaches another run of the same cage (shared profile or ruleset), so
+    that run may execute a program it was not started as
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-863
+  risk:
+    impact: 60
+    likelihood: 30
+  attributes:
+    source: spec.md#FR-003
+    assets:
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.program-allowance
+    - flow.exec-calls
+    profile: stride
+    severity: low
+    technique: broken-access-control
+- id: threat.base-exec-under-never
+  name: Caged code executes system programs under Exec::Never or Exec::Program because the base still allows exec
+    in the system code directories
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-863
+  risk:
+    impact: 70
+    likelihood: 90
+  attributes:
+    source: spec.md#Context
+    assets:
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.exec-calls
+    - component.lowering
+    profile: stride
+    severity: critical
+    technique: broken-access-control
+- id: threat.first-exec-claimed
+  name: Caged code gets the one allowed exec for itself (its own execve answered CONTINUE), or races the path of
+    the allowed exec
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-367
+  risk:
+    impact: 70
+    likelihood: 20
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.exec-supervisor
+    - flow.exec-calls
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.hostile-program-header
+  name: A program file written by caged code (an earlier run) carries a malformed or hostile ELF header that crashes
+    the caller or names an arbitrary interpreter to allow
+  categories:
+  - Tampering
+  - Denial of Service
+  cwes:
+  - CWE-20
+  risk:
+    impact: 50
+    likelihood: 30
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.harness
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - flow.program-file
+    - component.program-allowance
+    profile: stride
+    severity: low
+    technique: injection
+- id: threat.interpreter-route
+  name: On Linux caged code executes the allowed ELF interpreter directly (ld.so <file>) or the program again, and
+    so starts any readable ELF after the run has started
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-863
+  risk:
+    impact: 60
+    likelihood: 70
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.program-allowance
+    - flow.exec-calls
+    profile: stride
+    severity: high
+    technique: broken-access-control
+- id: threat.macos-reexec
+  name: Under Exec::Never on macOS the program executes itself again (with arguments of the caged code), since Seatbelt
+    cannot count executions
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-863
+  risk:
+    impact: 20
+    likelihood: 50
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.exec-boundary
+    status: accepted
+    actor: actor.caged-code
+    elements:
+    - component.lowering
+    - flow.exec-calls
+    profile: stride
+    severity: low
+    technique: broken-access-control
+- id: threat.program-loader-route
+  name: Under Exec::Program on Linux caged code executes the allowed ELF interpreter directly and starts any readable
+    ELF, while the caller believes only the program can run
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-863
+  risk:
+    impact: 60
+    likelihood: 60
+  attributes:
+    source: spec.md#Clarifications
+    assets:
+    - asset.exec-boundary
+    - asset.reports
+    status: mitigated
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.lowering
+    - flow.exec-calls
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.program-path-replaced
+  name: On macOS caged code with write access to the program path puts another file there and re-executes it under
+    the path-bound allowance (on Linux the one-exec rule refuses any second exec)
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-367
+  risk:
+    impact: 30
+    likelihood: 40
+  attributes:
+    source: spec.md#Edge-Cases
+    assets:
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.program-allowance
+    - flow.exec-calls
+    profile: stride
+    severity: low
+    technique: broken-access-control
+- id: threat.report-disagrees
+  name: explain and the lowering table report Exec::Never as exact while the kernel allows exec, so the caller trusts
+    a boundary that is not drawn
+  categories:
+  - Repudiation
+  cwes:
+  - CWE-1068
+  risk:
+    impact: 60
+    likelihood: 80
+  attributes:
+    source: spec.md#US3
+    assets:
+    - asset.reports
+    status: mitigated
+    actor: actor.harness
+    elements:
+    - component.receipt-explain
+    - flow.report
+    - component.bindings
+    profile: stride
+    severity: high
+    technique: missing-audit-trail
+- id: threat.script-interpreter
+  name: A script program makes its interpreter executable, so the child can run any script it can read under Exec::Never
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-863
+  risk:
+    impact: 60
+    likelihood: 50
+  attributes:
+    source: spec.md#US2
+    assets:
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    elements:
+    - component.program-allowance
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.sentinel-leak
+  name: The exec sentinel write end reaches the program or a descendant (not closed on exec), so the supervisor
+    keeps answering CONTINUE after the program started
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-403
+  risk:
+    impact: 80
+    likelihood: 20
+  attributes:
+    source: plan.md#Child-call-sequence
+    assets:
+    - asset.exec-boundary
+    status: mitigated
+    actor: actor.caged-code
+    constitution: V. Hygiene by default
+    elements:
+    - component.spawn-handshake
+    - component.exec-supervisor
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+- id: threat.supervisor-late
+  name: The child first exec notifies before any supervisor serves the listener, so the spawn hangs (std waits for
+    the exec) or a later answer is misattributed
+  categories:
+  - Denial of Service
+  cwes:
+  - CWE-833
+  risk:
+    impact: 50
+    likelihood: 60
+  attributes:
+    source: research.md#R3
+    assets:
+    - asset.harness
+    status: mitigated
+    actor: actor.harness
+    elements:
+    - component.spawn-handshake
+    - component.exec-supervisor
+    profile: stride
+    severity: medium
+    technique: resource-exhaustion
+- id: threat.supervisor-unavailable
+  name: Where the one-exec supervisor cannot be installed (an outer seccomp listener, Cage::exec), the run silently
+    falls back to Landlock alone and the loader route and re-execution reopen
+  categories:
+  - Elevation of Privilege
+  cwes:
+  - CWE-636
+  risk:
+    impact: 60
+    likelihood: 40
+  attributes:
+    source: spec.md#FR-001a
+    assets:
+    - asset.exec-boundary
+    - asset.reports
+    status: mitigated
+    actor: actor.caged-code
+    constitution: I. Fail closed, never silently weaker
+    elements:
+    - component.exec-supervisor
+    - component.receipt-explain
+    profile: stride
+    severity: medium
+    technique: broken-access-control
+mitigations:
+- id: mitigation.allowance-per-spawn
+  name: The allowance is bound per spawn, like a grant, never compiled into the cage shared by its runs; on Linux
+    it is opened by descriptor and stays with the inode that was checked
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.allowance-crosses-runs
+    - threat.program-path-replaced
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-002
+    touchpoints:
+    - crates/procage/src/unix.rs
+    - crates/procage/src/macos/spawn.rs
+    - crates/procage/src/linux/spawn.rs
+    - crates/procage-policy/src/linux.rs
+- id: mitigation.bounded-header-parse
+  name: The ELF header is read with fixed bounds and no panics; the interpreter must be an absolute path to an existing
+    regular file, else the spawn is refused
+  riskReduction: 80
+  attributes:
+    threats:
+    - threat.hostile-program-header
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-006
+    touchpoints:
+    - crates/procage-policy/src/elf.rs
+    - crates/procage-policy/fuzz/fuzz_targets/elf.rs
+    - crates/procage/src/unix.rs
+- id: mitigation.kernel-checked-reports
+  name: explain answers exec under Exec::Never from the same allowance, checked by caged tests; the lowering table
+    and the receipt state the program allowance
+  riskReduction: 85
+  attributes:
+    threats:
+    - threat.report-disagrees
+    status: verified
+    kind: detective
+    requirements:
+    - SR-004
+    - SR-005
+    touchpoints:
+    - crates/procage/tests/oracle.rs
+    - crates/procage-policy/src/lowering.md
+    - crates/procage-policy/tests/lowering_table.rs
+    - bindings/python/src/lib.rs
+    - bindings/nodejs/src/lib.rs
+- id: mitigation.never-strips-base-exec
+  name: Under Exec::Never and Exec::Program the lowering drops execute rights from every base rule (keeping read
+    and map) and allows exec only through the per-spawn program allowance
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.base-exec-under-never
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-001
+    touchpoints:
+    - crates/procage-policy/src/lower/macos.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage/tests/escape_macos.rs
+    - crates/procage/tests/escape_linux.rs
+- id: mitigation.no-supervisor-is-a-gap
+  name: Exec::Never without a supervisor and Exec::Program on Linux are typed gaps (outcome Approximated); only
+    acceptance by name proceeds, listed in the receipt; the gap message names the accepting call
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.supervisor-unavailable
+    - threat.program-loader-route
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-008
+    touchpoints:
+    - crates/procage/src/linux/probe.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage-policy/src/lower/linux.rs
+    - crates/procage-policy/src/lower/mod.rs
+- id: mitigation.one-exec-supervisor
+  name: On Linux execve and execveat raise a seccomp notification; the parent supervisor answers CONTINUE once,
+    for the exec procage child code issues before any caller code runs, and EPERM for every later one, of any process
+    of the run
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.interpreter-route
+    - threat.first-exec-claimed
+    - threat.program-path-replaced
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-007
+    touchpoints:
+    - crates/procage/src/linux/supervisor.rs
+    - crates/procage/src/linux/sys.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage-policy/src/lower/linux.rs
+- id: mitigation.refuse-scripts
+  name: A program that starts with '#!' is refused under Exec::Never before forking
+  riskReduction: 95
+  attributes:
+    threats:
+    - threat.script-interpreter
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-003
+    touchpoints:
+    - crates/procage/src/unix.rs
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/macos/mod.rs
+- id: mitigation.supervisor-before-spawn
+  name: The supervisor thread starts before command.spawn and waits for the handover until the child sends it or
+    the parent marks the spawn done; the sentinel is created in the child with O_CLOEXEC after mark_fds and its
+    read end closed there
+  riskReduction: 90
+  attributes:
+    threats:
+    - threat.supervisor-late
+    - threat.sentinel-leak
+    status: verified
+    kind: preventive
+    requirements:
+    - SR-009
+    touchpoints:
+    - crates/procage/src/linux/mod.rs
+    - crates/procage/src/linux/supervisor.rs
+    - crates/procage/src/linux/sys.rs
+requirements:
+- id: SR-001
+  statement: Under Exec::Never and Exec::Program no process of the run MUST be able to execute any file other than
+    its program (and, on Linux, that program ELF interpreter), whatever the base, on macOS, T1 and T2.
+  priority: P1
+  mitigations:
+  - mitigation.never-strips-base-exec
+  acceptance:
+  - given: Base V1, V2 or V3 with Exec::Never or Exec::Program and fork, on macOS, T1 and T2
+    then: every execution is refused, while the same probes under Exec::Granted run
+    when: the caged shell and a descendant it forks execute /bin/echo, /usr/bin/env and /bin/sh
+  - given: Base::None with Exec::Never and read access to what the program loads
+    then: it runs and exits with its own status
+    when: the program is spawned
+  - given: Exec::Never on T1 and T2 and a dynamically linked program
+    then: both are refused
+    when: it executes its ELF interpreter directly (ld.so /bin/echo) or executes itself again
+  tasks: []
+- id: SR-002
+  statement: The program allowance MUST hold for its own spawn only and MUST NOT let another run of the same cage
+    execute that program.
+  priority: P1
+  mitigations:
+  - mitigation.allowance-per-spawn
+  acceptance:
+  - given: one cage under Exec::Never and two spawns of different programs A and B
+    then: it is refused
+    when: the run of A tries to execute B
+  - given: Exec::Program on Linux and a program in a writable tree
+    then: the exec is refused (the rule holds the original inode)
+    when: the program replaces its own file by rename and executes the path again
+  tasks: []
+- id: SR-003
+  statement: Under Exec::Never and Exec::Program a program that starts with '#!' MUST be refused before forking
+    with a typed error.
+  priority: P1
+  mitigations:
+  - mitigation.refuse-scripts
+  acceptance:
+  - given: Exec::Never and an executable shell script as the program
+    then: the call fails before forking with an error naming the script
+    when: it is spawned or passed to Cage::exec
+  tasks: []
+- id: SR-004
+  statement: explain MUST answer for execution under Exec::Never and Exec::Program as the kernel decides.
+  priority: P1
+  mitigations:
+  - mitigation.kernel-checked-reports
+  acceptance:
+  - given: Exec::Never with a base
+    then: both say denied
+    when: explain asks whether /bin/echo may be executed and a caged shell tries it
+  tasks: []
+- id: SR-005
+  statement: The lowering table and the Exec docs MUST state each setting per platform (exact, approximated, and
+    the macOS re-execution under Exec::Never), and an accepted approximation MUST be listed in the receipt.
+  priority: P1
+  mitigations:
+  - mitigation.kernel-checked-reports
+  acceptance:
+  - given: the lowering table
+    then: exec-never and exec-program match their outcomes
+    when: the table test compares it with the lowering on every target
+  - given: an accepted exec-program approximation on Linux
+    then: its approximations list exec-program
+    when: the run receipt is read
+  tasks: []
+- id: SR-006
+  statement: Reading the program header MUST be bounded and MUST NOT panic on any input; an interpreter that is
+    not an absolute path to an existing regular file MUST fail the spawn.
+  priority: P2
+  mitigations:
+  - mitigation.bounded-header-parse
+  acceptance:
+  - given: arbitrary bytes as the program file
+    then: it returns a value or a typed error, never panics, and reads no more than its bound
+    when: the header reader runs (fuzz target)
+  - given: an ELF whose interpreter is relative, missing or a directory
+    then: the spawn fails before forking with a typed error
+    when: it is spawned under Exec::Never
+  tasks: []
+- id: SR-007
+  statement: On Linux under Exec::Never exactly one exec MUST succeed per run, the one procage issues to start the
+    program; every later execve and execveat of any process of the run MUST be refused.
+  priority: P1
+  mitigations:
+  - mitigation.one-exec-supervisor
+  acceptance:
+  - given: Exec::Never on T1 and T2
+    then: every call fails with EPERM and the program had started
+    when: the program, after it started, executes itself, its interpreter and /bin/echo, and a forked descendant
+      does the same
+  - given: Exec::Never with violation reporting on
+    then: the refusal is reported as a violation
+    when: the program executes /bin/echo
+  tasks: []
+- id: SR-008
+  statement: On Linux, Exec::Never where the one-exec supervisor cannot be installed and Exec::Program MUST fail
+    as typed gaps unless the caller accepted the approximation by name; the gap message MUST name the accepting
+    call.
+  priority: P1
+  mitigations:
+  - mitigation.no-supervisor-is-a-gap
+  acceptance:
+  - given: Exec::Never and Cage::exec on Linux
+    then: it fails before the cage is applied with the gap named
+    when: it is called without accepting the approximation
+  - given: an outer seccomp listener (simulated) and Exec::Never
+    then: it fails with the gap; with the approximation accepted it runs and its receipt names it
+    when: a run is spawned
+  - given: Exec::Program on Linux
+    then: it fails with a gap whose message names the call that accepts it
+    when: the cage is created without accepting exec-program
+  tasks: []
+- id: SR-009
+  statement: A spawn under Exec::Never on Linux MUST NOT block on its own exec, and the exec sentinel MUST NOT reach
+    the program or any descendant.
+  priority: P1
+  mitigations:
+  - mitigation.supervisor-before-spawn
+  acceptance:
+  - given: Exec::Never on T1 and T2 with and without violation reporting, from a parent with 8 threads spawning
+      concurrently
+    then: every spawn returns and every program runs
+    when: 100 programs are spawned
+  - given: Exec::Never
+    then: only stdio and declared descriptors are open, and an exec it tries is refused
+    when: the program lists its open descriptors
+  tasks: []
+verification:
+- id: verification.sr-001.2026-11-12
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r38_only_the_program_executes, crates/procage/tests/escape_linux.rs::r38_only_the_program_executes,
+    crates/procage/tests/spawn_linux.rs::program_only_settings_start_the_program, crates/procage/tests/spawn_macos.rs::program_only_settings_start_the_program
+  result: pass
+  verdict: verified
+  justification: Bases V1-V3 with Exec::Never and Exec::Program and fork; a forked bash executes /bin/echo, /usr/bin/env
+    and /bin/sh and each is refused (EPERM or EACCES), while Exec::Granted runs them, on macOS, T1, T2 and T1 with
+    reporting. The program starts under Base::None on Linux and Base::V1 on macOS (macOS Base::None is refused by
+    design, spec US2). The interpreter and self routes are SR-007's canary. Passed 2026-11-12 (macOS 26.6.2, Linux
+    7.0.14).
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-001.2026-11-12-2
+  requirement: SR-001
+  method: test
+  evidence: crates/procage/tests/escape_macos.rs::r38_only_the_program_executes, crates/procage/tests/escape_linux.rs::r38_only_the_program_executes,
+    crates/procage/tests/spawn_linux.rs::program_only_settings_start_the_program, crates/procage/tests/spawn_macos.rs::program_only_settings_start_the_program
+  result: pass
+  verdict: verified
+  justification: Bases V1-V3 with Exec::Never and Exec::Program and fork; a forked bash executes /bin/echo, /usr/bin/env
+    and /bin/sh and each is refused (EPERM or EACCES), while Exec::Granted runs them, on macOS, T1, T2 and T1 with
+    reporting. The program starts under Base::None on Linux and Base::V1 on macOS (macOS Base::None is refused by
+    design, spec US2). The interpreter and self routes are SR-007's canary. Passed 2026-11-12 (macOS 26.6.2, Linux
+    7.0.14).
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-002.2026-11-12
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::the_program_allowance_is_per_spawn, crates/procage/tests/spawn_linux.rs::the_program_allowance_is_per_spawn_and_per_file
+  result: pass
+  verdict: verified
+  justification: Under Exec::Program, while one run of a cage executes zsh (macOS) or sh (Linux), a bash run of
+    the same cage cannot execute it; on Linux a program renamed over by another file cannot execute its path again
+    (inode-bound rule). Passed on macOS, T1 and T2.
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-002.2026-11-12-2
+  requirement: SR-002
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::the_program_allowance_is_per_spawn, crates/procage/tests/spawn_linux.rs::the_program_allowance_is_per_spawn_and_per_file
+  result: pass
+  verdict: verified
+  justification: Under Exec::Program, while one run of a cage executes zsh (macOS) or sh (Linux), a bash run of
+    the same cage cannot execute it; on Linux a program renamed over by another file cannot execute its path again
+    (inode-bound rule). Passed on macOS, T1 and T2.
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-003.2026-11-12
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::program_only_settings_refuse_a_script, crates/procage/tests/spawn_linux.rs::program_only_settings_refuse_scripts_and_bad_interpreters
+  result: pass
+  verdict: verified
+  justification: An executable
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-003.2026-11-12-2
+  requirement: SR-003
+  method: test
+  evidence: crates/procage/tests/spawn_macos.rs::program_only_settings_refuse_a_script, crates/procage/tests/spawn_linux.rs::program_only_settings_refuse_scripts_and_bad_interpreters
+  result: pass
+  verdict: verified
+  justification: An executable
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-004.2026-11-12
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/oracle.rs::explain_agrees_with_the_kernel
+  result: pass
+  verdict: verified
+  justification: The oracle adds exec never/program with bases V1 and V3 and asks every tree program for exec; the
+    running caged child executes each one (X probe) and explain agrees with the kernel on macOS (1,278 questions
+    per policy), T1 and T2 (1,277).
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-004.2026-11-12-2
+  requirement: SR-004
+  method: test
+  evidence: crates/procage/tests/oracle.rs::explain_agrees_with_the_kernel
+  result: pass
+  verdict: verified
+  justification: The oracle adds exec never/program with bases V1 and V3 and asks every tree program for exec; the
+    running caged child executes each one (X probe) and explain agrees with the kernel on macOS (1,278 questions
+    per policy), T1 and T2 (1,277).
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-005.2026-11-12
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-policy/tests/lowering_table.rs::every_row_matches_the_lowering, crates/procage/tests/spawn_linux.rs::program_reexecutes_itself_and_nothing_else,
+    crates/procage/tests/spawn_linux.rs::exec_never_without_a_listener_is_a_gap
+  result: pass
+  verdict: verified
+  justification: The table rows exec-never and exec-program are checked against the lowering on every target and
+    ABI; accepted exec-program and exec-never approximations appear in the run receipt's approximations.
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-005.2026-11-12-2
+  requirement: SR-005
+  method: test
+  evidence: crates/procage-policy/tests/lowering_table.rs::every_row_matches_the_lowering, crates/procage/tests/spawn_linux.rs::program_reexecutes_itself_and_nothing_else,
+    crates/procage/tests/spawn_linux.rs::exec_never_without_a_listener_is_a_gap
+  result: pass
+  verdict: verified
+  justification: The table rows exec-never and exec-program are checked against the lowering on every target and
+    ABI; accepted exec-program and exec-never approximations appear in the run receipt's approximations.
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-006.2026-11-12
+  requirement: SR-006
+  method: test
+  evidence: crates/procage-policy/src/elf.rs::tests::every_truncation_is_an_error_not_a_panic, crates/procage-policy/src/elf.rs::tests::bounds_hold,
+    crates/procage-policy/fuzz/fuzz_targets/elf.rs, crates/procage/tests/spawn_linux.rs::program_only_settings_refuse_scripts_and_bad_interpreters
+  result: pass
+  verdict: verified
+  justification: Every truncation is an error, header counts and path length are bounded, the fuzz target ran 40,426,256
+    inputs in 301 s without a panic, and an ELF with a relative interpreter fails with SpawnError::Interpreter before
+    forking.
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-006.2026-11-12-2
+  requirement: SR-006
+  method: test
+  evidence: crates/procage-policy/src/elf.rs::tests::every_truncation_is_an_error_not_a_panic, crates/procage-policy/src/elf.rs::tests::bounds_hold,
+    crates/procage-policy/fuzz/fuzz_targets/elf.rs, crates/procage/tests/spawn_linux.rs::program_only_settings_refuse_scripts_and_bad_interpreters
+  result: pass
+  verdict: verified
+  justification: Every truncation is an error, header counts and path length are bounded, the fuzz target ran 40,426,256
+    inputs in 301 s without a panic, and an ELF with a relative interpreter fails with SpawnError::Interpreter before
+    forking.
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-007.2026-11-12
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r38_never_refuses_every_exec_after_the_first, crates/procage/tests/spawn_linux.rs::a_refused_exec_is_reported
+  result: pass
+  verdict: verified
+  justification: Under Exec::Never on T1 and T2 the started program's exec of itself, of its ELF interpreter loading
+    /bin/echo, and its own exec replacement all fail with EPERM; with reporting the refused execve is one violation
+    with DeniedBy::Exec and the program had started.
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-007.2026-11-12-2
+  requirement: SR-007
+  method: test
+  evidence: crates/procage/tests/escape_linux.rs::r38_never_refuses_every_exec_after_the_first, crates/procage/tests/spawn_linux.rs::a_refused_exec_is_reported
+  result: pass
+  verdict: verified
+  justification: Under Exec::Never on T1 and T2 the started program's exec of itself, of its ELF interpreter loading
+    /bin/echo, and its own exec replacement all fail with EPERM; with reporting the refused execve is one violation
+    with DeniedBy::Exec and the program had started.
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-008.2026-11-12
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/exec.rs::exec_never_runs_the_command_and_nothing_else, crates/procage/tests/spawn_linux.rs::exec_never_without_a_listener_is_a_gap,
+    crates/procage/tests/spawn_linux.rs::program_reexecutes_itself_and_nothing_else
+  result: pass
+  verdict: verified
+  justification: Cage::exec under Exec::Never on Linux fails before anything is applied with the gap; accepted,
+    it runs and other programs are refused. With an outer listener the cage is a gap naming allow(Construct::ExecNever);
+    accepted it runs and the receipt lists it. Exec::Program's gap names allow=["exec-program"].
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-008.2026-11-12-2
+  requirement: SR-008
+  method: test
+  evidence: crates/procage/tests/exec.rs::exec_never_runs_the_command_and_nothing_else, crates/procage/tests/spawn_linux.rs::exec_never_without_a_listener_is_a_gap,
+    crates/procage/tests/spawn_linux.rs::program_reexecutes_itself_and_nothing_else
+  result: pass
+  verdict: verified
+  justification: Cage::exec under Exec::Never on Linux fails before anything is applied with the gap; accepted,
+    it runs and other programs are refused. With an outer listener the cage is a gap naming allow(Construct::ExecNever);
+    accepted it runs and the receipt lists it. Exec::Program's gap names allow=["exec-program"].
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+- id: verification.sr-009.2026-11-12
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::exec_never_spawns_from_many_threads, crates/procage/tests/escape_linux.rs::r38_the_program_holds_no_supervisor_descriptor
+  result: pass
+  verdict: verified
+  justification: 8 threads spawn 12 programs each under Exec::Never, without and with reporting, and every spawn
+    returns and runs; the started program holds no descriptor beyond stdio.
+  verified_at: '2026-11-12T20:02:01Z'
+  commit: 9d48fc7
+- id: verification.sr-009.2026-11-12-2
+  requirement: SR-009
+  method: test
+  evidence: crates/procage/tests/spawn_linux.rs::exec_never_spawns_from_many_threads, crates/procage/tests/escape_linux.rs::r38_the_program_holds_no_supervisor_descriptor
+  result: pass
+  verdict: verified
+  justification: 8 threads spawn 12 programs each under Exec::Never, without and with reporting, and every spawn
+    returns and runs; the started program holds no descriptor beyond stdio.
+  verified_at: '2026-11-12T20:02:55Z'
+  commit: 9d48fc7
+decisions:
+- id: decision.macos-path-replaced
+  threat: threat.program-path-replaced
+  status: accepted
+  owner: hupe1980
+  rationale: 'macOS extension tokens are path-bound; a replaced program in a writable tree runs no more than the
+    child already can. Same contract as decision.macos-reexec (clarification 2026-11-12: UX and DX first).'
+  expires: '2027-05-11'
+- id: decision.macos-reexec
+  threat: threat.macos-reexec
+  status: accepted
+  owner: hupe1980
+  rationale: 'Seatbelt cannot count executions; re-executing the program runs nothing the child cannot already run.
+    Recorded as the documented macOS contract of Exec::Never (clarification 2026-11-12: UX and DX first, no opt-in
+    for a small, stated limit).'
+  expires: '2027-05-11'

@@ -279,6 +279,18 @@ impl fmt::Display for GrantError {
 #[cfg(feature = "tokio")]
 pub use crate::async_child::AsyncChild;
 
+impl From<crate::unix::AllowanceError> for SpawnError {
+    fn from(e: crate::unix::AllowanceError) -> Self {
+        match e {
+            crate::unix::AllowanceError::Io(e) => SpawnError::Io(e),
+            crate::unix::AllowanceError::Script(program) => SpawnError::Script { program },
+            crate::unix::AllowanceError::Interpreter(program, reason) => {
+                SpawnError::Interpreter { program, reason }
+            }
+        }
+    }
+}
+
 /// Why no caged child runs.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -339,6 +351,22 @@ pub enum SpawnError {
     },
     /// Spawning failed (for example, the target cannot be executed).
     Io(io::Error),
+    /// Under `Exec::Never` or `Exec::Program` the program is a script
+    /// (`#!`). Allowing its interpreter would let the run execute every
+    /// script it can read: start the interpreter as the program instead
+    /// (`python3 script.py`, not `./script.py`).
+    Script {
+        /// The script.
+        program: PathBuf,
+    },
+    /// Under `Exec::Never` or `Exec::Program` on Linux, the ELF interpreter
+    /// the program names cannot be used (never built on macOS).
+    Interpreter {
+        /// The program.
+        program: PathBuf,
+        /// Why.
+        reason: String,
+    },
     /// A protected, hidden or class file has another name (a hard link),
     /// which path rules do not cover; see [`LinkAudit`](crate::LinkAudit).
     HardLinks(Vec<crate::LinkFinding>),
@@ -385,6 +413,18 @@ impl fmt::Display for SpawnError {
                 io::Error::from_raw_os_error(*errno)
             ),
             SpawnError::Io(e) => write!(f, "{e}"),
+            SpawnError::Script { program } => write!(
+                f,
+                "{} is a script: exec `never` and `program` run binaries only; start its \
+                 interpreter as the program (for example `python3 {}`)",
+                program.display(),
+                program.display()
+            ),
+            SpawnError::Interpreter { program, reason } => write!(
+                f,
+                "{}: its ELF interpreter cannot be allowed ({reason})",
+                program.display()
+            ),
             SpawnError::HardLinks(found) => f.write_str(&crate::audit::refusal(found)),
             SpawnError::Explain(e) => write!(f, "{e}"),
             #[cfg(feature = "tokio")]
@@ -1149,7 +1189,11 @@ impl Cage {
         };
         let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
             .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
-        if matches!(session, sys::Session::Keep | sys::Session::Lead) {
+        if self.plan.hygiene.exec.program_only() {
+            // The one program the run may execute, for this spawn only.
+            let allowance = crate::unix::program_allowance(command)?;
+            tokens.push(spawn::program_token(lib, &allowance.program)?);
+        } else if matches!(session, sys::Session::Keep | sys::Session::Lead) {
             crate::unix::find_program(command).map_err(SpawnError::Io)?;
         }
         let (run, bytecode) = self.run_and_bytecode(lib, overrides)?;

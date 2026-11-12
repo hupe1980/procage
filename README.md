@@ -82,6 +82,9 @@ const done = await run(policy, ["make"]);
 - 📦 **Frozen presets and base profiles** that let ordinary programs and
   developer tools start, and `Cage::exec` and `Cage::exec_session` for
   helpers that become the caged command.
+- 🚫 **Exec control.** `Exec::Never` runs the program and nothing after it
+  (on Linux a seccomp supervisor counts the one exec); `Exec::Program`
+  lets it start copies of itself and nothing else.
 
 ## 🖥️ Platforms
 

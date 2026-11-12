@@ -55,6 +55,22 @@ pub(super) fn terminal_token(
     })
 }
 
+/// The extension token for the program a spawn under `Exec::Never` or
+/// `Exec::Program` may execute.
+pub(super) fn program_token(
+    lib: &sys::Libsandbox,
+    program: &std::path::Path,
+) -> Result<CString, SpawnError> {
+    let resolved = canon::resolve_existing(program).map_err(SpawnError::Io)?;
+    canon::exact_allow(&resolved)?;
+    lib.issue_file(procage_policy::PROGRAM_EXTENSION_CLASS, resolved.as_bytes())
+        .ok_or_else(|| {
+            SpawnError::Io(io::Error::other(format!(
+                "cannot issue the extension for the program {resolved}"
+            )))
+        })
+}
+
 /// Turns a spawn error carrying a step code into [`SpawnError::Apply`].
 pub(super) fn decode(error: io::Error) -> SpawnError {
     if let Some((step, errno)) = error.raw_os_error().and_then(sys::decode_step)

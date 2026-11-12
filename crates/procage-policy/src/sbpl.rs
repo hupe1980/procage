@@ -156,11 +156,15 @@ pub enum DenyReason {
     /// Linux below Landlock ABI 3: truncation is refused everywhere, because
     /// Landlock cannot confine it.
     OlderKernel,
+    /// Linux [`Exec::Never`](crate::Exec::Never): an exec after the one that
+    /// started the program.
+    Exec,
 }
 
 impl DenyReason {
     /// The code in denial messages: `hd:<class>`, `protect`, `hide`,
-    /// `layer`, `lifetime` or `kernel`. Codes contain no space and no newline.
+    /// `layer`, `lifetime`, `kernel` or `exec`. Codes contain no space and no
+    /// newline.
     pub fn code(&self) -> String {
         match self {
             DenyReason::HardDeny(class) => format!("hd:{}", class.as_str()),
@@ -169,6 +173,7 @@ impl DenyReason {
             DenyReason::Layer => "layer".into(),
             DenyReason::Lifetime => "lifetime".into(),
             DenyReason::OlderKernel => "kernel".into(),
+            DenyReason::Exec => "exec".into(),
         }
     }
 
@@ -180,6 +185,7 @@ impl DenyReason {
             "layer" => Some(DenyReason::Layer),
             "lifetime" => Some(DenyReason::Lifetime),
             "kernel" => Some(DenyReason::OlderKernel),
+            "exec" => Some(DenyReason::Exec),
             _ => {
                 let name = code.strip_prefix("hd:")?;
                 HardDenyClass::ALL

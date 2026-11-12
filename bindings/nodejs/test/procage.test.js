@@ -162,6 +162,28 @@ describe("policies", () => {
     );
   });
 
+  it("exec program runs the program only", async () => {
+    // By the policy JSON; on Linux an approximation accepted by name,
+    // which the gap spells out.
+    const policy = Policy.fromJSON({ version: 1, base: "v1", process: { exec: "program", fork: true } });
+    let c;
+    if (MACOS) {
+      c = new Cage(policy);
+    } else {
+      assert.throws(
+        () => new Cage(policy, { acceptSpawnSnapshot: true }),
+        (e) => e instanceof CapabilityGapError && e.gaps[0].accept.includes('allow: ["exec-program"]'),
+      );
+      c = new Cage(policy, { acceptSpawnSnapshot: true, allow: ["exec-program"] });
+    }
+    const done = await run(c, ["/bin/bash", "-c", "/bin/echo no 2>/dev/null || echo refused"]);
+    assert.equal(done.stdout, "refused\n");
+  });
+
+  it("an allowed construct is checked", () => {
+    assert.throws(() => new Cage(Policy.preset("minimal", 3), { allow: ["no-such-construct"] }), PolicyError);
+  });
+
   it("a relaxation name is checked", () => {
     assert.throws(() => new Cage(Policy.preset("minimal", 3), { relax: ["waive:nope"] }), PolicyError);
   });

@@ -118,7 +118,7 @@ mod services;
 mod spawn;
 mod sys;
 pub(crate) use sys::{open_terminal, set_window};
-mod violations;
+mod supervisor;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -128,10 +128,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use procage_policy::linux::RuleTarget;
+use procage_policy::linux::{Action, RuleTarget, SeccompRule};
 use procage_policy::{
-    Construct, HardDenyClass, LinuxPlan, LowerError, LowerOptions, Plan, Policy, Relax, Relaxed,
-    Target, Tier, Tty, lift, lower,
+    Construct, Degradation, HardDenyClass, LinuxPlan, LowerError, LowerOptions, Plan, Policy,
+    Relax, Relaxed, Target, Tier, Tty, lift, lower,
 };
 
 pub use crate::unix::TMPDIR_GRANT;
@@ -399,6 +399,18 @@ impl fmt::Display for GrantError {
 #[cfg(feature = "tokio")]
 pub use crate::async_child::AsyncChild;
 
+impl From<crate::unix::AllowanceError> for SpawnError {
+    fn from(e: crate::unix::AllowanceError) -> Self {
+        match e {
+            crate::unix::AllowanceError::Io(e) => SpawnError::Io(e),
+            crate::unix::AllowanceError::Script(program) => SpawnError::Script { program },
+            crate::unix::AllowanceError::Interpreter(program, reason) => {
+                SpawnError::Interpreter { program, reason }
+            }
+        }
+    }
+}
+
 /// Why no caged child runs.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -453,6 +465,22 @@ pub enum SpawnError {
     },
     /// Spawning failed (for example, the target cannot be executed).
     Io(io::Error),
+    /// Under `Exec::Never` or `Exec::Program` the program is a script
+    /// (`#!`). Allowing its interpreter would let the run execute every
+    /// script it can read: start the interpreter as the program instead
+    /// (`python3 script.py`, not `./script.py`).
+    Script {
+        /// The script.
+        program: PathBuf,
+    },
+    /// Under `Exec::Never` or `Exec::Program` on Linux, the ELF interpreter
+    /// the program names cannot be used (never built on macOS).
+    Interpreter {
+        /// The program.
+        program: PathBuf,
+        /// Why.
+        reason: String,
+    },
     /// A protected, hidden or class file has another name (a hard link),
     /// which path rules do not cover; see [`LinkAudit`](crate::LinkAudit).
     HardLinks(Vec<crate::LinkFinding>),
@@ -496,6 +524,18 @@ impl fmt::Display for SpawnError {
                 io::Error::from_raw_os_error(*errno)
             ),
             SpawnError::Io(e) => write!(f, "{e}"),
+            SpawnError::Script { program } => write!(
+                f,
+                "{} is a script: exec `never` and `program` run binaries only; start its \
+                 interpreter as the program (for example `python3 {}`)",
+                program.display(),
+                program.display()
+            ),
+            SpawnError::Interpreter { program, reason } => write!(
+                f,
+                "{}: its ELF interpreter cannot be allowed ({reason})",
+                program.display()
+            ),
             SpawnError::HardLinks(found) => f.write_str(&crate::audit::refusal(found)),
             SpawnError::Explain(e) => write!(f, "{e}"),
             #[cfg(feature = "tokio")]
@@ -745,8 +785,15 @@ pub struct Cage {
     /// With violation reporting: the filter whose `EPERM` denies notify.
     notifying: Option<Arc<[seccomp::Insn]>>,
     /// The filter for [`Cage::exec`] under `Lifetime::Run`: the command
-    /// keeps the caller's session, so `setpgid` is refused too.
+    /// keeps the caller's session, so `setpgid` is refused too. Never with
+    /// supervised exec: no supervisor runs for an exec.
     exec_filter: Option<Arc<[seccomp::Insn]>>,
+    /// `Exec::Never` with a supervisor: every spawn installs the filter with
+    /// a listener and the exec sentinel.
+    supervised_exec: bool,
+    /// With supervised exec: the filter without the exec rules, for
+    /// [`Cage::exec_session`] once the approximation is accepted.
+    unsupervised: Option<Arc<[seccomp::Insn]>>,
     /// The runtime directories searched for service sockets.
     runtime: Vec<PathBuf>,
     /// The objects the declared T1 mounts name, found when the cage was made.
@@ -847,9 +894,47 @@ impl Cage {
         let Plan::Linux(mut plan) = lower(policy, target, &options.lower)? else {
             unreachable!("lowering for Linux yields a Linux plan");
         };
+        // `Exec::Never` counts the run's exec in a supervisor, which needs a
+        // seccomp listener; an enclosing filter that already has one makes
+        // the kernel refuse it. Then only Landlock applies, accepted by name.
+        if supervises_exec(&plan.seccomp)
+            && let Err(errno) = sys::probe_listener()
+        {
+            if !options.lower.allow_degrade.contains(&Construct::ExecNever) {
+                return Err(exec_never_gap(
+                    target,
+                    format!(
+                        "no seccomp listener: {}",
+                        io::Error::from_raw_os_error(errno)
+                    ),
+                ));
+            }
+            plan.seccomp.retain(|r| r.action != Action::Supervise);
+            plan.degradations.push(Degradation {
+                construct: Construct::ExecNever,
+                target,
+                note: EXEC_NEVER_UNSUPERVISED,
+            });
+            plan.degradations.sort();
+        }
+        let supervised_exec = supervises_exec(&plan.seccomp);
         let build = |notify| {
             seccomp::build(&plan.seccomp, &seccomp::NATIVE, notify)
                 .map_err(|name| SpawnError::Unsupported(Unsupported::Syscall { name }))
+        };
+        let unsupervised_rules: Vec<_> = plan
+            .seccomp
+            .iter()
+            .filter(|r| r.action != Action::Supervise)
+            .cloned()
+            .collect();
+        let unsupervised = if supervised_exec {
+            Some(Arc::from(
+                seccomp::build(&unsupervised_rules, &seccomp::NATIVE, false)
+                    .map_err(|name| SpawnError::Unsupported(Unsupported::Syscall { name }))?,
+            ))
+        } else {
+            None
         };
         let filter: Arc<[seccomp::Insn]> = build(false)?.into();
         let notifying = if options.violations {
@@ -861,8 +946,8 @@ impl Cage {
             && policy.process.lifetime == procage_policy::Lifetime::Run
             && policy.tty != Tty::Inherit
         {
-            use procage_policy::linux::{Action, Condition, SeccompRule, Syscall};
-            let mut rules = plan.seccomp.clone();
+            use procage_policy::linux::{Condition, SeccompRule, Syscall};
+            let mut rules = unsupervised_rules.clone();
             rules.push(SeccompRule {
                 syscall: Syscall::Setpgid,
                 condition: Condition::Always,
@@ -935,6 +1020,8 @@ impl Cage {
             walk_limit: options.walk_limit,
             notifying,
             exec_filter,
+            supervised_exec,
+            unsupervised,
             runtime,
             declared,
             allowed: options.lower.allow_degrade.clone(),
@@ -1053,12 +1140,32 @@ impl Cage {
             Tty::NewPty => sys::Session::Terminal,
             Tty::None => sys::Session::New,
         };
-        let (parent_end, notify) = match &self.notifying {
+        // A run whose filter notifies has a supervisor, started before the
+        // spawn: `Command::spawn` returns only after the exec, which the
+        // supervisor answers under `Exec::Never`.
+        let filter = match &self.notifying {
+            Some(filter) => Some(filter),
+            None if self.supervised_exec => Some(&self.filter),
+            None => None,
+        };
+        let record = self.notifying.as_ref().map(|_| {
+            Arc::new(std::sync::Mutex::new(crate::violation::Record::new(
+                Coverage::SystemCalls,
+            )))
+        });
+        let (pending, notify) = match filter {
             Some(filter) => {
                 let (parent_end, child_end) = sys::socket_pair().map_err(SpawnError::Io)?;
+                let rules: Arc<[_]> = self.plan.seccomp.clone().into();
+                let pending =
+                    supervisor::start(parent_end, rules, record.clone()).map_err(SpawnError::Io)?;
                 (
-                    Some(parent_end),
-                    Some(sys::Notify::new(filter.to_vec(), child_end)),
+                    Some(pending),
+                    Some(sys::Notify::new(
+                        filter.to_vec(),
+                        child_end,
+                        self.supervised_exec,
+                    )),
                 )
             }
             None => (None, None),
@@ -1088,7 +1195,8 @@ impl Cage {
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
         let names = grants.bindings.iter().map(|(n, _)| n.clone()).collect();
         Ok(Launch {
-            parent_end,
+            pending,
+            record,
             dropped,
             removal,
             proc,
@@ -1104,7 +1212,8 @@ impl Cage {
     /// The handle of the process `launch` was spawned as.
     pub(crate) fn adopt(&self, launch: Launch, inner: crate::unix::Proc) -> Child {
         let Launch {
-            parent_end,
+            pending,
+            record,
             dropped,
             removal,
             proc,
@@ -1115,17 +1224,14 @@ impl Cage {
             bridge_end,
             ..
         } = launch;
-        let reporting = match parent_end {
-            None => child::Reporting::Off,
-            Some(socket) => self.supervise(&socket),
-        };
+        let reporting = supervise(pending, record);
         #[cfg(feature = "proxy")]
         let proxy_run = match (&self.proxied, bridge_end) {
             (Some(proxied), Some(socket)) => {
                 // The child sent one listener per protocol before its exec.
                 let mut listeners = Vec::new();
                 for &(protocol, _) in proxied.protocols() {
-                    if let Ok(sys::HandOver::Listener(fd)) = sys::receive(&socket) {
+                    if let Ok(sys::HandOver::Listener(fd, _)) = sys::receive(&socket) {
                         listeners.push((protocol, std::net::TcpListener::from(fd)));
                     }
                 }
@@ -1153,32 +1259,6 @@ impl Cage {
         child.set_proxy(proxy_run);
         child.set_pty(pty);
         child
-    }
-
-    /// Takes the listener the child sent and starts the run's supervisor;
-    /// without a listener, the record says why.
-    fn supervise(&self, socket: &std::os::fd::OwnedFd) -> child::Reporting {
-        let unavailable = |reason: String| child::Reporting::Unavailable(reason);
-        match sys::receive(socket) {
-            Ok(sys::HandOver::Listener(listener)) => {
-                let record = Arc::new(std::sync::Mutex::new(crate::violation::Record::new(
-                    Coverage::SystemCalls,
-                )));
-                let rules: Arc<[_]> = self.plan.seccomp.clone().into();
-                match violations::start(listener, rules, record.clone()) {
-                    Ok(done) => child::Reporting::On { record, done },
-                    Err(e) => unavailable(format!("cannot start the supervisor: {e}")),
-                }
-            }
-            Ok(sys::HandOver::Refused(errno)) => unavailable(format!(
-                "the kernel refused a seccomp listener ({}); refused calls still fail",
-                std::io::Error::from_raw_os_error(errno)
-            )),
-            Err(errno) => unavailable(format!(
-                "no listener arrived from the child ({})",
-                std::io::Error::from_raw_os_error(errno)
-            )),
-        }
     }
 
     /// Turns the calling process into `command`, running in this cage: like
@@ -1282,7 +1362,17 @@ impl Cage {
         if self.plan.namespaces.is_some() && threads > 1 {
             return SpawnError::Unsupported(Unsupported::ExecThreads { threads });
         }
-        // No handle and no supervisor: the kernel answers refused calls.
+        // No handle and no supervisor: the kernel answers refused calls, and
+        // nothing can count the command's exec under `Exec::Never`.
+        if self.supervised_exec && !self.allowed.contains(&Construct::ExecNever) {
+            return exec_never_gap(
+                Target::Linux {
+                    tier: self.plan.tier,
+                    landlock_abi: self.plan.landlock_abi,
+                },
+                "Cage::exec leaves no parent to supervise the exec".into(),
+            );
+        }
         #[cfg(feature = "proxy")]
         if self.proxied.is_some() {
             // No handle would hold the run's proxy.
@@ -1334,6 +1424,19 @@ impl Cage {
             }
         }
         let bound = self.bind(&grants, &declared)?;
+        // The environment is final before the program is looked up (its
+        // `PATH`), as for `execvp`.
+        let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
+            .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
+        let exec_session = matches!(session, sys::Session::Keep | sys::Session::Lead);
+        let allowance = if self.plan.hygiene.exec.program_only() {
+            Some(crate::unix::program_allowance(command)?)
+        } else {
+            if exec_session {
+                crate::unix::find_program(command).map_err(SpawnError::Io)?;
+            }
+            None
+        };
         let service_covers = self.service_covers()?;
         let pty = if session == sys::Session::Terminal {
             let (pty, device) = crate::Pty::open().map_err(SpawnError::Io)?;
@@ -1348,6 +1451,7 @@ impl Cage {
             pty.as_ref().map(crate::Pty::device),
             &self.hidden_piecewise(),
             self.walk_limit,
+            allowance.as_ref(),
         )?;
         let isolate = match self.plan.namespaces {
             Some(ns) => {
@@ -1375,12 +1479,9 @@ impl Cage {
             }
             None => None,
         };
-        let dropped = crate::unix::environment(command, &self.plan.hygiene.env)
-            .map_err(|_| SpawnError::Unsupported(Unsupported::EnvClear))?;
         // The death signal refers to the parent of the process that runs the
         // sequence: the caller for a spawn, the caller's parent for an exec.
-        let parent = if matches!(session, sys::Session::Keep | sys::Session::Lead) {
-            crate::unix::find_program(command).map_err(SpawnError::Io)?;
+        let parent = if exec_session {
             sys::parent_pid()
         } else {
             sys::pid()
@@ -1393,8 +1494,10 @@ impl Cage {
             limits: crate::unix::limits(&self.plan.hygiene.limits),
             keep,
             ruleset,
-            filter: match (&self.exec_filter, session) {
-                (Some(exec), sys::Session::Keep) => exec.to_vec(),
+            filter: match (&self.exec_filter, &self.unsupervised, session) {
+                (Some(exec), _, sys::Session::Keep) => exec.to_vec(),
+                // An exec has no supervisor (the approximation was accepted).
+                (_, Some(plain), _) if exec_session => plain.to_vec(),
                 _ => self.filter.to_vec(),
             },
             notify,
@@ -1538,6 +1641,52 @@ impl Cage {
     }
 }
 
+/// The run's reporting once its spawn returned: what the supervisor's
+/// hand-over gave, for a run that reports violations.
+fn supervise(
+    pending: Option<supervisor::Pending>,
+    record: Option<crate::violation::Sink>,
+) -> child::Reporting {
+    let Some(pending) = pending else {
+        return child::Reporting::Off;
+    };
+    let started = pending.started();
+    let Some(record) = record else {
+        return child::Reporting::Off;
+    };
+    match started {
+        supervisor::Started::Serving(done) => child::Reporting::On { record, done },
+        supervisor::Started::Refused(errno) => child::Reporting::Unavailable(format!(
+            "the kernel refused a seccomp listener ({}); refused calls still fail",
+            io::Error::from_raw_os_error(errno)
+        )),
+        supervisor::Started::Missing(errno) => child::Reporting::Unavailable(format!(
+            "no listener arrived from the child ({})",
+            io::Error::from_raw_os_error(errno)
+        )),
+    }
+}
+
+/// Whether `rules` hand `execve` to the run's supervisor (`Exec::Never`).
+fn supervises_exec(rules: &[SeccompRule]) -> bool {
+    rules.iter().any(|r| r.action == Action::Supervise)
+}
+
+/// Why an unsupervised `Exec::Never` is an approximation, for receipts.
+const EXEC_NEVER_UNSUPERVISED: &str = "no seccomp supervisor counts the run's exec: Landlock alone \
+     applies, so the program and its ELF interpreter stay executable (the interpreter can start \
+     any ELF file the run can read)";
+
+/// The gap of `Exec::Never` where no supervisor can count the run's exec.
+fn exec_never_gap(target: Target, why: String) -> SpawnError {
+    SpawnError::Lower(LowerError::Gaps(vec![procage_policy::CapabilityGap {
+        construct: Construct::ExecNever,
+        target,
+        kind: procage_policy::GapKind::Approximation,
+        subject: Some(why),
+    }]))
+}
+
 /// The gap of a rule or grant whose resolved `path` reaches other processes'
 /// entries under `/proc`.
 fn proc_gap(plan: &LinuxPlan, path: &Path) -> Option<procage_policy::CapabilityGap> {
@@ -1601,7 +1750,10 @@ fn proc_links(
 /// The descriptors to hand over: those above the standard three, each of
 /// A spawn up to the fork ([`Cage::launch`]).
 pub(crate) struct Launch {
-    parent_end: Option<std::os::fd::OwnedFd>,
+    /// The run's supervisor, waiting for the hand-over.
+    pending: Option<supervisor::Pending>,
+    /// The run's record, with violation reporting.
+    record: Option<crate::violation::Sink>,
     dropped: Vec<String>,
     removal: TmpdirGuard,
     proc: bool,

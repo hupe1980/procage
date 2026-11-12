@@ -7,7 +7,7 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use procage::native::{AsyncChild, Cage, CageOptions, Grants, SpawnError, testing};
-use procage::policy::{AbsPath, Access, FsRule, FsTarget, Grant, GrantName, Policy};
+use procage::policy::{AbsPath, Access, Base, Exec, FsRule, FsTarget, Grant, GrantName, Policy};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 fn abs(p: impl AsRef<Path>) -> AbsPath {
@@ -432,5 +432,38 @@ fn spawn_async_needs_a_runtime() {
             .spawn_async(&mut child_command("echo:never"), &Grants::new())
             .unwrap_err();
         assert!(matches!(err, SpawnError::NoRuntime), "{name}: {err:?}");
+    }
+}
+
+/// `Exec::Never` starts the program on the async path too (on Linux the
+/// supervisor answers the exec while tokio's `spawn` waits for it).
+#[test]
+fn exec_never_starts_the_program_async() {
+    let rt = runtime();
+    for (name, options) in variants() {
+        let mut p = Policy::default();
+        p.base = Base::V1;
+        p.process.exec = Exec::Never;
+        for options in [options.clone(), options.with_violations()] {
+            let cage =
+                Cage::with_options(&p, &options).unwrap_or_else(|e| panic!("{name}: cage: {e}"));
+            rt.block_on(async {
+                let mut c = tokio::process::Command::new("/bin/echo");
+                c.arg("async-never").stdout(Stdio::piped());
+                let mut child = cage
+                    .spawn_async(&mut c, &Grants::new())
+                    .unwrap_or_else(|e| panic!("{name}: {e}"));
+                let mut out = String::new();
+                child
+                    .stdout
+                    .take()
+                    .unwrap()
+                    .read_to_string(&mut out)
+                    .await
+                    .unwrap();
+                assert_eq!(out, "async-never\n", "{name}");
+                assert!(child.wait().await.unwrap().success(), "{name}");
+            });
+        }
     }
 }

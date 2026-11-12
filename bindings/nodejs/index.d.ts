@@ -8,7 +8,7 @@ export interface Gap {
   target: string;
   kind: string;
   subject: string | null;
-  /** E.g. `acceptSpawnSnapshot: true` or `relax: ["waive:trust-handoff"]`; empty when none does. */
+  /** E.g. `acceptSpawnSnapshot: true`, `relax: ["waive:trust-handoff"]` or `allow: ["exec-program"]`; empty when none does. */
   accept: string[];
 }
 /** The host cannot enforce the policy. */
@@ -62,6 +62,8 @@ export interface CageOptions {
   relax?: Relaxation[];
   /** Accept the Linux approximations taken from the file system at spawn. */
   acceptSpawnSnapshot?: boolean;
+  /** Constructs accepted as approximated, by name, e.g. `["exec-program"]`. */
+  allow?: string[];
 }
 
 export interface SpawnOptions {

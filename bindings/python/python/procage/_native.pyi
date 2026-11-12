@@ -31,6 +31,7 @@ class Cage:
         violations: bool = False,
         relax: list[str] = ...,
         accept_spawn_snapshot: bool = False,
+        allow: list[str] = ...,
     ) -> None: ...
     @property
     def relaxed(self) -> list[str]: ...

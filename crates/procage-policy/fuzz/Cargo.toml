@@ -45,3 +45,10 @@ path = "fuzz_targets/lower.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "elf"
+path = "fuzz_targets/elf.rs"
+test = false
+doc = false
+bench = false
