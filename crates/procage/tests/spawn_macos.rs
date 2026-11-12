@@ -2327,6 +2327,8 @@ fn program_only(exec: Exec) -> Cage {
 /// default search path as `execvp` finds it.
 #[test]
 fn program_only_settings_start_the_program() {
+    // Serialized with the violation tests: their fences wait on the log.
+    let _guard = violation_lock();
     for exec in [Exec::Never, Exec::Program] {
         let cage = program_only(exec);
         for program in ["/bin/echo", "echo"] {
@@ -2353,6 +2355,8 @@ fn program_only_settings_need_a_base() {
 /// with the fix in the message.
 #[test]
 fn program_only_settings_refuse_a_script() {
+    // Serialized with the violation tests: their fences wait on the log.
+    let _guard = violation_lock();
     let dir = scratch("script");
     let script = dir.join("s.sh");
     std::fs::write(&script, "#!/bin/bash\necho ran\n").unwrap();
@@ -2372,6 +2376,8 @@ fn program_only_settings_refuse_a_script() {
 /// `multiprocessing` and `child_process.fork` do), and nothing else.
 #[test]
 fn program_reexecutes_itself_and_nothing_else() {
+    // Serialized with the violation tests: their fences wait on the log.
+    let _guard = violation_lock();
     let cage = program_only(Exec::Program);
     let mut c = command("/bin/bash", &[]);
     c.args([
@@ -2386,9 +2392,12 @@ fn program_reexecutes_itself_and_nothing_else() {
 /// zsh, another run of the same cage cannot.
 #[test]
 fn the_program_allowance_is_per_spawn() {
+    // Serialized with the violation tests: their fences wait on the log.
+    let _guard = violation_lock();
     let cage = program_only(Exec::Program);
+    // zsh waits, without using the CPU, until its standard input closes.
     let mut zsh = command("/bin/zsh", &[]);
-    zsh.args(["-c", "while :; do :; done"]);
+    zsh.args(["-c", "read line"]).stdin(Stdio::piped());
     let mut other = cage.spawn(&mut zsh, &Grants::new()).unwrap();
     let mut c = command("/bin/bash", &[]);
     c.args([

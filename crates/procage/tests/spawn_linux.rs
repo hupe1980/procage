@@ -2219,8 +2219,9 @@ fn the_program_allowance_is_per_spawn_and_per_file() {
         .with_lower(masked().allow(Construct::ExecProgram));
     let cage = Cage::with_options(&p, &opts).unwrap();
     // A run of /bin/sh (dash) while a run of bash tries to execute it.
+    // sh waits, without using the CPU, until its standard input closes.
     let mut sh = Command::new("/bin/sh");
-    sh.args(["-c", "while :; do :; done"]);
+    sh.args(["-c", "read line"]).stdin(Stdio::piped());
     let mut other = cage.spawn(&mut sh, &Grants::new()).unwrap();
     let (out, _) = run_program(
         &cage,
