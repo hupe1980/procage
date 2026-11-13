@@ -2414,3 +2414,53 @@ fn the_program_allowance_is_per_spawn() {
     let _ = other.wait();
     assert_eq!(String::from_utf8_lossy(&out.stdout), "zsh-refused\n");
 }
+
+/// CI bisect diagnostic (do not merge): how a reporting run's record fares
+/// after batches of spawns under each exec setting. Always fails, to print.
+#[test]
+fn zz_diag_exec_settings_and_reporting() {
+    let _guard = violation_lock();
+    let (root, work) = violation_workspace("diag");
+    let rep = reporting(&developer_policy(Base::V2, &work));
+    let mut lines = Vec::new();
+    let probe = |label: &str, lines: &mut Vec<String>| {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "cat ../outside"])
+            .current_dir(&work)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child = rep.spawn(&mut cmd, &Grants::new()).unwrap();
+        child.wait().unwrap();
+        let s = Instant::now();
+        let r = child.violations();
+        lines.push(format!(
+            "{label}: complete={} n={} took={:?}",
+            r.complete(),
+            r.iter().count(),
+            s.elapsed()
+        ));
+    };
+    probe("before", &mut lines);
+    for (label, exec) in [
+        ("any", procage::policy::Exec::Any),
+        ("program", procage::policy::Exec::Program),
+        ("never", procage::policy::Exec::Never),
+    ] {
+        let mut p = Policy::default();
+        p.base = Base::V1;
+        p.process.exec = exec;
+        p.process.fork = true;
+        let cage = Cage::new(&p).unwrap();
+        for _ in 0..10 {
+            let mut c = command("/bin/echo", &[]);
+            let _ = run(&cage, std::mem::replace(&mut c, Command::new("/bin/echo")), &Grants::new());
+        }
+        probe(&format!("after 10 x {label}"), &mut lines);
+        probe(&format!("again after {label}"), &mut lines);
+    }
+    std::thread::sleep(Duration::from_secs(5));
+    probe("after 5 s", &mut lines);
+    let _ = std::fs::remove_dir_all(root);
+    panic!("diag:\n{}", lines.join("\n"));
+}
