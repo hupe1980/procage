@@ -2415,65 +2415,80 @@ fn the_program_allowance_is_per_spawn() {
     assert_eq!(String::from_utf8_lossy(&out.stdout), "zsh-refused\n");
 }
 
-/// CI bisect diagnostic (do not merge): how a reporting run's record fares
-/// after batches of spawns under each exec setting. Always fails, to print.
+/// CI research (do not merge): during bursts of denials, what an
+/// independent, unfiltered `log stream` sees versus procage's records, and
+/// any notice that logd dropped or quarantined messages. Always fails, to print.
 #[test]
-fn zz_diag_exec_settings_and_reporting() {
+fn zz_diag_report_loss_on_this_system() {
     let _guard = violation_lock();
-    let (root, work) = violation_workspace("diag");
-    let rep = reporting(&developer_policy(Base::V2, &work));
+    let dir = std::env::temp_dir().join(format!("procage-diag-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let raw = dir.join("stream.ndjson");
+    let mut stream = Command::new("/usr/bin/log")
+        .args(["stream", "--style", "ndjson", "--level", "debug", "--predicate",
+               "sender == \"Sandbox\" OR process == \"logd\" OR eventMessage CONTAINS[c] \"quarantin\" OR eventMessage CONTAINS[c] \"dropped\" OR eventMessage CONTAINS[c] \"rate limit\""])
+        .stdout(std::fs::File::create(&raw).unwrap())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_secs(3));
     let mut lines = Vec::new();
-    let probe = |label: &str, lines: &mut Vec<String>| {
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", "cat ../outside"])
-            .current_dir(&work)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let mut child = rep.spawn(&mut cmd, &Grants::new()).unwrap();
-        child.wait().unwrap();
-        let s = Instant::now();
-        let r = child.violations();
-        lines.push(format!(
-            "{label}: complete={} n={} took={:?}",
-            r.complete(),
-            r.iter().count(),
-            s.elapsed()
-        ));
-    };
-    probe("before", &mut lines);
-    for (label, exec) in [
-        ("any", procage::policy::Exec::Any),
-        ("program", procage::policy::Exec::Program),
-        ("never", procage::policy::Exec::Never),
-    ] {
-        let mut p = Policy::default();
-        p.base = Base::V1;
-        p.process.exec = exec;
-        p.process.fork = true;
-        let cage = Cage::new(&p).unwrap();
-        for _ in 0..10 {
-            let mut c = command("/bin/echo", &[]);
-            let _ = run(&cage, std::mem::replace(&mut c, Command::new("/bin/echo")), &Grants::new());
-        }
-        probe(&format!("after 10 x {label}"), &mut lines);
-        probe(&format!("again after {label}"), &mut lines);
-        // Denials: an exec (refused under program/never), and a read (control).
-        for (what, script) in [
-            ("denied exec", "/bin/echo x 2>/dev/null; true"),
-            ("denied read", "cat /etc/master.passwd 2>/dev/null; true"),
+    let mut probes: Vec<(String, usize, bool)> = Vec::new();
+    for round in 0..3 {
+        for (label, exec, script) in [
+            ("program denied exec", procage::policy::Exec::Program, "/bin/echo x 2>/dev/null; true"),
+            ("granted denied read", procage::policy::Exec::Granted, "cat /etc/master.passwd 2>/dev/null; true"),
         ] {
+            let mut p = Policy::default();
+            p.base = Base::V1;
+            p.process.exec = exec;
+            p.process.fork = true;
+            if exec == procage::policy::Exec::Granted {
+                p.fs.push(rule(Access::Exec, "/bin"));
+            }
+            let cage = Cage::new(&p).unwrap();
             for _ in 0..10 {
                 let mut c = command("/bin/bash", &[]);
                 c.args(["-c", script]);
                 let _ = run(&cage, c, &Grants::new());
             }
-            probe(&format!("after 10 x {label} {what}"), &mut lines);
-            probe(&format!("again after {label} {what}"), &mut lines);
+            let (_root, work) = violation_workspace(&format!("diag-{round}-{}", probes.len()));
+            let rep = reporting(&developer_policy(Base::V2, &work));
+            let mut cmd = Command::new("/bin/sh");
+            cmd.args(["-c", "cat ../outside"]).current_dir(&work)
+                .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            let mut child = rep.spawn(&mut cmd, &Grants::new()).unwrap();
+            child.wait().unwrap();
+            let r = child.violations();
+            let outside = work.parent().unwrap().join("outside").to_string_lossy().into_owned();
+            let hits = r.iter().filter(|v| v.target.as_deref() == Some(outside.as_str())).count();
+            lines.push(format!("round {round} after {label}: record complete={} n={} outside-hits={hits}", r.complete(), r.iter().count()));
+            probes.push((outside, hits, r.complete()));
         }
     }
-    std::thread::sleep(Duration::from_secs(5));
-    probe("after 5 s", &mut lines);
-    let _ = std::fs::remove_dir_all(root);
+    std::thread::sleep(Duration::from_secs(3));
+    let _ = stream.kill();
+    let _ = stream.wait();
+    // ndjson escapes "/" as "\/".
+    let text = std::fs::read_to_string(&raw).unwrap_or_default().replace("\\/", "/");
+    let total = text.lines().count();
+    let sandbox = text.lines().filter(|l| l.contains("Sandbox: ")).count();
+    let quarantine = text.lines().filter(|l| l.to_lowercase().contains("quarantin")).count();
+    lines.push(format!("quarantine lines: {quarantine}"));
+    lines.push(format!("independent stream: {total} lines, {sandbox} from Sandbox"));
+    for (outside, hits, complete) in &probes {
+        let seen = text.lines().filter(|l| l.contains(outside.as_str())).count();
+        lines.push(format!("probe {outside}: independent stream saw {seen}, record had {hits}, complete={complete}"));
+    }
+    let notices: Vec<&str> = text.lines().filter(|l| {
+        let l2 = l.to_lowercase();
+        !l.contains("Sandbox:") && (l2.contains("quarantin") || l2.contains("dropped") || l2.contains("rate limit") || l2.contains("logd"))
+    }).take(15).collect();
+    lines.push(format!("{} notices (first 15):", notices.len()));
+    for n in notices {
+        let short: String = n.chars().take(400).collect();
+        lines.push(short);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
     panic!("diag:\n{}", lines.join("\n"));
 }
