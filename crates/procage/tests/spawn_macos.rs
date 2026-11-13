@@ -2458,6 +2458,19 @@ fn zz_diag_exec_settings_and_reporting() {
         }
         probe(&format!("after 10 x {label}"), &mut lines);
         probe(&format!("again after {label}"), &mut lines);
+        // Denials: an exec (refused under program/never), and a read (control).
+        for (what, script) in [
+            ("denied exec", "/bin/echo x 2>/dev/null; true"),
+            ("denied read", "cat /etc/master.passwd 2>/dev/null; true"),
+        ] {
+            for _ in 0..10 {
+                let mut c = command("/bin/bash", &[]);
+                c.args(["-c", script]);
+                let _ = run(&cage, c, &Grants::new());
+            }
+            probe(&format!("after 10 x {label} {what}"), &mut lines);
+            probe(&format!("again after {label} {what}"), &mut lines);
+        }
     }
     std::thread::sleep(Duration::from_secs(5));
     probe("after 5 s", &mut lines);
