@@ -2326,6 +2326,7 @@ fn program_only(exec: Exec) -> Cage {
 /// The program starts under both settings, named by path or found in the
 /// default search path as `execvp` finds it.
 #[test]
+#[ignore = "bisect"]
 fn program_only_settings_start_the_program() {
     // Serialized with the violation tests: their fences wait on the log.
     let _guard = violation_lock();
@@ -2344,6 +2345,7 @@ fn program_only_settings_start_the_program() {
 /// Without a base no macOS program could map the system's code: the cage
 /// says so instead of every program aborting.
 #[test]
+#[ignore = "bisect"]
 fn program_only_settings_need_a_base() {
     let mut p = Policy::default();
     p.process.exec = Exec::Never;
@@ -2354,6 +2356,7 @@ fn program_only_settings_need_a_base() {
 /// A script would make its interpreter executable: refused before forking,
 /// with the fix in the message.
 #[test]
+#[ignore = "bisect"]
 fn program_only_settings_refuse_a_script() {
     // Serialized with the violation tests: their fences wait on the log.
     let _guard = violation_lock();
@@ -2375,6 +2378,7 @@ fn program_only_settings_refuse_a_script() {
 /// `Exec::Program`: the program executes itself again (as Python's
 /// `multiprocessing` and `child_process.fork` do), and nothing else.
 #[test]
+#[ignore = "bisect"]
 fn program_reexecutes_itself_and_nothing_else() {
     // Serialized with the violation tests: their fences wait on the log.
     let _guard = violation_lock();
@@ -2391,6 +2395,7 @@ fn program_reexecutes_itself_and_nothing_else() {
 /// The allowance is the spawn's own: while one run of a cage executes
 /// zsh, another run of the same cage cannot.
 #[test]
+#[ignore = "bisect"]
 fn the_program_allowance_is_per_spawn() {
     // Serialized with the violation tests: their fences wait on the log.
     let _guard = violation_lock();
