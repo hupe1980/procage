@@ -37,6 +37,18 @@ All notable changes to procage are listed here. The format follows
   `linux::RuleTarget::Program`, `linux::Syscall::{Execve, Execveat}`,
   `DenyReason::Exec`; `Hygiene` carries the exec setting.
 
+### Fixed
+
+- macOS: finding a run's processes logged a denial for every sandboxed
+  process it checked, tagged with that process's run: false entries in
+  other runs' violation records, and a log flood (on macOS 27 most of the
+  sandbox log during parallel runs).
+- macOS: the violation helper could inherit a pipe another thread was
+  creating and hold it open for the life of the process; reading that
+  child's output then never ended.
+- macOS: a dropped fence report (macOS 27) left a record incomplete; a new
+  fence follows every 100 ms.
+
 ## [0.7.2] - 2026-11-11
 
 ### Fixed

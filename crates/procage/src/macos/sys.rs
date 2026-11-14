@@ -44,6 +44,9 @@ type Check = unsafe extern "C" fn(libc::pid_t, *const c_char, c_int, ...) -> c_i
 
 /// `sandbox_check`'s filter type for a mach service name.
 const SANDBOX_FILTER_GLOBAL_NAME: c_int = 2;
+/// `sandbox_check` flag: a denied check is not logged. Without it, a scan
+/// that checks another run's process logs a denial under that run's marker.
+const SANDBOX_CHECK_NO_REPORT: c_int = 0x4000_0000;
 type IssueFile = unsafe extern "C" fn(*const c_char, *const c_char, u32) -> *mut c_char;
 type Consume = unsafe extern "C" fn(*const c_char) -> i64;
 
@@ -249,8 +252,8 @@ impl Libsandbox {
 
     /// Whether the sandbox of process `pid` allows looking up the service
     /// `name`: `sandbox_check(pid, "mach-lookup", SANDBOX_FILTER_GLOBAL_NAME,
-    /// name)`, an undocumented form (measured on 26.6.2). An unsandboxed
-    /// process allows every name. `Err` carries errno when the call fails.
+    /// name)` without a report, an undocumented form (measured on 26.6.2 and
+    /// 27.2). An unsandboxed process allows every name. `Err` carries errno when the call fails.
     pub(crate) fn allows_lookup(&self, pid: libc::pid_t, name: &CStr) -> Result<bool, i32> {
         // SAFETY: both strings are NUL-terminated and alive for the call; the
         // global-name filter takes exactly one string argument.
@@ -258,7 +261,7 @@ impl Libsandbox {
             (self.child.check)(
                 pid,
                 c"mach-lookup".as_ptr(),
-                SANDBOX_FILTER_GLOBAL_NAME,
+                SANDBOX_FILTER_GLOBAL_NAME | SANDBOX_CHECK_NO_REPORT,
                 name.as_ptr(),
             )
         };
@@ -873,6 +876,22 @@ pub(crate) fn install_fence(
     }
 }
 
+/// Makes `command`'s child inherit only its stdio. Other threads' spawns
+/// make pipes close-on-exec only after creating them (macOS has no
+/// `pipe2`); a long-lived child that inherited one would hold that pipe
+/// open, so its reader never saw the end.
+pub(crate) fn inherit_only_stdio(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    let mut buf = fd_buffer();
+    // SAFETY: `mark_fds` issues only system calls (getpid, proc_pidinfo,
+    // fcntl, getdtablesize) into `buf`, allocated in the parent and owned by
+    // the closure.
+    unsafe {
+        command
+            .pre_exec(move || mark_fds(&mut buf, &[]).map_err(std::io::Error::from_raw_os_error));
+    }
+}
+
 /// Probe step: everything held.
 pub(crate) const PROBE_OK: u32 = 0xe;
 /// Probe step: the canary was not denied with EPERM.
@@ -1091,5 +1110,41 @@ pub(crate) fn tiocsti_errno(fd: c_int, byte: u8) -> i32 {
         errno()
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A descriptor another thread has not yet marked close-on-exec stays
+    /// out of the child: its reader sees the end once the writer closes.
+    #[test]
+    fn the_helper_inherits_no_stray_descriptor() {
+        let mut fds = [0; 2];
+        // SAFETY: `pipe` writes two descriptors into `fds`.
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("5");
+        inherit_only_stdio(&mut command);
+        let mut child = command.spawn().unwrap();
+        // SAFETY: the parent owns both ends; it closes only the write end
+        // and reads from the read end it still holds.
+        let (n, err) = unsafe {
+            libc::close(fds[1]);
+            libc::fcntl(fds[0], libc::F_SETFL, libc::O_NONBLOCK);
+            let mut byte = 0u8;
+            let n = libc::read(fds[0], (&raw mut byte).cast(), 1);
+            (n, std::io::Error::last_os_error().raw_os_error())
+        };
+        let _ = child.kill();
+        let _ = child.wait();
+        // SAFETY: closes the read end the parent owns.
+        unsafe { libc::close(fds[0]) };
+        assert_eq!(
+            (n, err.filter(|_| n < 0)),
+            (0, None),
+            "the child held the pipe open"
+        );
     }
 }

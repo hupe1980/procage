@@ -42,6 +42,8 @@ const LOG: &str = "/usr/bin/log";
 const READY: Duration = Duration::from_secs(2);
 /// How long a fence may take.
 const FENCE: Duration = Duration::from_secs(1);
+/// How long to wait for one fence before making another.
+const RESEND: Duration = Duration::from_millis(100);
 
 /// `$1` is the predicate. `log` reads nothing; the subshell reads the pipe
 /// from this process (fd 3, since an asynchronous list's standard input is
@@ -140,13 +142,18 @@ impl Monitor {
         let prefix = lifetime::prefix();
         // The prefix is hex digits and dots: nothing to escape.
         let predicate = format!("sender == \"Sandbox\" AND eventMessage CONTAINS \"{prefix}\"");
-        let mut child = Command::new(SH)
+        let mut command = Command::new(SH);
+        command
             .args(["-c", SCRIPT, "sh", &predicate])
             .env_clear()
             .current_dir("/")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        // The helper lives as long as the process: it must not keep another
+        // spawn's pipe open.
+        sys::inherit_only_stdio(&mut command);
+        let mut child = command
             .spawn()
             .map_err(|e| format!("cannot start {SH}: {e}"))?;
         let stdout = child.stdout.take().expect("piped");
@@ -179,29 +186,49 @@ impl Monitor {
         ))
     }
 
-    /// Makes a fence and waits up to `timeout` for its denial: `Some(true)`
+    /// Makes fences and waits up to `timeout` for one's denial: `Some(true)`
     /// seen, `Some(false)` the helper went down or no fence could be made,
-    /// `None` timed out.
+    /// `None` timed out. The system drops an occasional report (macOS 27:
+    /// about one in 2,000), a fence's too, so a fresh fence follows every
+    /// [`RESEND`]; any fence made after the run ended proves its denials
+    /// arrived.
     fn ping(&self, generation: u64, timeout: Duration) -> Option<bool> {
-        let Some(n) = make_fence() else {
+        let Some(first) = make_fence() else {
             return Some(false);
         };
+        let mut fences = vec![first];
         let deadline = Instant::now() + timeout;
+        let mut resend = Instant::now() + RESEND;
         let mut state = self.state();
-        loop {
-            if state.seen.remove(&n) {
-                return Some(true);
+        let result = loop {
+            if fences.iter().any(|n| state.seen.contains(n)) {
+                break Some(true);
             }
             if state.generation != generation || matches!(state.status, Status::Down(_)) {
-                return Some(false);
+                break Some(false);
             }
-            let left = deadline.checked_duration_since(Instant::now())?;
+            let now = Instant::now();
+            let Some(left) = deadline.checked_duration_since(now) else {
+                break None;
+            };
+            if now >= resend {
+                drop(state);
+                fences.extend(make_fence());
+                resend = Instant::now() + RESEND;
+                state = self.state();
+                continue;
+            }
+            let wait = left.min(resend - now);
             state = self
                 .changed
-                .wait_timeout(state, left)
+                .wait_timeout(state, wait)
                 .unwrap_or_else(|e| e.into_inner())
                 .0;
+        };
+        for n in &fences {
+            state.seen.remove(n);
         }
+        result
     }
 }
 

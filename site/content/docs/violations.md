@@ -65,7 +65,7 @@ sandbox: sh (pid 816) was denied file-write-create /Users/me/project/.git/hooks/
 - **Coverage.** `Violations::coverage` says what the record can show: `Observed` (macOS: every denial the kernel logs), `SystemCalls` (Linux: every refused system call), `Off` (the cage was built without the option), `Unavailable(reason)` (reporting could not start or stopped), or `NotObserved` (a platform that reports nothing).
 - **Bounded.** A record keeps 10,000 violations and counts the rest (`Violations::dropped`).
 
-An empty record never proves that nothing was denied. Linux reports refused system calls only. macOS reports are best effort: under heavy load the system drops some before any reader sees them (on macOS 26.6.2, 82 of 640 denials were missing from an independent `log stream` with 16 parallel runs; none in serial runs). Use the record to explain a failure, never to rule the sandbox out.
+An empty record never proves that nothing was denied. Linux reports refused system calls only. macOS reports are best effort: the system drops some before any reader sees them (on macOS 26.6.2, 82 of 640 denials were missing from an independent `log stream` with 16 parallel runs, none in serial runs; on 27.2 about one in 2,000, serial runs too). Use the record to explain a failure, never to rule the sandbox out.
 
 ## How it works on macOS
 
