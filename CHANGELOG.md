@@ -6,7 +6,7 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-11-12
+## [0.8.0] - 2026-11-14
 
 ### Security
 
