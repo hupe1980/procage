@@ -2202,6 +2202,26 @@ fn program_reexecutes_itself_and_nothing_else() {
 /// The allowance is the spawn's own, and stays with the file it resolved:
 /// another run of the same cage cannot execute this run's program, and a
 /// program renamed over by another file cannot execute the new one.
+/// One `Command` spawned twice runs twice, confined both times: std keeps
+/// the first spawn's child sequence on the command, and the second skips it.
+#[test]
+fn a_command_spawns_again() {
+    let d = scratch("again");
+    let secret = d.join("secret");
+    std::fs::write(&secret, "x").unwrap();
+    let cage = Cage::with_options(&base(), &options(host_tier())).unwrap();
+    let mut c = Command::new("/bin/cat");
+    c.arg(&secret)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for _ in 0..2 {
+        let child = cage.spawn(&mut c, &Grants::new()).unwrap();
+        let out = finish(child, Duration::from_secs(10));
+        assert!(!out.status.success() && out.stdout.is_empty(), "{out:?}");
+    }
+}
+
 #[test]
 fn the_program_allowance_is_per_spawn_and_per_file() {
     let d = scratch("exec-allowance");

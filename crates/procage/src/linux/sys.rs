@@ -1162,10 +1162,13 @@ impl ChildPlan {
         Ok(())
     }
 
-    /// Runs the plan in the child of `command`'s spawn.
-    pub(crate) fn install(self, command: &mut std::process::Command) {
+    /// Runs the plan in the child of `command`'s spawn; the guard must live
+    /// until the spawn returned.
+    #[must_use]
+    pub(crate) fn install(self, command: &mut std::process::Command) -> crate::unix::Installed {
         use std::os::unix::process::CommandExt;
         let mut plan = self;
+        let (installed, spent) = crate::unix::Installed::new();
         // SAFETY: `run` issues only system calls (sigaction, setsid or setpgid, prctl,
         // getppid, unshare, open/write/close on /proc/self, mount, openat2,
         // fstat, open_tree, mount_setattr, fsopen, fsconfig, fsmount,
@@ -1173,10 +1176,12 @@ impl ChildPlan {
         // capset, setrlimit, close_range or fcntl, getrlimit,
         // landlock_restrict_self, seccomp, with a supervisor pipe2, sendmsg
         // and close). Everything it reads was
-        // allocated in the parent and is owned by the closure.
+        // allocated in the parent and is owned by the closure; the spent
+        // check is an atomic load.
         unsafe {
-            command.pre_exec(move || plan.run());
+            command.pre_exec(move || if spent() { Ok(()) } else { plan.run() });
         }
+        installed
     }
 }
 

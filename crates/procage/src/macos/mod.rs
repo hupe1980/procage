@@ -1197,7 +1197,7 @@ impl Cage {
             crate::unix::find_program(command).map_err(SpawnError::Io)?;
         }
         let (run, bytecode) = self.run_and_bytecode(lib, overrides)?;
-        sys::ChildPlan {
+        let installed = sys::ChildPlan {
             ops: lib.child_ops(),
             bytecode,
             tokens,
@@ -1212,6 +1212,7 @@ impl Cage {
             tmpdir: removal,
             run,
             pty,
+            _installed: installed,
         })
     }
 
@@ -1281,6 +1282,8 @@ struct Prepared {
     run: Option<lifetime::Run>,
     /// The controller of the run's new terminal (`Tty::NewPty`).
     pty: Option<crate::Pty>,
+    /// Held until the spawn (or exec) returned.
+    _installed: crate::unix::Installed,
 }
 
 /// The descriptors to hand over: those above the standard three, each of

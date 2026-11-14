@@ -809,20 +809,25 @@ impl ChildPlan {
         Ok(())
     }
 
-    /// Makes `command` run this plan in the child before `execve`.
-    pub(crate) fn install(self, command: &mut std::process::Command) {
+    /// Makes `command` run this plan in the child before `execve`; the guard
+    /// must live until the spawn returned.
+    #[must_use]
+    pub(crate) fn install(self, command: &mut std::process::Command) -> crate::unix::Installed {
         use std::os::unix::process::CommandExt;
         let mut plan = self;
+        let (installed, spent) = crate::unix::Installed::new();
         // SAFETY: `run` issues only system calls (sigaction, setsid or setpgid,
         // setrlimit, proc_info through proc_pidinfo, fcntl, getdtablesize,
         // __mac_syscall, getpid) and the libsandbox functions sandbox_check
         // and sandbox_extension_consume, which issue system calls without
         // allocating or locking (verified by disassembly on 26.6.2 and by
         // the multithreaded spawn test). Everything it reads was allocated
-        // in the parent and is owned by the closure.
+        // in the parent and is owned by the closure; the spent check is an
+        // atomic load.
         unsafe {
-            command.pre_exec(move || plan.run());
+            command.pre_exec(move || if spent() { Ok(()) } else { plan.run() });
         }
+        installed
     }
 }
 

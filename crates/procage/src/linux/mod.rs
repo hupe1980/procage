@@ -1189,7 +1189,7 @@ impl Cage {
         };
         #[cfg(not(feature = "proxy"))]
         let bridge = None;
-        let (dropped, removal, proc, mounts, pty) =
+        let (dropped, removal, proc, mounts, pty, installed) =
             self.prepare(command, grants, fds, session, notify, bridge)?;
         // The link check is the last step before the fork.
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
@@ -1204,6 +1204,7 @@ impl Cage {
             names,
             mounts,
             pty,
+            _installed: installed,
             #[cfg(feature = "proxy")]
             bridge_end,
         })
@@ -1381,7 +1382,7 @@ impl Cage {
             });
         }
         match self.prepare(command, grants, fds, session, None, None) {
-            Ok((.., mounts, _)) => match self.audit.before_spawn() {
+            Ok((.., mounts, _, _installed)) => match self.audit.before_spawn() {
                 Ok(_) => mounts.decode(command.exec()),
                 Err(found) => SpawnError::HardLinks(found),
             },
@@ -1487,7 +1488,7 @@ impl Cage {
             sys::pid()
         };
         let mounts = Mounts(isolate.as_ref().map(|iso| iso.mounts.clone()));
-        sys::ChildPlan {
+        let installed = sys::ChildPlan {
             session,
             parent,
             isolate,
@@ -1505,7 +1506,7 @@ impl Cage {
         }
         .install(command);
         let proc = bound.values().any(|p| proc_gap(&self.plan, p).is_some());
-        Ok((dropped, removal, proc, mounts, pty))
+        Ok((dropped, removal, proc, mounts, pty, installed))
     }
 
     /// The paths kept out piecewise on tier T2: hidden rules, and the
@@ -1762,6 +1763,8 @@ pub(crate) struct Launch {
     mounts: Mounts,
     /// The controller of the run's new terminal (`Tty::NewPty`).
     pty: Option<crate::Pty>,
+    /// Held until the spawn returned.
+    _installed: crate::unix::Installed,
     /// The parent's end of the proxy listeners' socket pair.
     #[cfg(feature = "proxy")]
     bridge_end: Option<std::os::fd::OwnedFd>,
@@ -1784,9 +1787,16 @@ impl Launch {
 
 /// What [`Cage::prepare`] made for one spawn: the names dropped from the
 /// environment, the temporary directory's removal, whether a grant reaches
-/// other processes' `/proc` entries, the T1 mount plan and the new
-/// terminal's controller.
-type Prepared = (Vec<String>, TmpdirGuard, bool, Mounts, Option<crate::Pty>);
+/// other processes' `/proc` entries, the T1 mount plan, the new terminal's
+/// controller and the child sequence's guard.
+type Prepared = (
+    Vec<String>,
+    TmpdirGuard,
+    bool,
+    Mounts,
+    Option<crate::Pty>,
+    crate::unix::Installed,
+);
 
 /// The T1 mount plan a spawn handed to its child, kept to name the path
 /// when the child refuses a moved mount.

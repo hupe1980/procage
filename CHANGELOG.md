@@ -39,6 +39,9 @@ All notable changes to procage are listed here. The format follows
 
 ### Fixed
 
+- A `Command` spawned a second time failed at `new session`: std keeps
+  every `pre_exec` closure, so the first spawn's child sequence ran again.
+  Each spawn now runs only its own (macOS, Linux).
 - macOS: finding a run's processes logged a denial for every sandboxed
   process it checked, tagged with that process's run: false entries in
   other runs' violation records, and a log flood (on macOS 27 most of the

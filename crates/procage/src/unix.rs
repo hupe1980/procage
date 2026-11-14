@@ -278,6 +278,30 @@ pub(crate) fn release_stdio(command: &mut Command) {
         .stderr(Stdio::null());
 }
 
+/// One spawn's child sequence on a `Command`. std keeps every `pre_exec`
+/// closure a command was given, so spawning it again would run the
+/// sequences of its earlier spawns first (and fail at the second `setsid`).
+/// Dropped once the spawn (or exec) returned, this marks its sequence
+/// spent: later children skip it. It must live until then.
+pub(crate) struct Installed(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Installed {
+    /// The guard, and the check its sequence makes first: `true` when spent.
+    pub(crate) fn new() -> (Installed, impl Fn() -> bool + Send + Sync + 'static) {
+        let spent = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let check = spent.clone();
+        (Installed(spent), move || {
+            check.load(std::sync::atomic::Ordering::Acquire)
+        })
+    }
+}
+
+impl Drop for Installed {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::Release);
+    }
+}
+
 /// The grant name procage binds to a private temporary directory.
 pub const TMPDIR_GRANT: &str = "tmpdir";
 

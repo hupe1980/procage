@@ -1035,6 +1035,22 @@ fn outside(program: &str, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
+/// One `Command` spawned twice runs twice, confined both times: std keeps
+/// the first spawn's child sequence on the command, and the second skips it.
+#[test]
+fn a_command_spawns_again() {
+    let d = scratch("again");
+    let secret = d.join("secret");
+    std::fs::write(&secret, "x").unwrap();
+    let cage = Cage::new(&base_v1()).unwrap();
+    let mut c = command("/bin/cat", &[&secret]);
+    for _ in 0..2 {
+        let child = cage.spawn(&mut c, &Grants::new()).unwrap();
+        let out = finish(child, Duration::from_secs(10));
+        assert!(denied(&out), "{out:?}");
+    }
+}
+
 #[test]
 fn base_runs_ordinary_programs() {
     ordinary_programs_run(Base::V1);
