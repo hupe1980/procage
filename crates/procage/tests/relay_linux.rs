@@ -591,6 +591,26 @@ fn child_entry() {
                     Err(_) => "socket-error".into(),
                 }
             }
+            "quic-overflow" => {
+                let target: SocketAddr = arg.parse().unwrap();
+                let first = include_bytes!("fixtures/quic/big-0.bin");
+                let bind = if target.is_ipv4() {
+                    "0.0.0.0:0"
+                } else {
+                    "[::]:0"
+                };
+                match UdpSocket::bind(bind) {
+                    Ok(socket) => {
+                        for _ in 0..9 {
+                            let _ = socket.send_to(first, target);
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        std::thread::sleep(Duration::from_millis(300));
+                        "sent".into()
+                    }
+                    Err(_) => "socket-error".into(),
+                }
+            }
             "quic-ech" => {
                 let target: SocketAddr = arg.parse().unwrap();
                 let first = include_bytes!("fixtures/quic/ech-0.bin");
@@ -1186,6 +1206,37 @@ fn an_incomplete_quic_initial_is_denied_even_when_the_ip_is_allowed() {
         decisions.lock().unwrap().is_empty(),
         "no IP decision may authorize an incomplete Initial: {decisions:?}"
     );
+}
+
+#[test]
+fn a_quic_initial_overflow_is_denied_without_an_ip_decision() {
+    if !ipv6_userns_inner("a_quic_initial_overflow_is_denied_without_an_ip_decision") {
+        return;
+    }
+    let _guard = QUIC_TEST_LOCK.lock().unwrap();
+    let ip: Ipv6Addr = "fd00::1".parse().unwrap();
+    let seen = quic_sink6(ip);
+    let decisions = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = decisions.clone();
+    let server = Server::start(move |resource| {
+        recorded.lock().unwrap().push(resource.to_string());
+        Verdict::Allow
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, &format!("quic-overflow:[{ip}]:443"));
+    assert_eq!(results[0], "sent");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        seen.load(std::sync::atomic::Ordering::Relaxed),
+        0,
+        "an overflowing Initial buffer must fail closed"
+    );
+    assert!(decisions.lock().unwrap().is_empty());
 }
 
 #[test]

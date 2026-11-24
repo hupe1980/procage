@@ -663,6 +663,9 @@ mod tests {
         let mut not_tls = TlsSniffer::new();
         assert_eq!(not_tls.push(b"ping"), Sniff::NotThis);
         assert!(!not_tls.identified());
+        let mut capped = TlsSniffer::new();
+        assert_eq!(capped.push(&vec![0x16; MAX_SNIFF]), Sniff::NeedMore);
+        assert_eq!(capped.push(&[0x16]), Sniff::Malformed);
     }
 
     #[test]
