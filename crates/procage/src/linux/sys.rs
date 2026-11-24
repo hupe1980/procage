@@ -700,12 +700,23 @@ impl RelayChild {
         )?;
         link_up(super::relay::APP_IF)?;
         default_route(super::relay::APP_IF, super::relay::PROXY_ADDR)?;
+        link_addr6(
+            super::relay::APP_IF,
+            super::relay::APP_ADDR6,
+            super::relay::APP_PREFIX6,
+        )?;
+        link_up(super::relay::APP_IF)?;
+        default_route6(super::relay::APP_IF, super::relay::PROXY_ADDR6)?;
         nft_install_dns_redirect(super::relay::DNS_PORT)?;
         let udp = loopback_socket(libc::SOCK_DGRAM, super::relay::DNS_PORT)?;
         let tcp = loopback_socket(libc::SOCK_STREAM, super::relay::DNS_PORT)?;
+        let udp6 = loopback_socket6(libc::SOCK_DGRAM, super::relay::DNS_PORT)?;
+        let tcp6 = loopback_socket6(libc::SOCK_STREAM, super::relay::DNS_PORT)?;
         let fds = [
             std::os::fd::AsRawFd::as_raw_fd(&udp),
             std::os::fd::AsRawFd::as_raw_fd(&tcp),
+            std::os::fd::AsRawFd::as_raw_fd(&udp6),
+            std::os::fd::AsRawFd::as_raw_fd(&tcp6),
         ];
         send_with_fds_fd(dns_fd, &[2], &fds)?;
         // SAFETY: closing the child's hand-over end; the parent has its copy.
@@ -1981,6 +1992,8 @@ const IFLA_NET_NS_FD: u16 = 28;
 const VETH_INFO_PEER: u16 = 1;
 const IFA_ADDRESS: u16 = 1;
 const IFA_LOCAL: u16 = 2;
+const IFA_FLAGS: u16 = 8;
+const IFA_F_NODAD: u32 = 0x02;
 const RTA_GATEWAY: u16 = 5;
 const RTA_OIF: u16 = 4;
 const RTA_TABLE: u16 = 15;
@@ -2042,6 +2055,12 @@ const NFTA_TPROXY_FAMILY: u16 = 1;
 const NFTA_TPROXY_REG_PORT: u16 = 3;
 
 const AF_INET_U8: u8 = 2;
+const AF_INET6_U8: u8 = 10;
+const NFPROTO_IPV6: u8 = 10;
+const IPV6_TRANSPARENT: c_int = 75;
+const IPV6_RECVORIGDSTADDR: c_int = 74;
+const IPV6_ORIGDSTADDR: c_int = 74;
+const IPV6_V6ONLY: c_int = 26;
 const CAP_NET_RAW: u64 = 1 << 13;
 
 /// A bounded attribute list for a netlink message.
@@ -2245,9 +2264,9 @@ fn ifinfo(index: i32, flags: u32, change: u32) -> Vec<u8> {
 }
 
 /// `ifaddrmsg`.
-fn ifaddr(prefix: u8, index: u32) -> Vec<u8> {
+fn ifaddr(family: u8, prefix: u8, index: u32) -> Vec<u8> {
     vec![
-        AF_INET_U8,
+        family,
         prefix,
         0,
         0,
@@ -2260,15 +2279,15 @@ fn ifaddr(prefix: u8, index: u32) -> Vec<u8> {
 
 /// `rtmsg`.
 #[allow(clippy::too_many_arguments)]
-fn rtmsg(prefix: u8, table: u8, protocol: u8, scope: u8, kind: u8) -> Vec<u8> {
-    let mut body = vec![AF_INET_U8, prefix, 0, 0, table, protocol, scope, kind];
+fn rtmsg(family: u8, prefix: u8, table: u8, protocol: u8, scope: u8, kind: u8) -> Vec<u8> {
+    let mut body = vec![family, prefix, 0, 0, table, protocol, scope, kind];
     body.extend_from_slice(&0u32.to_ne_bytes());
     body
 }
 
 /// `fib_rule_hdr`.
-fn fib_rule(table: u8) -> Vec<u8> {
-    let mut body = vec![AF_INET_U8, 0, 0, 0, table, 0, 0, FR_ACT_TO_TBL];
+fn fib_rule(family: u8, table: u8) -> Vec<u8> {
+    let mut body = vec![family, 0, 0, 0, table, 0, 0, FR_ACT_TO_TBL];
     body.extend_from_slice(&0u32.to_ne_bytes());
     body
 }
@@ -2354,7 +2373,7 @@ pub(crate) fn link_addr(name: &str, ip: [u8; 4], prefix: u8) -> Result<(), i32> 
         libc::RTM_NEWADDR,
         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
         next_seq(),
-        ifaddr(prefix, index),
+        ifaddr(AF_INET_U8, prefix, index),
     );
     msg.attrs.raw(IFA_LOCAL, &ip);
     msg.attrs.raw(IFA_ADDRESS, &ip);
@@ -2373,6 +2392,7 @@ pub(crate) fn default_route(name: &str, gateway: [u8; 4]) -> Result<(), i32> {
         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
         next_seq(),
         rtmsg(
+            AF_INET_U8,
             0,
             RT_TABLE_MAIN,
             RTPROT_BOOT,
@@ -2397,7 +2417,14 @@ pub(crate) fn local_default_route(table: u32) -> Result<(), i32> {
         libc::RTM_NEWROUTE,
         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
         next_seq(),
-        rtmsg(0, table as u8, RTPROT_BOOT, RT_SCOPE_HOST, RTN_LOCAL),
+        rtmsg(
+            AF_INET_U8,
+            0,
+            table as u8,
+            RTPROT_BOOT,
+            RT_SCOPE_HOST,
+            RTN_LOCAL,
+        ),
     );
     msg.attrs.u32_ne(RTA_TABLE, table);
     msg.attrs.u32_ne(RTA_OIF, index);
@@ -2414,7 +2441,95 @@ pub(crate) fn fwmark_rule(mark: u32, table: u32) -> Result<(), i32> {
         libc::RTM_NEWRULE,
         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
         next_seq(),
-        fib_rule(table as u8),
+        fib_rule(AF_INET_U8, table as u8),
+    );
+    msg.attrs.u32_ne(FRA_FWMARK, mark);
+    msg.attrs.u32_ne(FRA_TABLE, table);
+    msg.attrs.u32_ne(FRA_PRIORITY, 1000);
+    let out = nl_send(fd, msg);
+    // SAFETY: closing the netlink socket this function created.
+    unsafe { libc::close(fd) };
+    out
+}
+
+/// Adds `ip/prefix` to link `name` (IPv6).
+pub(crate) fn link_addr6(name: &str, ip: [u8; 16], prefix: u8) -> Result<(), i32> {
+    let index = if_index(name)?;
+    let fd = nl_socket(NETLINK_ROUTE)?;
+    let mut msg = NlMsg::new(
+        libc::RTM_NEWADDR,
+        NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
+        next_seq(),
+        ifaddr(AF_INET6_U8, prefix, index),
+    );
+    msg.attrs.raw(IFA_LOCAL, &ip);
+    msg.attrs.raw(IFA_ADDRESS, &ip);
+    msg.attrs.u32_ne(IFA_FLAGS, IFA_F_NODAD);
+    let out = nl_send(fd, msg);
+    // SAFETY: closing the netlink socket this function created.
+    unsafe { libc::close(fd) };
+    out
+}
+
+/// Adds an IPv6 unicast default route through `gateway` on link `name`.
+pub(crate) fn default_route6(name: &str, gateway: [u8; 16]) -> Result<(), i32> {
+    let index = if_index(name)?;
+    let fd = nl_socket(NETLINK_ROUTE)?;
+    let mut msg = NlMsg::new(
+        libc::RTM_NEWROUTE,
+        NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
+        next_seq(),
+        rtmsg(
+            AF_INET6_U8,
+            0,
+            RT_TABLE_MAIN,
+            RTPROT_BOOT,
+            RT_SCOPE_UNIVERSE,
+            RTN_UNICAST,
+        ),
+    );
+    msg.attrs.raw(RTA_GATEWAY, &gateway);
+    msg.attrs.u32_ne(RTA_OIF, index);
+    let out = nl_send(fd, msg);
+    // SAFETY: closing the netlink socket this function created.
+    unsafe { libc::close(fd) };
+    out
+}
+
+/// The IPv6 `local ::/0 dev lo table <table>` route for marked TPROXY
+/// packets.
+pub(crate) fn local_default_route6(table: u32) -> Result<(), i32> {
+    let index = if_index("lo")?;
+    let fd = nl_socket(NETLINK_ROUTE)?;
+    let mut msg = NlMsg::new(
+        libc::RTM_NEWROUTE,
+        NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
+        next_seq(),
+        rtmsg(
+            AF_INET6_U8,
+            0,
+            table as u8,
+            RTPROT_BOOT,
+            RT_SCOPE_HOST,
+            RTN_LOCAL,
+        ),
+    );
+    msg.attrs.u32_ne(RTA_TABLE, table);
+    msg.attrs.u32_ne(RTA_OIF, index);
+    let out = nl_send(fd, msg);
+    // SAFETY: closing the netlink socket this function created.
+    unsafe { libc::close(fd) };
+    out
+}
+
+/// Adds `fwmark <mark> lookup <table>` to the IPv6 policy rules.
+pub(crate) fn fwmark_rule6(mark: u32, table: u32) -> Result<(), i32> {
+    let fd = nl_socket(NETLINK_ROUTE)?;
+    let mut msg = NlMsg::new(
+        libc::RTM_NEWRULE,
+        NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
+        next_seq(),
+        fib_rule(AF_INET6_U8, table as u8),
     );
     msg.attrs.u32_ne(FRA_FWMARK, mark);
     msg.attrs.u32_ne(FRA_TABLE, table);
@@ -2429,8 +2544,8 @@ fn nft_type(op: u16) -> u16 {
     (NFNL_SUBSYS_NFTABLES << 8) | op
 }
 
-fn nft_body() -> Vec<u8> {
-    vec![NFPROTO_IPV4, 0, 0, 0]
+fn nft_body(family: u8) -> Vec<u8> {
+    vec![family, 0, 0, 0]
 }
 
 fn nft_op(fd: c_int, msg: NlMsg) -> Result<(), i32> {
@@ -2445,23 +2560,30 @@ fn nft_op(fd: c_int, msg: NlMsg) -> Result<(), i32> {
     nl_ack(fd, &wire, op_seq)
 }
 
-fn nft_table(fd: c_int) -> Result<(), i32> {
+fn nft_table(fd: c_int, family: u8) -> Result<(), i32> {
     let mut msg = NlMsg::new(
         nft_type(NFT_MSG_NEWTABLE),
         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
         next_seq(),
-        nft_body(),
+        nft_body(family),
     );
     msg.attrs.string(NFTA_TABLE_NAME, "procage_relay");
     nft_op(fd, msg)
 }
 
-fn nft_chain(fd: c_int, name: &str, kind: &str, hook: u32, priority: i32) -> Result<(), i32> {
+fn nft_chain(
+    fd: c_int,
+    family: u8,
+    name: &str,
+    kind: &str,
+    hook: u32,
+    priority: i32,
+) -> Result<(), i32> {
     let mut msg = NlMsg::new(
         nft_type(NFT_MSG_NEWCHAIN),
         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL,
         next_seq(),
-        nft_body(),
+        nft_body(family),
     );
     msg.attrs.string(NFTA_CHAIN_TABLE, "procage_relay");
     msg.attrs.string(NFTA_CHAIN_NAME, name);
@@ -2481,12 +2603,17 @@ fn nft_expr(list: &mut NlAttrs, name: &str, body: impl FnOnce(&mut NlAttrs)) {
     });
 }
 
-fn nft_rule(fd: c_int, chain: &str, exprs: impl FnOnce(&mut NlAttrs)) -> Result<(), i32> {
+fn nft_rule(
+    fd: c_int,
+    family: u8,
+    chain: &str,
+    exprs: impl FnOnce(&mut NlAttrs),
+) -> Result<(), i32> {
     let mut msg = NlMsg::new(
         nft_type(NFT_MSG_NEWRULE),
         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_APPEND,
         next_seq(),
-        nft_body(),
+        nft_body(family),
     );
     msg.attrs.string(NFTA_RULE_TABLE, "procage_relay");
     msg.attrs.string(NFTA_RULE_CHAIN, chain);
@@ -2544,27 +2671,36 @@ fn nft_mark_one(list: &mut NlAttrs) {
     });
 }
 
-fn nft_tproxy(list: &mut NlAttrs, reg: u32) {
+fn nft_tproxy(list: &mut NlAttrs, family: u8, reg: u32) {
     nft_expr(list, "tproxy", |e| {
-        e.u32(NFTA_TPROXY_FAMILY, NFPROTO_IPV4 as u32);
+        e.u32(NFTA_TPROXY_FAMILY, family as u32);
         e.u32(NFTA_TPROXY_REG_PORT, reg);
     });
 }
 
-/// Installs the proxy namespace's TPROXY rules: TCP and UDP to `port`, with
-/// mark 1 for the policy route.
+/// Installs the proxy namespace's TPROXY rules for IPv4 and IPv6: TCP and
+/// UDP to `port`, with mark 1 for the policy route.
 pub(crate) fn nft_install_relay(port: u16) -> Result<(), i32> {
     let fd = nl_socket(NETLINK_NETFILTER)?;
     let out = (|| {
-        nft_table(fd)?;
-        nft_chain(fd, "prerouting", "filter", NF_INET_PRE_ROUTING, -150)?;
-        for proto in [libc::IPPROTO_TCP as u8, libc::IPPROTO_UDP as u8] {
-            nft_rule(fd, "prerouting", |list| {
-                nft_l4proto(list, proto);
-                nft_mark_one(list);
-                nft_port_reg(list, NFT_REG_2, port);
-                nft_tproxy(list, NFT_REG_2);
-            })?;
+        for family in [NFPROTO_IPV4, NFPROTO_IPV6] {
+            nft_table(fd, family)?;
+            nft_chain(
+                fd,
+                family,
+                "prerouting",
+                "filter",
+                NF_INET_PRE_ROUTING,
+                -150,
+            )?;
+            for proto in [libc::IPPROTO_TCP as u8, libc::IPPROTO_UDP as u8] {
+                nft_rule(fd, family, "prerouting", |list| {
+                    nft_l4proto(list, proto);
+                    nft_mark_one(list);
+                    nft_port_reg(list, NFT_REG_2, port);
+                    nft_tproxy(list, family, NFT_REG_2);
+                })?;
+            }
         }
         Ok(())
     })();
@@ -2573,22 +2709,25 @@ pub(crate) fn nft_install_relay(port: u16) -> Result<(), i32> {
     out
 }
 
-/// Installs the app namespace's DNS redirect: UDP and TCP port 53 to
-/// `127.0.0.1:port`, so a `resolv.conf` loopback stub reaches the relay.
+/// Installs the app namespace's DNS redirect for IPv4 and IPv6: UDP and TCP
+/// port 53 to the loopback listener, so a `resolv.conf` stub reaches the
+/// relay.
 pub(crate) fn nft_install_dns_redirect(port: u16) -> Result<(), i32> {
     let fd = nl_socket(NETLINK_NETFILTER)?;
     let out = (|| {
-        nft_table(fd)?;
-        nft_chain(fd, "dns", "nat", NF_INET_LOCAL_OUT, 100)?;
-        for proto in [libc::IPPROTO_TCP as u8, libc::IPPROTO_UDP as u8] {
-            nft_rule(fd, "dns", |list| {
-                nft_l4proto(list, proto);
-                nft_l4dport(list, 53);
-                nft_port_reg(list, NFT_REG_1, port);
-                nft_expr(list, "redir", |e| {
-                    e.u32(NFTA_REDIR_REG_PROTO_MIN, NFT_REG_1)
-                });
-            })?;
+        for family in [NFPROTO_IPV4, NFPROTO_IPV6] {
+            nft_table(fd, family)?;
+            nft_chain(fd, family, "dns", "nat", NF_INET_LOCAL_OUT, 100)?;
+            for proto in [libc::IPPROTO_TCP as u8, libc::IPPROTO_UDP as u8] {
+                nft_rule(fd, family, "dns", |list| {
+                    nft_l4proto(list, proto);
+                    nft_l4dport(list, 53);
+                    nft_port_reg(list, NFT_REG_1, port);
+                    nft_expr(list, "redir", |e| {
+                        e.u32(NFTA_REDIR_REG_PROTO_MIN, NFT_REG_1)
+                    });
+                })?;
+            }
         }
         Ok(())
     })();
@@ -2858,6 +2997,169 @@ pub(crate) fn relay_udp_socket(port: u16) -> Result<OwnedFd, i32> {
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
+/// Creates a transparent IPv6 TCP listener on `[::]:port`.
+pub(crate) fn relay_tcp_listener6(port: u16) -> Result<OwnedFd, i32> {
+    // SAFETY: socket with integer arguments.
+    let fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    let one: c_int = 1;
+    for (level, name) in [
+        (libc::SOL_SOCKET, libc::SO_REUSEADDR),
+        (libc::IPPROTO_IPV6, IPV6_V6ONLY),
+        (libc::IPPROTO_IPV6, IPV6_TRANSPARENT),
+    ] {
+        // SAFETY: setsockopt reads one c_int on this frame.
+        let rc = unsafe {
+            libc::setsockopt(
+                fd,
+                level,
+                name,
+                (&raw const one).cast(),
+                std::mem::size_of::<c_int>() as libc::socklen_t,
+            )
+        };
+        if rc != 0 {
+            let e = errno();
+            // SAFETY: closing the socket this function created.
+            unsafe { libc::close(fd) };
+            return Err(e);
+        }
+    }
+    let addr = libc::sockaddr_in6 {
+        sin6_family: libc::AF_INET6 as u16,
+        sin6_port: port.to_be(),
+        sin6_flowinfo: 0,
+        sin6_addr: libc::in6_addr { s6_addr: [0; 16] },
+        sin6_scope_id: 0,
+    };
+    // SAFETY: bind and listen with values on this frame.
+    let rc = unsafe {
+        let rc = libc::bind(
+            fd,
+            (&raw const addr).cast(),
+            std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+        );
+        if rc == 0 { libc::listen(fd, 128) } else { rc }
+    };
+    if rc != 0 {
+        let e = errno();
+        // SAFETY: closing the socket this function created.
+        unsafe { libc::close(fd) };
+        return Err(e);
+    }
+    // SAFETY: the kernel just created this descriptor for us.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// Creates a transparent IPv6 UDP socket on `[::]:port` that reports the
+/// original destination of each datagram.
+pub(crate) fn relay_udp_socket6(port: u16) -> Result<OwnedFd, i32> {
+    // SAFETY: socket with integer arguments.
+    let fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    let one: c_int = 1;
+    for (level, name) in [
+        (libc::SOL_SOCKET, libc::SO_REUSEADDR),
+        (libc::IPPROTO_IPV6, IPV6_V6ONLY),
+        (libc::IPPROTO_IPV6, IPV6_TRANSPARENT),
+        (libc::IPPROTO_IPV6, IPV6_RECVORIGDSTADDR),
+    ] {
+        // SAFETY: setsockopt reads one c_int on this frame.
+        let rc = unsafe {
+            libc::setsockopt(
+                fd,
+                level,
+                name,
+                (&raw const one).cast(),
+                std::mem::size_of::<c_int>() as libc::socklen_t,
+            )
+        };
+        if rc != 0 {
+            let e = errno();
+            // SAFETY: closing the socket this function created.
+            unsafe { libc::close(fd) };
+            return Err(e);
+        }
+    }
+    let addr = libc::sockaddr_in6 {
+        sin6_family: libc::AF_INET6 as u16,
+        sin6_port: port.to_be(),
+        sin6_flowinfo: 0,
+        sin6_addr: libc::in6_addr { s6_addr: [0; 16] },
+        sin6_scope_id: 0,
+    };
+    // SAFETY: bind with a sockaddr_in6 on this frame.
+    let rc = unsafe {
+        libc::bind(
+            fd,
+            (&raw const addr).cast(),
+            std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+        )
+    };
+    if rc != 0 {
+        let e = errno();
+        // SAFETY: closing the socket this function created.
+        unsafe { libc::close(fd) };
+        return Err(e);
+    }
+    // SAFETY: the kernel just created this descriptor for us.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// Binds `[::1]:port` for the app namespace's IPv6 DNS responder.
+pub(crate) fn loopback_socket6(kind: c_int, port: u16) -> Result<OwnedFd, i32> {
+    // SAFETY: socket with integer arguments.
+    let fd = unsafe { libc::socket(libc::AF_INET6, kind | libc::SOCK_CLOEXEC, 0) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    let one: c_int = 1;
+    // SAFETY: setsockopt reads one c_int.
+    unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_REUSEADDR,
+            (&raw const one).cast(),
+            std::mem::size_of::<c_int>() as libc::socklen_t,
+        );
+    }
+    let mut ip = [0u8; 16];
+    ip[15] = 1;
+    let addr = libc::sockaddr_in6 {
+        sin6_family: libc::AF_INET6 as u16,
+        sin6_port: port.to_be(),
+        sin6_flowinfo: 0,
+        sin6_addr: libc::in6_addr { s6_addr: ip },
+        sin6_scope_id: 0,
+    };
+    // SAFETY: bind, and listen for a stream socket.
+    let rc = unsafe {
+        let rc = libc::bind(
+            fd,
+            (&raw const addr).cast(),
+            std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+        );
+        if rc == 0 && kind == libc::SOCK_STREAM {
+            libc::listen(fd, 32)
+        } else {
+            rc
+        }
+    };
+    if rc != 0 {
+        let e = errno();
+        // SAFETY: closing the socket this function created.
+        unsafe { libc::close(fd) };
+        return Err(e);
+    }
+    // SAFETY: the kernel just created this descriptor for us.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
 /// Binds `127.0.0.1:port` for the app namespace's DNS responder.
 pub(crate) fn loopback_socket(kind: c_int, port: u16) -> Result<OwnedFd, i32> {
     // SAFETY: socket with integer arguments.
@@ -2908,14 +3210,14 @@ pub(crate) fn loopback_socket(kind: c_int, port: u16) -> Result<OwnedFd, i32> {
 }
 
 /// Receives one UDP datagram with its source and original destination
-/// (from `IP_RECVORIGDSTADDR`). Returns the payload length.
+/// (`IP_RECVORIGDSTADDR`/`IPV6_RECVORIGDSTADDR`). Returns the payload length.
 pub(crate) fn relay_udp_recv(
     fd: &OwnedFd,
     buf: &mut [u8],
 ) -> Result<(std::net::SocketAddr, std::net::SocketAddr, usize), i32> {
-    // SAFETY: an all-zero sockaddr_in is a valid value to fill in.
-    let mut source: libc::sockaddr_in = unsafe { std::mem::zeroed() };
-    let mut control = [0u8; 128];
+    // SAFETY: an all-zero sockaddr_storage is a valid value to fill in.
+    let mut source: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
+    let mut control = [0u8; 256];
     let mut iov = libc::iovec {
         iov_base: buf.as_mut_ptr().cast(),
         iov_len: buf.len(),
@@ -2923,7 +3225,7 @@ pub(crate) fn relay_udp_recv(
     // SAFETY: a zeroed msghdr is a valid empty message.
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
     msg.msg_name = (&raw mut source).cast();
-    msg.msg_namelen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+    msg.msg_namelen = std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
     msg.msg_iov = &raw mut iov;
     msg.msg_iovlen = 1;
     msg.msg_control = control.as_mut_ptr().cast();
@@ -2933,7 +3235,19 @@ pub(crate) fn relay_udp_recv(
     if n < 0 {
         return Err(errno());
     }
-    let source = sockaddr_in_to_std(&source)?;
+    let source = match source.ss_family as c_int {
+        libc::AF_INET => {
+            // SAFETY: the kernel filled a sockaddr_in when the family says so.
+            let sin = unsafe { std::ptr::read_unaligned((&raw const source).cast()) };
+            sockaddr_in_to_std(&sin)?
+        }
+        libc::AF_INET6 => {
+            // SAFETY: the kernel filled a sockaddr_in6 when the family says so.
+            let sin6 = unsafe { std::ptr::read_unaligned((&raw const source).cast()) };
+            sockaddr_in6_to_std(&sin6)?
+        }
+        _ => return Err(libc::EAFNOSUPPORT),
+    };
     let mut orig = None;
     // SAFETY: a zeroed msghdr is valid; CMSG_FIRSTHDR checks the length.
     let mut header = unsafe { libc::CMSG_FIRSTHDR(&raw const msg) };
@@ -2941,12 +3255,17 @@ pub(crate) fn relay_udp_recv(
         // SAFETY: the header is within the control buffer the kernel filled.
         let h = unsafe { &*header };
         if h.cmsg_level == libc::SOL_IP && h.cmsg_type == libc::IP_ORIGDSTADDR {
-            // SAFETY: the payload is at least a sockaddr_in when the type
-            // matches (the kernel fills exactly that).
+            // SAFETY: the payload is a sockaddr_in for this type.
             let sin = unsafe {
                 std::ptr::read_unaligned(libc::CMSG_DATA(header).cast::<libc::sockaddr_in>())
             };
             orig = Some(sockaddr_in_to_std(&sin)?);
+        } else if h.cmsg_level == libc::IPPROTO_IPV6 && h.cmsg_type == IPV6_ORIGDSTADDR {
+            // SAFETY: the payload is a sockaddr_in6 for this type.
+            let sin6 = unsafe {
+                std::ptr::read_unaligned(libc::CMSG_DATA(header).cast::<libc::sockaddr_in6>())
+            };
+            orig = Some(sockaddr_in6_to_std(&sin6)?);
         }
         // SAFETY: CMSG_NXTHDR walks within the control buffer.
         header = unsafe { libc::CMSG_NXTHDR(&raw const msg, header) };
@@ -2963,17 +3282,42 @@ fn sockaddr_in_to_std(sin: &libc::sockaddr_in) -> Result<std::net::SocketAddr, i
     Ok(std::net::SocketAddr::from((ip, u16::from_be(sin.sin_port))))
 }
 
+fn sockaddr_in6_to_std(sin6: &libc::sockaddr_in6) -> Result<std::net::SocketAddr, i32> {
+    if sin6.sin6_family as c_int != libc::AF_INET6 {
+        return Err(libc::EAFNOSUPPORT);
+    }
+    Ok(std::net::SocketAddr::from((
+        std::net::Ipv6Addr::from(sin6.sin6_addr.s6_addr),
+        u16::from_be(sin6.sin6_port),
+    )))
+}
+
 /// Sends one transparent UDP datagram from `source` to `target` (the
-/// helper's reply path).
+/// helper's reply path). IPv4 uses `IP_TRANSPARENT`, IPv6
+/// `IPV6_TRANSPARENT`; mixed families are refused.
 pub(crate) fn transparent_udp_send(
     source: std::net::SocketAddr,
     target: std::net::SocketAddr,
     payload: &[u8],
 ) -> Result<(), i32> {
-    let (std::net::IpAddr::V4(src_ip), std::net::IpAddr::V4(dst_ip)) = (source.ip(), target.ip())
-    else {
-        return Err(libc::EAFNOSUPPORT);
-    };
+    match (source, target) {
+        (std::net::SocketAddr::V4(source), std::net::SocketAddr::V4(target)) => {
+            transparent_udp_send4(source, target, payload)
+        }
+        (std::net::SocketAddr::V6(source), std::net::SocketAddr::V6(target)) => {
+            transparent_udp_send6(source, target, payload)
+        }
+        _ => Err(libc::EAFNOSUPPORT),
+    }
+}
+
+fn transparent_udp_send4(
+    source: std::net::SocketAddrV4,
+    target: std::net::SocketAddrV4,
+    payload: &[u8],
+) -> Result<(), i32> {
+    let src_ip = *source.ip();
+    let dst_ip = *target.ip();
     // SAFETY: socket with integer arguments.
     let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
     if fd < 0 {
@@ -3030,6 +3374,83 @@ pub(crate) fn transparent_udp_send(
                 0,
                 (&raw const dst).cast(),
                 std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+            )
+        };
+        if rc < 0 { Err(errno()) } else { Ok(()) }
+    })();
+    // SAFETY: closing the socket this function created.
+    unsafe { libc::close(fd) };
+    out
+}
+
+fn transparent_udp_send6(
+    source: std::net::SocketAddrV6,
+    target: std::net::SocketAddrV6,
+    payload: &[u8],
+) -> Result<(), i32> {
+    // SAFETY: socket with integer arguments.
+    let fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    let out = (|| {
+        let one: c_int = 1;
+        for (level, name) in [
+            (libc::IPPROTO_IPV6, IPV6_V6ONLY),
+            (libc::IPPROTO_IPV6, IPV6_TRANSPARENT),
+        ] {
+            // SAFETY: setsockopt reads one c_int.
+            let rc = unsafe {
+                libc::setsockopt(
+                    fd,
+                    level,
+                    name,
+                    (&raw const one).cast(),
+                    std::mem::size_of::<c_int>() as libc::socklen_t,
+                )
+            };
+            if rc != 0 {
+                return Err(errno());
+            }
+        }
+        let local = libc::sockaddr_in6 {
+            sin6_family: libc::AF_INET6 as u16,
+            sin6_port: source.port().to_be(),
+            sin6_flowinfo: 0,
+            sin6_addr: libc::in6_addr {
+                s6_addr: source.ip().octets(),
+            },
+            sin6_scope_id: 0,
+        };
+        // SAFETY: bind with a sockaddr_in6 on this frame.
+        let rc = unsafe {
+            libc::bind(
+                fd,
+                (&raw const local).cast(),
+                std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+            )
+        };
+        if rc != 0 {
+            return Err(errno());
+        }
+        let dst = libc::sockaddr_in6 {
+            sin6_family: libc::AF_INET6 as u16,
+            sin6_port: target.port().to_be(),
+            sin6_flowinfo: 0,
+            sin6_addr: libc::in6_addr {
+                s6_addr: target.ip().octets(),
+            },
+            sin6_scope_id: 0,
+        };
+        // SAFETY: sendto with a buffer on this frame.
+        let rc = unsafe {
+            libc::sendto(
+                fd,
+                payload.as_ptr().cast(),
+                payload.len(),
+                0,
+                (&raw const dst).cast(),
+                std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
             )
         };
         if rc < 0 { Err(errno()) } else { Ok(()) }

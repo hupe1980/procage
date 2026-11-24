@@ -235,6 +235,16 @@ pub struct CageOptionsJs {
     /// fixes its id; otherwise procage sends a random id the server rejects.
     #[napi(js_name = "relay_run_id")]
     pub relay_run_id: Option<String>,
+    /// The parent's resolver for the relay's allowed DNS queries, as
+    /// `ip:port` (for example `127.0.0.1:53`). Without it the parent's
+    /// `/etc/resolv.conf` and systemd-resolved paths are used, including a
+    /// loopback stub.
+    #[napi(js_name = "relay_dns_upstream")]
+    pub relay_dns_upstream: Option<String>,
+    /// A resolver configuration file to use instead of the parent's
+    /// `/etc/resolv.conf`; an empty file means no upstream and `SERVFAIL`.
+    #[napi(js_name = "relay_resolv_conf")]
+    pub relay_resolv_conf: Option<String>,
 }
 
 fn relax(names: &[String]) -> Result<Relax> {
@@ -294,6 +304,8 @@ impl Cage {
             proxy: None,
             relay_control_socket: None,
             relay_run_id: None,
+            relay_dns_upstream: None,
+            relay_resolv_conf: None,
         });
         let mut lower = if o.accept_spawn_snapshot.unwrap_or(false) {
             LowerOptions::default().accept_spawn_snapshot()
@@ -327,6 +339,15 @@ impl Cage {
                         .parse::<u64>()
                         .map_err(|_| policy_error("relay_run_id must be a decimal u64".into()))?;
                     relay = relay.with_run_id(run_id);
+                }
+                if let Some(upstream) = o.relay_dns_upstream {
+                    let upstream = upstream
+                        .parse()
+                        .map_err(|_| policy_error("relay_dns_upstream must be ip:port".into()))?;
+                    relay = relay.with_dns_upstream(upstream);
+                }
+                if let Some(path) = o.relay_resolv_conf {
+                    relay = relay.with_resolv_conf(path);
                 }
                 options = options.with_relay(relay);
             }

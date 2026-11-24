@@ -403,7 +403,7 @@ pub(super) fn lower(
         Network::Relay => {
             if t1 {
                 if ledger.outcome(Construct::NetRelay, Outcome::Exact, None, "") {
-                    let mut families = vec![AF_INET];
+                    let mut families = vec![AF_INET, AF_INET6];
                     if !policy.ipc.unix_sockets.is_empty() {
                         families.push(AF_UNIX);
                     }

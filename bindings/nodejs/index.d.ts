@@ -93,6 +93,17 @@ export interface CageOptions {
    * server that fixes its id (`RelayControlServer.runId`) rejects another.
    */
   relay_run_id?: string;
+  /**
+   * The parent resolver for allowed DNS queries, as `ip:port` (for example
+   * `127.0.0.1:53`). Without it the parent's `resolv.conf` and
+   * systemd-resolved paths are used, including a loopback stub.
+   */
+  relay_dns_upstream?: string;
+  /**
+   * A resolver configuration file to use instead of the parent's
+   * `resolv.conf`; an empty file means no upstream and `SERVFAIL`.
+   */
+  relay_resolv_conf?: string;
 }
 
 export interface SpawnOptions {

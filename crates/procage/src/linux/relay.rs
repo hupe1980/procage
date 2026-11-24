@@ -35,18 +35,37 @@ pub(crate) const DNS_PORT: u16 = 5_353;
 pub(crate) const APP_ADDR: [u8; 4] = [10, 10, 0, 2];
 pub(crate) const PROXY_ADDR: [u8; 4] = [10, 10, 0, 1];
 pub(crate) const APP_PREFIX: u8 = 24;
+/// The IPv6 ULA pair on the same veth; both namespaces get the prefix.
+pub(crate) const APP_ADDR6: [u8; 16] = [0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
+pub(crate) const PROXY_ADDR6: [u8; 16] = [0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+pub(crate) const APP_PREFIX6: u8 = 64;
 pub(crate) const PROXY_IF: &str = "procage-p0";
 pub(crate) const APP_IF: &str = "procage-a0";
 const POLICY_TABLE: u32 = 100;
 const MARK: u32 = 1;
 /// How long one decision may wait beyond the relay's own timeout.
 const DECISION_GRACE: Duration = Duration::from_millis(50);
+/// The most DNS answers one run maps to names.
+const DNS_MAP_MAX: usize = 4096;
+/// The longest TTL a mapped answer may keep, whatever the record says.
+const DNS_TTL_MAX: u64 = 3600;
+/// How long a QUIC Initial flow may wait for its ClientHello before the
+/// destination address is asked for instead.
+const QUIC_DEADLINE: Duration = Duration::from_millis(100);
+/// The most Initial datagrams buffered for one QUIC flow.
+const QUIC_MAX_PACKETS: usize = 8;
+/// The most QUIC flows buffered at once.
+const QUIC_MAX_PENDING: usize = 64;
 /// The most bytes buffered to name a TCP flow.
 const MAX_NAME: usize = 64 * 1024;
 /// The most concurrent TCP flows a run relays.
 const MAX_TCP: usize = 128;
 /// How long an idle UDP flow keeps its upstream socket.
 const UDP_IDLE: Duration = Duration::from_secs(30);
+/// The most upstream UDP flows one run keeps at once. Beyond it a datagram
+/// is dropped (DNS still answers REFUSED through its one-shot path); no
+/// socket or thread is created.
+const MAX_UDP_FLOWS: usize = 256;
 
 /// Connects to the harness's control socket.
 pub(crate) fn connect(relay: &Relay) -> io::Result<Control> {
@@ -70,8 +89,8 @@ pub(crate) fn start(
     violations: Option<crate::violation::Sink>,
 ) -> io::Result<Run> {
     let (head, fds) =
-        sys::recv_with_fds(&helper, 2, 5_000).map_err(io::Error::from_raw_os_error)?;
-    if head.first() != Some(&1) || fds.len() != 2 {
+        sys::recv_with_fds(&helper, 4, 5_000).map_err(io::Error::from_raw_os_error)?;
+    if head.first() != Some(&1) || fds.len() != 4 {
         return Err(io::Error::other(
             "relay helper did not hand over its sockets",
         ));
@@ -79,20 +98,25 @@ pub(crate) fn start(
     let mut fds = fds.into_iter();
     let tcp = TcpListener::from(fds.next().expect("checked"));
     let udp = UdpSocket::from(fds.next().expect("checked"));
-    let (head, fds) = sys::recv_with_fds(&dns, 2, 5_000).map_err(io::Error::from_raw_os_error)?;
-    let (dns_udp, dns_tcp) = if head.first() == Some(&2) && fds.len() == 2 {
+    let tcp6 = TcpListener::from(fds.next().expect("checked"));
+    let udp6 = UdpSocket::from(fds.next().expect("checked"));
+    let (head, fds) = sys::recv_with_fds(&dns, 4, 5_000).map_err(io::Error::from_raw_os_error)?;
+    let (dns_udp, dns_tcp, dns_udp6, dns_tcp6) = if head.first() == Some(&2) && fds.len() == 4 {
         let mut fds = fds.into_iter();
         (
+            Some(UdpSocket::from(fds.next().expect("checked"))),
+            Some(TcpListener::from(fds.next().expect("checked"))),
             Some(UdpSocket::from(fds.next().expect("checked"))),
             Some(TcpListener::from(fds.next().expect("checked"))),
         )
     } else {
         // DNS is optional: without its listeners, resolver stubs time out
         // rather than leak.
-        (None, None)
+        (None, None, None, None)
     };
     Run::start(
-        relay, control, helper, tcp, udp, dns_udp, dns_tcp, violations,
+        relay, control, helper, tcp, udp, tcp6, udp6, dns_udp, dns_tcp, dns_udp6, dns_tcp6,
+        violations,
     )
 }
 
@@ -103,9 +127,77 @@ pub(crate) struct Run {
     stop: Arc<AtomicBool>,
     handles: Vec<std::thread::JoinHandle<()>>,
     socket: Arc<Mutex<std::os::unix::net::UnixStream>>,
-    control: Arc<Mutex<Control>>,
+    control: Control,
     relay: Relay,
+    dns_map: Arc<DnsMap>,
     violations: Option<crate::violation::Sink>,
+}
+
+/// The names an allowed DNS answer has authorized, per address, with the
+/// record's TTL. A later flow that names no host may use the entry instead of
+/// its bare address; an expired or evicted entry authorizes nothing.
+#[derive(Debug, Default)]
+struct DnsMap {
+    entries: Mutex<HashMap<IpAddr, CacheEntry>>,
+}
+
+#[derive(Debug, Clone)]
+struct CacheEntry {
+    name: String,
+    expires: Instant,
+}
+
+impl DnsMap {
+    fn insert(&self, name: &str, answers: &[dns::Answer]) {
+        self.insert_at(name, answers, Instant::now());
+    }
+
+    fn insert_at(&self, name: &str, answers: &[dns::Answer], now: Instant) {
+        let Ok(mut entries) = self.entries.lock() else {
+            return;
+        };
+        if entries.len() >= DNS_MAP_MAX {
+            entries.retain(|_, entry| entry.expires > now);
+            if entries.len() >= DNS_MAP_MAX {
+                // Full: no new name is remembered; the address alone must be
+                // authorized, so the limit fails closed.
+                return;
+            }
+        }
+        for answer in answers {
+            if answer.ttl == 0 {
+                continue;
+            }
+            let ttl = u64::from(answer.ttl).min(DNS_TTL_MAX);
+            entries.insert(
+                answer.ip,
+                CacheEntry {
+                    name: name.to_string(),
+                    expires: now + Duration::from_secs(ttl),
+                },
+            );
+        }
+    }
+
+    fn insert_reply(&self, query: &dns::Query, reply: &[u8]) {
+        if let Ok(answers) = dns::parse_answers(reply, &query.name) {
+            self.insert(&query.name, &answers);
+        }
+    }
+
+    fn name_for(&self, ip: IpAddr) -> Option<String> {
+        let Ok(mut entries) = self.entries.lock() else {
+            return None;
+        };
+        match entries.get(&ip) {
+            Some(entry) if entry.expires > Instant::now() => Some(entry.name.clone()),
+            Some(_) => {
+                entries.remove(&ip);
+                None
+            }
+            None => None,
+        }
+    }
 }
 
 impl Run {
@@ -118,27 +210,45 @@ impl Run {
         socket: OwnedFd,
         tcp: TcpListener,
         udp: UdpSocket,
+        tcp6: TcpListener,
+        udp6: UdpSocket,
         dns_udp: Option<UdpSocket>,
         dns_tcp: Option<TcpListener>,
+        dns_udp6: Option<UdpSocket>,
+        dns_tcp6: Option<TcpListener>,
         violations: Option<crate::violation::Sink>,
     ) -> io::Result<Run> {
         let stop = Arc::new(AtomicBool::new(false));
         let socket = Arc::new(Mutex::new(std::os::unix::net::UnixStream::from(socket)));
-        let control = Arc::new(Mutex::new(control));
+        let dns_map = Arc::new(DnsMap::default());
         let mut run = Run {
             stop: stop.clone(),
             handles: Vec::new(),
             socket: socket.clone(),
             control: control.clone(),
             relay: relay.clone(),
+            dns_map: dns_map.clone(),
             violations: violations.clone(),
         };
+        let control6 = control.clone();
+        let relay6 = relay.clone();
+        let socket6 = socket.clone();
+        let violations6 = violations.clone();
+        let map6 = dns_map.clone();
+        let udp6_map = dns_map.clone();
+        let udp6_control = control.clone();
+        let udp6_relay = relay.clone();
+        let udp6_socket = socket.clone();
+        let udp6_violations = violations.clone();
+        let inflight6 = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         tcp.set_nonblocking(true)?;
+        tcp6.set_nonblocking(true)?;
         let tcp_stop = stop.clone();
         let tcp_control = control.clone();
         let tcp_relay = relay.clone();
         let tcp_socket = socket.clone();
         let tcp_violations = violations.clone();
+        let tcp_map = dns_map.clone();
         let inflight = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         run.handles.push(std::thread::spawn(move || {
             loop {
@@ -157,8 +267,44 @@ impl Run {
                         let socket = tcp_socket.clone();
                         let sink = tcp_violations.clone();
                         let count = inflight.clone();
+                        let map = tcp_map.clone();
                         std::thread::spawn(move || {
-                            let _ = tcp_flow(stream, &control, &relay, &socket, sink.as_ref());
+                            let _ =
+                                tcp_flow(stream, &control, &relay, &socket, sink.as_ref(), &map);
+                            count.fetch_sub(1, Ordering::Relaxed);
+                        });
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    Err(_) => break,
+                }
+            }
+        }));
+        // The IPv6 listener accepts the same flows; the original destination
+        // is its local address.
+        let tcp6_stop = stop.clone();
+        run.handles.push(std::thread::spawn(move || {
+            loop {
+                if tcp6_stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                match tcp6.accept() {
+                    Ok((stream, _)) => {
+                        if inflight6.load(Ordering::Relaxed) >= MAX_TCP {
+                            let _ = stream.shutdown(Shutdown::Both);
+                            continue;
+                        }
+                        inflight6.fetch_add(1, Ordering::Relaxed);
+                        let control = control6.clone();
+                        let relay = relay6.clone();
+                        let socket = socket6.clone();
+                        let sink = violations6.clone();
+                        let count = inflight6.clone();
+                        let map = map6.clone();
+                        std::thread::spawn(move || {
+                            let _ =
+                                tcp_flow(stream, &control, &relay, &socket, sink.as_ref(), &map);
                             count.fetch_sub(1, Ordering::Relaxed);
                         });
                     }
@@ -171,8 +317,21 @@ impl Run {
         }));
         // UDP TPROXY and DNS share the decision path but not a socket.
         let udp_stop = stop.clone();
+        let udp_map = dns_map.clone();
         run.handles.push(std::thread::spawn(move || {
-            udp_loop(udp, udp_stop, control, relay, socket, violations);
+            udp_loop(udp, udp_stop, control, relay, socket, udp_map, violations);
+        }));
+        let udp6_stop = stop.clone();
+        run.handles.push(std::thread::spawn(move || {
+            udp_loop(
+                udp6,
+                udp6_stop,
+                udp6_control,
+                udp6_relay,
+                udp6_socket,
+                udp6_map,
+                udp6_violations,
+            );
         }));
         if let Some(dns_udp) = dns_udp {
             let dns_stop = run.stop.clone();
@@ -180,6 +339,7 @@ impl Run {
             let dns_relay = run.relay.clone();
             let dns_socket = run.socket.clone();
             let dns_sink = run.violations.clone();
+            let dns_map = run.dns_map.clone();
             run.handles.push(std::thread::spawn(move || {
                 dns_listener_udp(
                     dns_udp,
@@ -187,6 +347,7 @@ impl Run {
                     dns_control,
                     dns_relay,
                     dns_socket,
+                    dns_map,
                     dns_sink,
                 );
             }));
@@ -196,8 +357,45 @@ impl Run {
             let dns_control = run.control.clone();
             let dns_relay = run.relay.clone();
             let dns_sink = run.violations.clone();
+            let dns_map = run.dns_map.clone();
             run.handles.push(std::thread::spawn(move || {
-                dns_listener_tcp(dns_tcp, dns_stop, dns_control, dns_relay, dns_sink);
+                dns_listener_tcp(dns_tcp, dns_stop, dns_control, dns_relay, dns_map, dns_sink);
+            }));
+        }
+        if let Some(dns_udp6) = dns_udp6 {
+            let dns_stop = run.stop.clone();
+            let dns_control = run.control.clone();
+            let dns_relay = run.relay.clone();
+            let dns_socket = run.socket.clone();
+            let dns_sink = run.violations.clone();
+            let dns_map = run.dns_map.clone();
+            run.handles.push(std::thread::spawn(move || {
+                dns_listener_udp(
+                    dns_udp6,
+                    dns_stop,
+                    dns_control,
+                    dns_relay,
+                    dns_socket,
+                    dns_map,
+                    dns_sink,
+                );
+            }));
+        }
+        if let Some(dns_tcp6) = dns_tcp6 {
+            let dns_stop = run.stop.clone();
+            let dns_control = run.control.clone();
+            let dns_relay = run.relay.clone();
+            let dns_sink = run.violations.clone();
+            let dns_map = run.dns_map.clone();
+            run.handles.push(std::thread::spawn(move || {
+                dns_listener_tcp(
+                    dns_tcp6,
+                    dns_stop,
+                    dns_control,
+                    dns_relay,
+                    dns_map,
+                    dns_sink,
+                );
             }));
         }
         Ok(run)
@@ -206,15 +404,16 @@ impl Run {
 impl Drop for Run {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Ok(mut control) = self.control.lock() {
-            control.close();
+        self.control.close();
+        // The helper channel closes too: no reply socket keeps servicing a
+        // run whose child is gone.
+        if let Ok(socket) = self.socket.lock() {
+            let _ = socket.shutdown(Shutdown::Both);
         }
-        // Each listener loop notices within one poll interval; the handles
-        // are detached rather than joined so ending a run never blocks on a
-        // stuck peer.
+        // Listener loops notice within one poll interval and upstream flow
+        // threads within their 200 ms read timeout; each drops its socket.
     }
 }
-
 fn record(
     sink: Option<&crate::violation::Sink>,
     operation: &str,
@@ -250,7 +449,7 @@ fn pre_decision(relay: &Relay, resource: &Resource, port: u16) -> Option<Reason>
 }
 
 fn decide(
-    control: &Arc<Mutex<Control>>,
+    control: &Control,
     relay: &Relay,
     resource: &Resource,
     port: u16,
@@ -262,12 +461,6 @@ fn decide(
             text: "refused before the control socket".into(),
         };
     }
-    let Ok(mut control) = control.lock() else {
-        return Decision::Deny {
-            reason: Reason::ControlLost,
-            text: "control channel lock poisoned".into(),
-        };
-    };
     let _ = DECISION_GRACE;
     control.decide(resource, port, proto)
 }
@@ -375,10 +568,11 @@ impl NameSniffer for HttpName {
 /// One accepted TCP flow.
 fn tcp_flow(
     mut client: TcpStream,
-    control: &Arc<Mutex<Control>>,
+    control: &Control,
     relay: &Relay,
     helper: &Arc<Mutex<std::os::unix::net::UnixStream>>,
     sink: Option<&crate::violation::Sink>,
+    dns_map: &DnsMap,
 ) -> io::Result<()> {
     let destination = client.local_addr()?;
     let peer = client.peer_addr()?;
@@ -420,19 +614,12 @@ fn tcp_flow(
             client.shutdown(Shutdown::Both).ok();
             return Ok(());
         }
-        // Allowed: forward the framed query to the original destination.
-        let mut up = upstream(destination)?;
-        up.write_all(&dns::frame(&message))?;
-        let mut reply_len = [0u8; 2];
-        up.read_exact(&mut reply_len)?;
-        let n = u16::from_be_bytes(reply_len) as usize;
-        if n == 0 || n > procage_proxy::relay::dns::MAX_TCP {
-            return Ok(());
-        }
-        let mut reply = vec![0u8; n];
-        up.read_exact(&mut reply)?;
-        client.write_all(&reply_len)?;
-        client.write_all(&reply)?;
+        // Allowed: forward the query through the same upstream policy as
+        // UDP; no resolver means SERVFAIL, not an open connection.
+        let reply =
+            forward_dns_tcp(relay, &message, destination).unwrap_or_else(|| dns::servfail(&query));
+        dns_map.insert_reply(&query, &reply);
+        client.write_all(&dns::frame(&reply))?;
         return Ok(());
     } else if matches!(port, 443 | 8443 | 9443 | 4443) {
         let mut sniffer = TlsName(inspect::TlsSniffer::new(), None, false);
@@ -463,7 +650,12 @@ fn tcp_flow(
         client.shutdown(Shutdown::Both).ok();
         return Ok(());
     }
-    let resource = resource.unwrap_or_else(|| Resource::Ip(destination.ip()));
+    let resource = resource.unwrap_or_else(|| {
+        dns_map
+            .name_for(destination.ip())
+            .map(Resource::Domain)
+            .unwrap_or_else(|| Resource::Ip(destination.ip()))
+    });
     let decision = decide(control, relay, &resource, port, Proto::Tcp);
     if !decision.allowed() {
         record(
@@ -482,6 +674,12 @@ fn tcp_flow(
     if !original.is_empty() {
         up.write_all(&original)?;
     }
+    // The sniff deadline must not survive into the relayed stream: a slow
+    // client or an idle connection may take much longer than 400 ms.
+    client.set_read_timeout(None)?;
+    client.set_write_timeout(None)?;
+    up.set_read_timeout(None)?;
+    up.set_write_timeout(None)?;
     relay_both(&mut client, &mut up)?;
     let _ = helper;
     Ok(())
@@ -518,21 +716,145 @@ fn relay_both(client: &mut TcpStream, up: &mut TcpStream) -> io::Result<()> {
 }
 
 /// One UDP TPROXY socket's loop.
+struct PendingQuic {
+    datagrams: Vec<Vec<u8>>,
+    bytes: usize,
+    started: Instant,
+    inspector: inspect::QuicInspector,
+}
+
+enum QuicOutcome {
+    NeedMore,
+    Resource(Resource),
+    Ech,
+    Overflow,
+}
+
+fn feed_quic(
+    pending: &mut PendingQuic,
+    payload: &[u8],
+    source: SocketAddr,
+    destination: SocketAddr,
+) -> QuicOutcome {
+    if pending.datagrams.len() >= QUIC_MAX_PACKETS
+        || pending.bytes + payload.len() > inspect::MAX_QUIC_STREAM
+    {
+        return QuicOutcome::Overflow;
+    }
+    pending.datagrams.push(payload.to_vec());
+    pending.bytes += payload.len();
+    match pending.inspector.push(payload, source, destination) {
+        inspect::Sniff::Named(resource) => QuicOutcome::Resource(resource),
+        inspect::Sniff::Ech => QuicOutcome::Ech,
+        inspect::Sniff::NoName | inspect::Sniff::NotThis => {
+            QuicOutcome::Resource(Resource::Ip(destination.ip()))
+        }
+        inspect::Sniff::NeedMore => QuicOutcome::NeedMore,
+    }
+}
+
+type UdpFlows = Arc<Mutex<HashMap<(SocketAddr, SocketAddr), Sender<Vec<u8>>>>>;
+
+/// Starts one upstream UDP flow and sends `payloads` to it in order.
+fn start_udp_flow(
+    flows: &UdpFlows,
+    key: (SocketAddr, SocketAddr),
+    payloads: &[Vec<u8>],
+    destination: SocketAddr,
+    helper: &Arc<Mutex<std::os::unix::net::UnixStream>>,
+    stop: &Arc<AtomicBool>,
+) {
+    let (source, destination_key) = key;
+    {
+        let Ok(map) = flows.lock() else {
+            return;
+        };
+        if map.len() >= MAX_UDP_FLOWS {
+            // Fail closed: no socket, thread or upstream traffic beyond the
+            // fixed per-run bound.
+            return;
+        }
+    }
+    let bind = if destination.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    };
+    let Ok(up) = UdpSocket::bind(bind) else {
+        return;
+    };
+    if up.connect(destination).is_err() {
+        return;
+    }
+    up.set_read_timeout(Some(Duration::from_millis(200))).ok();
+    for payload in payloads {
+        let _ = up.send(payload);
+    }
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    {
+        let Ok(mut map) = flows.lock() else {
+            return;
+        };
+        if map.len() >= MAX_UDP_FLOWS {
+            return;
+        }
+        map.insert(key, tx);
+    }
+    let helper = helper.clone();
+    let flows = flows.clone();
+    let stop = stop.clone();
+    std::thread::spawn(move || {
+        let mut idle = Instant::now();
+        let mut reply = vec![0u8; 65_535];
+        loop {
+            if stop.load(Ordering::Relaxed) || idle.elapsed() > UDP_IDLE {
+                break;
+            }
+            while let Ok(data) = rx.try_recv() {
+                let _ = up.send(&data);
+                idle = Instant::now();
+            }
+            match up.recv(&mut reply) {
+                Ok(n) => {
+                    send_reply(&helper, destination_key, source, &reply[..n]);
+                    idle = Instant::now();
+                }
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) => {}
+                Err(_) => break,
+            }
+        }
+        if let Ok(mut map) = flows.lock() {
+            map.remove(&key);
+        }
+    });
+}
+
+/// One UDP TPROXY socket's loop. QUIC Initials are buffered per flow until
+/// the ClientHello names a host, ECH is seen, the bounded deadline passes or
+/// the packet/byte cap is hit; only then is one decision made and the whole
+/// buffer forwarded, so the first datagram never leaves before its name.
 fn udp_loop(
     socket: UdpSocket,
     stop: Arc<AtomicBool>,
-    control: Arc<Mutex<Control>>,
+    control: Control,
     relay: Relay,
     helper: Arc<Mutex<std::os::unix::net::UnixStream>>,
+    dns_map: Arc<DnsMap>,
     violations: Option<crate::violation::Sink>,
 ) {
     let Some(fd) = owned_fd(&socket) else {
         return;
     };
-    type UdpFlows = Arc<Mutex<HashMap<(SocketAddr, SocketAddr), Sender<Vec<u8>>>>>;
     let flows: UdpFlows = Arc::new(Mutex::new(HashMap::new()));
+    let mut pending: HashMap<(SocketAddr, SocketAddr), PendingQuic> = HashMap::new();
     let mut buf = vec![0u8; 65_535];
-    let mut quic = inspect::QuicInspector::new();
+    socket
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .ok();
     while !stop.load(Ordering::Relaxed) {
         match sys::relay_udp_recv(&fd, &mut buf) {
             Ok((source, destination, n)) => {
@@ -544,15 +866,35 @@ fn udp_loop(
                     let _ = tx.send(payload.to_vec());
                     continue;
                 }
-                let resource = if destination.port() == 53 {
-                    match dns::parse_query(payload) {
-                        Ok(query) => Resource::Domain(query.name),
-                        Err(_) => continue,
-                    }
-                } else if destination.port() == 443 {
-                    match quic.push(payload, source, destination) {
-                        inspect::Sniff::Named(resource) => resource,
-                        inspect::Sniff::Ech => {
+                if destination.port() == 443 {
+                    let existing = pending.remove(&key);
+                    let overflow = existing.as_ref().is_some_and(|entry| {
+                        entry.datagrams.len() >= QUIC_MAX_PACKETS
+                            || entry.bytes + payload.len() > inspect::MAX_QUIC_STREAM
+                    }) || (existing.is_none() && pending.len() >= QUIC_MAX_PENDING);
+                    let mut entry = existing.unwrap_or_else(|| PendingQuic {
+                        datagrams: Vec::new(),
+                        bytes: 0,
+                        started: Instant::now(),
+                        inspector: inspect::QuicInspector::new(),
+                    });
+                    let outcome = if overflow {
+                        entry.datagrams.push(payload.to_vec());
+                        QuicOutcome::Overflow
+                    } else {
+                        feed_quic(&mut entry, payload, source, destination)
+                    };
+                    let expired = entry.started.elapsed() >= QUIC_DEADLINE;
+                    let resource = match outcome {
+                        QuicOutcome::NeedMore if !expired => {
+                            pending.insert(key, entry);
+                            continue;
+                        }
+                        QuicOutcome::NeedMore | QuicOutcome::Overflow => {
+                            Resource::Ip(destination.ip())
+                        }
+                        QuicOutcome::Resource(resource) => resource,
+                        QuicOutcome::Ech => {
                             record(
                                 violations.as_ref(),
                                 "network-outbound",
@@ -561,10 +903,36 @@ fn udp_loop(
                             );
                             continue;
                         }
-                        _ => Resource::Ip(destination.ip()),
+                    };
+                    let decision =
+                        decide(&control, &relay, &resource, destination.port(), Proto::Udp);
+                    if !decision.allowed() {
+                        record(
+                            violations.as_ref(),
+                            "network-outbound",
+                            format!(
+                                "{:?}:{} from {source} ({})",
+                                resource,
+                                destination.port(),
+                                reason_text(decision)
+                            ),
+                            crate::violation::DeniedBy::Relay,
+                        );
+                        continue;
+                    }
+                    start_udp_flow(&flows, key, &entry.datagrams, destination, &helper, &stop);
+                    continue;
+                }
+                let resource = if destination.port() == 53 {
+                    match dns::parse_query(payload) {
+                        Ok(query) => Resource::Domain(query.name),
+                        Err(_) => continue,
                     }
                 } else {
-                    Resource::Ip(destination.ip())
+                    dns_map
+                        .name_for(destination.ip())
+                        .map(Resource::Domain)
+                        .unwrap_or_else(|| Resource::Ip(destination.ip()))
                 };
                 let decision = decide(&control, &relay, &resource, destination.port(), Proto::Udp);
                 if !decision.allowed() {
@@ -591,62 +959,80 @@ fn udp_loop(
                     if let Ok(query) = dns::parse_query(payload)
                         && let Some(reply) = forward_dns(&relay, payload, destination)
                     {
-                        let _ = query;
+                        dns_map.insert_reply(&query, &reply);
                         send_reply(&helper, destination, source, &reply);
                     }
                     continue;
                 }
-                // A flow: one connected upstream socket, replies sent back
-                // through the helper with the original destination as source.
-                let Ok(up) = UdpSocket::bind("0.0.0.0:0") else {
-                    continue;
-                };
-                if up.connect(destination).is_err() {
-                    continue;
-                }
-                up.set_read_timeout(Some(Duration::from_millis(200))).ok();
-                let _ = up.send(payload);
-                let (tx, rx) = mpsc::channel::<Vec<u8>>();
-                if let Ok(mut map) = flows.lock() {
-                    map.insert(key, tx);
-                }
-                let helper = helper.clone();
-                let flows = flows.clone();
-                let dest = destination;
-                let src = source;
-                let stop = stop.clone();
-                std::thread::spawn(move || {
-                    let mut idle = Instant::now();
-                    let mut reply = vec![0u8; 65_535];
-                    loop {
-                        if stop.load(Ordering::Relaxed) || idle.elapsed() > UDP_IDLE {
-                            break;
-                        }
-                        while let Ok(data) = rx.try_recv() {
-                            let _ = up.send(&data);
-                            idle = Instant::now();
-                        }
-                        match up.recv(&mut reply) {
-                            Ok(n) => {
-                                send_reply(&helper, dest, src, &reply[..n]);
-                                idle = Instant::now();
-                            }
-                            Err(e)
-                                if matches!(
-                                    e.kind(),
-                                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-                                ) => {}
-                            Err(_) => break,
-                        }
-                    }
-                    if let Ok(mut map) = flows.lock() {
-                        map.remove(&(src, dest));
-                    }
-                });
+                start_udp_flow(
+                    &flows,
+                    key,
+                    &[payload.to_vec()],
+                    destination,
+                    &helper,
+                    &stop,
+                );
             }
             Err(e) if e == libc::EINTR => {}
-            Err(_) => break,
+            Err(e) if e == libc::EAGAIN || e == libc::EWOULDBLOCK => {
+                flush_quic(
+                    &mut pending,
+                    &control,
+                    &relay,
+                    &helper,
+                    &flows,
+                    &stop,
+                    violations.as_ref(),
+                );
+            }
+            Err(e) => {
+                let _ = e;
+                break;
+            }
         }
+    }
+}
+
+/// Resolves buffered QUIC flows whose deadline passed, asking for the
+/// destination address (never forwarding before that decision).
+#[allow(clippy::too_many_arguments)]
+fn flush_quic(
+    pending: &mut HashMap<(SocketAddr, SocketAddr), PendingQuic>,
+    control: &Control,
+    relay: &Relay,
+    helper: &Arc<Mutex<std::os::unix::net::UnixStream>>,
+    flows: &UdpFlows,
+    stop: &Arc<AtomicBool>,
+    violations: Option<&crate::violation::Sink>,
+) {
+    let expired: Vec<(SocketAddr, SocketAddr)> = pending
+        .iter()
+        .filter(|(_, entry)| entry.started.elapsed() >= QUIC_DEADLINE)
+        .map(|(key, _)| *key)
+        .collect();
+    for key in expired {
+        let Some(entry) = pending.remove(&key) else {
+            continue;
+        };
+        let destination = key.1;
+        let resource = Resource::Ip(destination.ip());
+        let decision = decide(control, relay, &resource, destination.port(), Proto::Udp);
+        if !decision.allowed() {
+            record(
+                violations,
+                "network-outbound",
+                format!(
+                    "{:?}:{} from {} ({})",
+                    resource,
+                    destination.port(),
+                    key.0,
+                    reason_text(decision)
+                ),
+                crate::violation::DeniedBy::Relay,
+            );
+            continue;
+        }
+        start_udp_flow(flows, key, &entry.datagrams, destination, helper, stop);
     }
 }
 
@@ -662,15 +1048,24 @@ fn send_reply(
     target: SocketAddr,
     payload: &[u8],
 ) {
-    let (IpAddr::V4(src_ip), IpAddr::V4(dst_ip)) = (source.ip(), target.ip()) else {
-        return;
-    };
-    let mut frame = Vec::with_capacity(1 + 4 + 2 + 4 + 2 + 2 + payload.len());
-    frame.push(1);
-    frame.extend_from_slice(&src_ip.octets());
-    frame.extend_from_slice(&source.port().to_be_bytes());
-    frame.extend_from_slice(&dst_ip.octets());
-    frame.extend_from_slice(&target.port().to_be_bytes());
+    let mut frame = Vec::with_capacity(39 + payload.len());
+    match (source, target) {
+        (SocketAddr::V4(source), SocketAddr::V4(target)) => {
+            frame.push(1);
+            frame.extend_from_slice(&source.ip().octets());
+            frame.extend_from_slice(&source.port().to_be_bytes());
+            frame.extend_from_slice(&target.ip().octets());
+            frame.extend_from_slice(&target.port().to_be_bytes());
+        }
+        (SocketAddr::V6(source), SocketAddr::V6(target)) => {
+            frame.push(2);
+            frame.extend_from_slice(&source.ip().octets());
+            frame.extend_from_slice(&source.port().to_be_bytes());
+            frame.extend_from_slice(&target.ip().octets());
+            frame.extend_from_slice(&target.port().to_be_bytes());
+        }
+        _ => return,
+    }
     frame.extend_from_slice(&(payload.len() as u16).to_be_bytes());
     frame.extend_from_slice(payload);
     if let Ok(mut helper) = helper.lock() {
@@ -678,37 +1073,68 @@ fn send_reply(
     }
 }
 
-/// Resolves the upstream DNS server for a query redirected from the app
-/// namespace, where the original server is not visible.
-fn dns_upstream(relay: &Relay) -> Option<SocketAddr> {
-    if let Some(upstream) = relay.dns_upstream() {
-        return Some(upstream);
-    }
-    let text = std::fs::read_to_string("/etc/resolv.conf").ok()?;
+/// The first nameserver in `text`, including a loopback stub: in the parent
+/// namespace `127.0.0.53` is the host's systemd-resolved listener.
+fn resolver_from_conf(text: &str) -> Option<SocketAddr> {
     for line in text.lines() {
         let line = line.trim();
-        if let Some(server) = line.strip_prefix("nameserver") {
-            let server = server.trim();
-            let Ok(ip) = server.parse::<IpAddr>() else {
-                continue;
-            };
-            if ip.is_loopback() {
-                continue;
-            }
+        let Some(server) = line.strip_prefix("nameserver") else {
+            continue;
+        };
+        let server = server.trim();
+        if let Ok(ip) = server.parse::<IpAddr>() {
             return Some(SocketAddr::new(ip, 53));
         }
     }
     None
 }
 
+/// Resolves the upstream DNS server: the relay's explicit choice, else the
+/// chosen resolver configuration or the parent's system resolver (a loopback
+/// stub included), else `None` (the caller answers SERVFAIL).
+fn dns_upstream(relay: &Relay) -> Option<SocketAddr> {
+    if let Some(upstream) = relay.dns_upstream() {
+        return Some(upstream);
+    }
+    if let Some(path) = relay.resolv_conf() {
+        let text = std::fs::read_to_string(path).ok()?;
+        return resolver_from_conf(&text);
+    }
+    for path in [
+        "/etc/resolv.conf",
+        "/run/systemd/resolve/resolv.conf",
+        "/run/systemd/resolve/stub-resolv.conf",
+    ] {
+        if let Ok(text) = std::fs::read_to_string(path)
+            && let Some(server) = resolver_from_conf(&text)
+        {
+            return Some(server);
+        }
+    }
+    None
+}
+
+/// The server for a DNS flow: the original destination when it is a real
+/// external server, else the parent's resolver. A loopback destination can
+/// only be a child stub, so it is never forwarded to in the parent's
+/// namespace.
+fn dns_server(relay: &Relay, destination: SocketAddr) -> Option<SocketAddr> {
+    if destination.ip().is_loopback() || destination.port() != 53 {
+        dns_upstream(relay)
+    } else {
+        Some(destination)
+    }
+}
+
 /// Sends one DNS message upstream and reads one reply. `None` on any failure.
 fn forward_dns(relay: &Relay, query: &[u8], destination: SocketAddr) -> Option<Vec<u8>> {
-    let server = if destination.ip().is_loopback() || destination.port() != 53 {
-        dns_upstream(relay)?
+    let server = dns_server(relay, destination)?;
+    let bind = if server.is_ipv4() {
+        "0.0.0.0:0"
     } else {
-        destination
+        "[::]:0"
     };
-    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    let socket = UdpSocket::bind(bind).ok()?;
     socket.connect(server).ok()?;
     socket.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
     socket.send(query).ok()?;
@@ -718,13 +1144,35 @@ fn forward_dns(relay: &Relay, query: &[u8], destination: SocketAddr) -> Option<V
     Some(reply)
 }
 
+/// DNS over TCP to the selected upstream, with the same upstream policy as
+/// UDP. The reply is the message without its two-byte length prefix.
+fn forward_dns_tcp(relay: &Relay, query: &[u8], destination: SocketAddr) -> Option<Vec<u8>> {
+    let server = dns_server(relay, destination)?;
+    let mut stream = TcpStream::connect_timeout(&server, Duration::from_secs(2)).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(2)))
+        .ok()?;
+    stream.write_all(&dns::frame(query)).ok()?;
+    let mut head = [0u8; 2];
+    stream.read_exact(&mut head).ok()?;
+    let len = u16::from_be_bytes(head) as usize;
+    if len == 0 || len > dns::MAX_TCP {
+        return None;
+    }
+    let mut reply = vec![0u8; len];
+    stream.read_exact(&mut reply).ok()?;
+    Some(reply)
+}
+
 /// The app namespace's DNS listener (UDP): the resolver stub's queries.
 fn dns_listener_udp(
     socket: UdpSocket,
     stop: Arc<AtomicBool>,
-    control: Arc<Mutex<Control>>,
+    control: Control,
     relay: Relay,
     _helper: Arc<Mutex<std::os::unix::net::UnixStream>>,
+    dns_map: Arc<DnsMap>,
     violations: Option<crate::violation::Sink>,
 ) {
     let mut buf = vec![0u8; 65_535];
@@ -744,8 +1192,10 @@ fn dns_listener_udp(
         let resource = Resource::Domain(query.name.clone());
         let decision = decide(&control, &relay, &resource, 53, Proto::Udp);
         let reply = if decision.allowed() {
-            forward_dns(&relay, &buf[..n], SocketAddr::from(([127, 0, 0, 53], 53)))
-                .unwrap_or_else(|| dns::servfail(&query))
+            let reply = forward_dns(&relay, &buf[..n], SocketAddr::from(([127, 0, 0, 53], 53)))
+                .unwrap_or_else(|| dns::servfail(&query));
+            dns_map.insert_reply(&query, &reply);
+            reply
         } else {
             record(
                 violations.as_ref(),
@@ -763,8 +1213,9 @@ fn dns_listener_udp(
 fn dns_listener_tcp(
     listener: TcpListener,
     stop: Arc<AtomicBool>,
-    control: Arc<Mutex<Control>>,
+    control: Control,
     relay: Relay,
+    dns_map: Arc<DnsMap>,
     violations: Option<crate::violation::Sink>,
 ) {
     listener.set_nonblocking(true).ok();
@@ -789,8 +1240,11 @@ fn dns_listener_tcp(
                 let resource = Resource::Domain(query.name.clone());
                 let decision = decide(&control, &relay, &resource, 53, Proto::Tcp);
                 let reply = if decision.allowed() {
-                    forward_dns(&relay, &message, SocketAddr::from(([127, 0, 0, 53], 53)))
-                        .unwrap_or_else(|| dns::servfail(&query))
+                    let reply =
+                        forward_dns_tcp(&relay, &message, SocketAddr::from(([127, 0, 0, 53], 53)))
+                            .unwrap_or_else(|| dns::servfail(&query));
+                    dns_map.insert_reply(&query, &reply);
+                    reply
                 } else {
                     record(
                         violations.as_ref(),
@@ -849,6 +1303,18 @@ pub(crate) fn helper_main(child_socket: c_int, app_ns: OwnedFd, ready: c_int, po
     if let Err(e) = sys::fwmark_rule(MARK, POLICY_TABLE) {
         fail(9, e);
     }
+    if let Err(e) = sys::link_addr6(PROXY_IF, PROXY_ADDR6, APP_PREFIX6) {
+        fail(8, e);
+    }
+    if let Err(e) = sys::link_up(PROXY_IF) {
+        fail(9, e);
+    }
+    if let Err(e) = sys::local_default_route6(POLICY_TABLE) {
+        fail(8, e);
+    }
+    if let Err(e) = sys::fwmark_rule6(MARK, POLICY_TABLE) {
+        fail(9, e);
+    }
     if let Err(e) = sys::nft_install_relay(port) {
         fail(10, e);
     }
@@ -860,9 +1326,19 @@ pub(crate) fn helper_main(child_socket: c_int, app_ns: OwnedFd, ready: c_int, po
         Ok(fd) => fd,
         Err(e) => fail(12, e),
     };
+    let tcp6 = match sys::relay_tcp_listener6(port) {
+        Ok(fd) => fd,
+        Err(e) => fail(11, e),
+    };
+    let udp6 = match sys::relay_udp_socket6(port) {
+        Ok(fd) => fd,
+        Err(e) => fail(12, e),
+    };
     let fds = [
         std::os::fd::AsRawFd::as_raw_fd(&tcp),
         std::os::fd::AsRawFd::as_raw_fd(&udp),
+        std::os::fd::AsRawFd::as_raw_fd(&tcp6),
+        std::os::fd::AsRawFd::as_raw_fd(&udp6),
     ];
     if let Err(e) = sys::send_with_fds_fd(socket_fd, &[1], &fds) {
         fail(13, e);
@@ -892,7 +1368,7 @@ pub(crate) fn helper_main(child_socket: c_int, app_ns: OwnedFd, ready: c_int, po
     let mut filter = super::seccomp::allowlist(&super::seccomp::NATIVE, &allow);
     let _ = sys::install_filter_here(&mut filter);
     // Reply loop: fixed buffers, no allocation after the filter.
-    let mut frame = [0u8; 65_535 + 15];
+    let mut frame = [0u8; 65_535 + 39];
     let mut at = 0usize;
     loop {
         let n = sys::read_into(socket_fd, &mut frame, at);
@@ -902,32 +1378,76 @@ pub(crate) fn helper_main(child_socket: c_int, app_ns: OwnedFd, ready: c_int, po
         at += n as usize;
         let mut consumed = 0usize;
         while at - consumed >= 15 {
+            let kind = frame[consumed];
+            let (address_len, header) = match kind {
+                1 => (4, 15usize),
+                2 => (16, 39usize),
+                _ => sys::exit_now(1),
+            };
+            if at - consumed < header {
+                break;
+            }
+            let src_port_at = 1 + address_len;
+            let dst_at = src_port_at + 2;
+            let dst_port_at = dst_at + address_len;
+            let len_at = dst_port_at + 2;
             let payload_len =
-                u16::from_be_bytes([frame[consumed + 13], frame[consumed + 14]]) as usize;
-            let total = 15 + payload_len;
+                u16::from_be_bytes([frame[consumed + len_at], frame[consumed + len_at + 1]])
+                    as usize;
+            let total = header + payload_len;
             if at - consumed < total {
                 break;
             }
-            let src_ip = std::net::Ipv4Addr::new(
-                frame[consumed + 1],
-                frame[consumed + 2],
-                frame[consumed + 3],
-                frame[consumed + 4],
-            );
-            let src_port = u16::from_be_bytes([frame[consumed + 5], frame[consumed + 6]]);
-            let dst_ip = std::net::Ipv4Addr::new(
-                frame[consumed + 7],
-                frame[consumed + 8],
-                frame[consumed + 9],
-                frame[consumed + 10],
-            );
-            let dst_port = u16::from_be_bytes([frame[consumed + 11], frame[consumed + 12]]);
-            let payload = &frame[consumed + 15..consumed + 15 + payload_len];
-            let _ = sys::transparent_udp_send(
-                SocketAddr::from((src_ip, src_port)),
-                SocketAddr::from((dst_ip, dst_port)),
-                payload,
-            );
+            let source = if kind == 1 {
+                SocketAddr::from((
+                    std::net::Ipv4Addr::new(
+                        frame[consumed + 1],
+                        frame[consumed + 2],
+                        frame[consumed + 3],
+                        frame[consumed + 4],
+                    ),
+                    u16::from_be_bytes([
+                        frame[consumed + src_port_at],
+                        frame[consumed + src_port_at + 1],
+                    ]),
+                ))
+            } else {
+                let mut ip = [0u8; 16];
+                ip.copy_from_slice(&frame[consumed + 1..consumed + 17]);
+                SocketAddr::from((
+                    std::net::Ipv6Addr::from(ip),
+                    u16::from_be_bytes([
+                        frame[consumed + src_port_at],
+                        frame[consumed + src_port_at + 1],
+                    ]),
+                ))
+            };
+            let target = if kind == 1 {
+                SocketAddr::from((
+                    std::net::Ipv4Addr::new(
+                        frame[consumed + dst_at],
+                        frame[consumed + dst_at + 1],
+                        frame[consumed + dst_at + 2],
+                        frame[consumed + dst_at + 3],
+                    ),
+                    u16::from_be_bytes([
+                        frame[consumed + dst_port_at],
+                        frame[consumed + dst_port_at + 1],
+                    ]),
+                ))
+            } else {
+                let mut ip = [0u8; 16];
+                ip.copy_from_slice(&frame[consumed + dst_at..consumed + dst_at + 16]);
+                SocketAddr::from((
+                    std::net::Ipv6Addr::from(ip),
+                    u16::from_be_bytes([
+                        frame[consumed + dst_port_at],
+                        frame[consumed + dst_port_at + 1],
+                    ]),
+                ))
+            };
+            let payload = &frame[consumed + header..consumed + header + payload_len];
+            let _ = sys::transparent_udp_send(source, target, payload);
             consumed += total;
         }
         if consumed > 0 {
@@ -942,3 +1462,149 @@ pub(crate) fn helper_main(child_socket: c_int, app_ns: OwnedFd, ready: c_int, po
 }
 
 use std::ffi::c_int;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn a_loopback_resolver_is_kept() {
+        assert_eq!(
+            resolver_from_conf("search example\nnameserver 127.0.0.53\n"),
+            Some(SocketAddr::from(([127, 0, 0, 53], 53)))
+        );
+        assert_eq!(
+            resolver_from_conf("nameserver ::1\nnameserver 192.0.2.1\n"),
+            Some(SocketAddr::new("::1".parse().unwrap(), 53))
+        );
+        assert_eq!(resolver_from_conf("search example\n"), None);
+        assert_eq!(
+            resolver_from_conf("nameserver not-an-ip\nnameserver 198.51.100.2\n"),
+            Some(SocketAddr::from(([198, 51, 100, 2], 53)))
+        );
+    }
+
+    #[test]
+    fn a_chosen_resolv_conf_is_used_and_empty_fails_closed() {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!(
+            "procage-resolv-{}-{}.conf",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(b"nameserver 127.0.0.53\n")
+            .unwrap();
+        let relay = Relay::new("/run/control.sock").with_resolv_conf(&path);
+        assert_eq!(
+            dns_upstream(&relay),
+            Some(SocketAddr::from(([127, 0, 0, 53], 53)))
+        );
+        std::fs::write(&path, b"search example\n").unwrap();
+        assert_eq!(dns_upstream(&relay), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn answer(ip: [u8; 4], ttl: u32) -> dns::Answer {
+        dns::Answer {
+            ip: IpAddr::from(ip),
+            ttl,
+        }
+    }
+
+    #[test]
+    fn a_mapped_name_expires_with_its_ttl() {
+        let map = DnsMap::default();
+        let now = Instant::now();
+        map.insert_at("expired.example", &[answer([192, 0, 2, 1], 5)], now);
+        map.insert_at("live.example", &[answer([192, 0, 2, 2], 60)], now);
+        assert_eq!(
+            map.name_for(IpAddr::from([192, 0, 2, 2])).as_deref(),
+            Some("live.example")
+        );
+        // An answer inserted with a base older than its TTL is already stale:
+        // a lookup must remove it, not keep a stale name.
+        map.insert_at(
+            "expired.example",
+            &[answer([192, 0, 2, 1], 5)],
+            now - Duration::from_secs(10),
+        );
+        assert_eq!(map.name_for(IpAddr::from([192, 0, 2, 1])), None);
+        assert_eq!(
+            map.name_for(IpAddr::from([192, 0, 2, 2])).as_deref(),
+            Some("live.example")
+        );
+    }
+
+    #[test]
+    fn a_full_map_fails_closed() {
+        let map = DnsMap::default();
+        let now = Instant::now();
+        for i in 0..DNS_MAP_MAX {
+            let ip = Ipv4Addr::from((i as u32) + 1);
+            map.insert_at(
+                "full.example",
+                &[dns::Answer {
+                    ip: IpAddr::V4(ip),
+                    ttl: 60,
+                }],
+                now,
+            );
+        }
+        let extra = Ipv4Addr::new(203, 0, 113, 7);
+        map.insert_at(
+            "extra.example",
+            &[dns::Answer {
+                ip: IpAddr::V4(extra),
+                ttl: 60,
+            }],
+            now,
+        );
+        assert_eq!(map.name_for(IpAddr::V4(extra)), None);
+    }
+
+    #[test]
+    fn a_zero_ttl_answer_is_not_kept() {
+        let map = DnsMap::default();
+        map.insert("zero.example", &[answer([192, 0, 2, 9], 0)]);
+        assert_eq!(map.name_for(IpAddr::from([192, 0, 2, 9])), None);
+    }
+
+    #[test]
+    fn udp_flows_are_bounded_and_stop_cleans_up() {
+        let sink = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let destination = sink.local_addr().unwrap();
+        let flows: UdpFlows = Arc::new(Mutex::new(HashMap::new()));
+        let (helper, _) = std::os::unix::net::UnixStream::pair().unwrap();
+        let helper = Arc::new(Mutex::new(helper));
+        let stop = Arc::new(AtomicBool::new(false));
+        for i in 0..(MAX_UDP_FLOWS + 8) {
+            let source = SocketAddr::from(([127, 0, 0, 1], 30_000 + i as u16));
+            start_udp_flow(
+                &flows,
+                (source, destination),
+                &[b"x".to_vec()],
+                destination,
+                &helper,
+                &stop,
+            );
+        }
+        assert_eq!(flows.lock().unwrap().len(), MAX_UDP_FLOWS);
+        stop.store(true, Ordering::Relaxed);
+        for _ in 0..200 {
+            if flows.lock().unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            flows.lock().unwrap().is_empty(),
+            "a stopped run must close every upstream flow"
+        );
+    }
+}

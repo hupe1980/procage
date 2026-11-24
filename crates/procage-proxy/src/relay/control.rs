@@ -19,10 +19,20 @@
 //! literal; no payload, URL, header or descriptor is sent. A malformed,
 //! short, oversized, mistyped or late frame closes the connection, and every
 //! later flow is refused.
+//!
+//! Requests are multiplexed by id on one connection: a reader thread routes
+//! each response to the request that waits for it, so a slow permission
+//! prompt for one flow never blocks another. The in-flight window is bounded
+//! by `HELLO_ACK`'s value (at most 64); a full window refuses with `Busy`
+//! rather than growing an unbounded queue.
 
+use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{RecvTimeoutError, SyncSender, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::Resource;
@@ -37,6 +47,11 @@ pub const MAX_FRAME: usize = 4096;
 pub const MAX_REASON: usize = 512;
 /// The largest resource the relay will name.
 pub const MAX_RESOURCE: usize = 255;
+/// The most requests one connection keeps in flight, whatever the harness
+/// allows.
+pub const MAX_INFLIGHT: u32 = 64;
+/// How many timed-out ids are remembered to ignore their late answers.
+const EXPIRED: usize = 256;
 
 const HELLO: u8 = 3;
 const HELLO_ACK: u8 = 4;
@@ -153,9 +168,7 @@ impl Decision {
     }
 }
 
-/// A control-channel failure. Any of these permanently disables the channel:
-/// a late or partial frame could otherwise be read as the answer to a later
-/// request.
+/// A control-channel failure.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ControlError {
@@ -169,15 +182,8 @@ pub enum ControlError {
     Malformed(&'static str),
     /// No answer before the deadline.
     Timeout,
-    /// A response named another request id.
-    Id {
-        /// The id the request used.
-        want: u64,
-        /// The id the response named.
-        got: u64,
-    },
-    /// The response's verdict byte is not 0 or 1.
-    Verdict(u8),
+    /// The channel closed, with the reason later flows are refused for.
+    Closed(Reason),
     /// The reason text is not valid UTF-8.
     Reason,
 }
@@ -195,10 +201,7 @@ impl std::fmt::Display for ControlError {
             ControlError::RunId => f.write_str("control socket echoed another run id"),
             ControlError::Malformed(why) => write!(f, "malformed control frame: {why}"),
             ControlError::Timeout => f.write_str("control decision deadline passed"),
-            ControlError::Id { want, got } => {
-                write!(f, "control response id {got} is not {want}")
-            }
-            ControlError::Verdict(v) => write!(f, "control verdict {v} is not 0 or 1"),
+            ControlError::Closed(reason) => write!(f, "control channel closed ({reason:?})"),
             ControlError::Reason => f.write_str("control reason is not UTF-8"),
         }
     }
@@ -213,16 +216,55 @@ impl std::error::Error for ControlError {
     }
 }
 
-/// One run's control connection.
+/// One run's control connection. Cloning shares the one connection and its
+/// in-flight window; cloning is how threads ask concurrently.
 #[derive(Debug)]
 pub struct Control {
-    stream: UnixStream,
+    inner: Arc<Inner>,
+}
+
+impl Clone for Control {
+    fn clone(&self) -> Control {
+        self.inner.handles.fetch_add(1, Ordering::AcqRel);
+        Control {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Inner {
+    writer: Mutex<UnixStream>,
+    pending: Mutex<Pending>,
+    next: AtomicU64,
+    handles: AtomicUsize,
+    dead: AtomicBool,
     run_id: RunId,
-    next: u64,
-    dead: Option<Reason>,
-    /// The harness's in-flight window; procage serializes requests, so it
-    /// only informs the bound.
-    pub max_inflight: u32,
+    timeout: Duration,
+    max_inflight: u32,
+}
+
+#[derive(Debug, Default)]
+struct Pending {
+    map: HashMap<u64, SyncSender<Result<Decision, ControlError>>>,
+    expired: VecDeque<u64>,
+}
+
+impl Inner {
+    fn close(&self, reason: Reason) {
+        if self.dead.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if let Ok(writer) = self.writer.lock() {
+            let _ = writer.shutdown(std::net::Shutdown::Both);
+        }
+        if let Ok(mut pending) = self.pending.lock() {
+            for (_, sender) in pending.map.drain() {
+                let _ = sender.try_send(Err(ControlError::Closed(reason)));
+            }
+            pending.expired.clear();
+        }
+    }
 }
 
 impl Control {
@@ -231,152 +273,271 @@ impl Control {
     pub fn connect(path: &Path, run_id: RunId, timeout: Duration) -> Result<Control, ControlError> {
         let stream = UnixStream::connect(path).map_err(ControlError::Io)?;
         stream
-            .set_read_timeout(Some(timeout))
-            .and_then(|()| stream.set_write_timeout(Some(timeout)))
+            .set_write_timeout(Some(timeout))
             .map_err(ControlError::Io)?;
-        let mut control = Control {
-            stream,
-            run_id,
-            next: 1,
-            dead: None,
-            max_inflight: 1,
-        };
-        control.hello()?;
+        let reader = stream.try_clone().map_err(ControlError::Io)?;
+        let (_, control) = hello(stream, run_id, timeout)?;
+        // `SO_RCVTIMEO` is per socket, shared by the handshake clone; the
+        // reader must block until a frame or shutdown arrives.
+        reader.set_read_timeout(None).map_err(ControlError::Io)?;
+        let inner = control.inner.clone();
+        std::thread::Builder::new()
+            .name("procage relay control".into())
+            .spawn(move || read_loop(reader, inner))
+            .map_err(ControlError::Io)?;
         Ok(control)
     }
 
     /// The run id this channel carries.
     pub fn run_id(&self) -> RunId {
-        self.run_id
+        self.inner.run_id
+    }
+
+    /// The in-flight window the harness allowed (at most [`MAX_INFLIGHT`]).
+    pub fn max_inflight(&self) -> u32 {
+        self.inner.max_inflight
     }
 
     /// Whether a previous failure has closed the channel.
     pub fn is_dead(&self) -> bool {
-        self.dead.is_some()
+        self.inner.dead.load(Ordering::Acquire)
     }
 
     /// Closes the channel: the harness sees the run end. Later decisions are
     /// refused as if the connection had failed.
-    pub fn close(&mut self) {
-        self.dead = Some(Reason::ControlLost);
-        let _ = self.stream.shutdown(std::net::Shutdown::Both);
+    pub fn close(&self) {
+        self.inner.close(Reason::ControlLost);
     }
 
-    /// Asks whether `resource`:`port` over `proto` may be reached. Any
-    /// failure denies with the reason the relay will report, and closes the
-    /// channel for good.
-    pub fn decide(&mut self, resource: &Resource, port: u16, proto: Proto) -> Decision {
-        if let Some(reason) = self.dead {
-            return Decision::Deny {
-                reason,
-                text: "control channel already closed".into(),
-            };
+    /// Asks whether `resource`:`port` over `proto` may be reached. Other
+    /// flows may ask at the same time; a slow answer holds only this call.
+    pub fn decide(&self, resource: &Resource, port: u16, proto: Proto) -> Decision {
+        if self.is_dead() {
+            return deny(Reason::ControlLost, "control channel already closed");
         }
-        match self.try_decide(resource, port, proto) {
-            Ok(decision) => decision,
-            Err(e) => {
-                let reason = match e {
-                    ControlError::Timeout => Reason::Timeout,
-                    ControlError::Version(..)
-                    | ControlError::RunId
-                    | ControlError::Malformed(_)
-                    | ControlError::Id { .. }
-                    | ControlError::Verdict(_)
-                    | ControlError::Reason => Reason::Malformed,
-                    ControlError::Io(_) => Reason::ControlLost,
-                };
-                self.dead = Some(reason);
-                let _ = self.stream.shutdown(std::net::Shutdown::Both);
-                Decision::Deny {
-                    reason,
-                    text: e.to_string(),
-                }
-            }
-        }
-    }
-
-    fn hello(&mut self) -> Result<(), ControlError> {
-        let mut body = Vec::with_capacity(13);
-        body.push(MESSAGE_VERSION);
-        body.extend_from_slice(&self.run_id.to_be_bytes());
-        body.extend_from_slice(&std::process::id().to_be_bytes());
-        debug_assert_eq!(body.len(), 13);
-        write_frame(&mut self.stream, HELLO, &body).map_err(ControlError::Io)?;
-        let (kind, body) = read_frame(&mut self.stream).map_err(map_read_err)?;
-        if kind != HELLO_ACK {
-            return Err(ControlError::Malformed("expected HELLO_ACK"));
-        }
-        if body.len() != 17 {
-            return Err(ControlError::Malformed("wrong HELLO_ACK size"));
-        }
-        if body[0] != MESSAGE_VERSION {
-            return Err(ControlError::Version(body[0], 0));
-        }
-        let protocol = u32::from_be_bytes(body[1..5].try_into().expect("4"));
-        if protocol != PROTOCOL_VERSION {
-            return Err(ControlError::Version(body[0], protocol));
-        }
-        self.max_inflight = u32::from_be_bytes(body[5..9].try_into().expect("4"));
-        let echoed = u64::from_be_bytes(body[9..17].try_into().expect("8"));
-        if echoed != self.run_id {
-            return Err(ControlError::RunId);
-        }
-        Ok(())
-    }
-
-    fn try_decide(
-        &mut self,
-        resource: &Resource,
-        port: u16,
-        proto: Proto,
-    ) -> Result<Decision, ControlError> {
         let text = resource.as_str();
         if text.is_empty() || text.len() > MAX_RESOURCE {
-            return Err(ControlError::Malformed("resource length"));
+            return deny(Reason::Malformed, "resource length");
         }
         if text.bytes().any(|b| b <= b' ' || b == 0x7f) {
-            return Err(ControlError::Malformed(
+            return deny(
+                Reason::Malformed,
                 "resource has whitespace or a control byte",
-            ));
+            );
         }
         if port == 0 {
-            return Err(ControlError::Malformed("port is zero"));
+            return deny(Reason::Malformed, "port is zero");
         }
-        let id = self.next;
-        self.next = self.next.wrapping_add(1);
+        let id = self.inner.next.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = sync_channel(1);
+        {
+            let Ok(mut pending) = self.inner.pending.lock() else {
+                return deny(Reason::ControlLost, "control pending lock poisoned");
+            };
+            if pending.map.len() >= self.inner.max_inflight as usize {
+                return deny(Reason::Busy, "too many flows waiting for a decision");
+            }
+            pending.map.insert(id, tx);
+        }
         let mut body = Vec::with_capacity(13 + text.len());
         body.extend_from_slice(&id.to_be_bytes());
         body.extend_from_slice(&(text.len() as u16).to_be_bytes());
         body.extend_from_slice(text.as_bytes());
         body.extend_from_slice(&port.to_be_bytes());
         body.push(proto.code());
-        write_frame(&mut self.stream, DECIDE_REQ, &body).map_err(ControlError::Io)?;
-        let (kind, body) = read_frame(&mut self.stream).map_err(map_read_err)?;
-        if kind != DECIDE_RESP {
-            return Err(ControlError::Malformed("expected DECIDE_RESP"));
+        let written = match self.inner.writer.lock() {
+            Ok(mut writer) => write_frame(&mut writer, DECIDE_REQ, &body),
+            Err(_) => Err(io::Error::other("control writer lock poisoned")),
+        };
+        if let Err(e) = written {
+            remove(&self.inner, id);
+            let error = ControlError::Io(e);
+            let reason = reason_of(&error);
+            let text = error.to_string();
+            self.inner.close(reason);
+            return deny(reason, &text);
         }
-        if body.len() < 11 {
-            return Err(ControlError::Malformed("wrong DECIDE_RESP size"));
-        }
-        let got = u64::from_be_bytes(body[0..8].try_into().expect("8"));
-        if got != id {
-            return Err(ControlError::Id { want: id, got });
-        }
-        let verdict = body[8];
-        let reason_len = u16::from_be_bytes(body[9..11].try_into().expect("2")) as usize;
-        if reason_len > MAX_REASON || body.len() != 11 + reason_len {
-            return Err(ControlError::Malformed("DECIDE_RESP reason length"));
-        }
-        let reason = std::str::from_utf8(&body[11..]).map_err(|_| ControlError::Reason)?;
-        match verdict {
-            0 => Ok(Decision::Deny {
-                reason: Reason::from_text(reason),
-                text: reason.to_string(),
-            }),
-            1 => Ok(Decision::Allow),
-            v => Err(ControlError::Verdict(v)),
+        match rx.recv_timeout(self.inner.timeout) {
+            Ok(Ok(decision)) => decision,
+            Ok(Err(e)) => deny(reason_of(&e), &e.to_string()),
+            Err(RecvTimeoutError::Timeout) => {
+                remove(&self.inner, id);
+                deny(Reason::Timeout, "control decision deadline passed")
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                remove(&self.inner, id);
+                deny(Reason::ControlLost, "control answer channel closed")
+            }
         }
     }
+}
+
+impl Drop for Control {
+    fn drop(&mut self) {
+        if self.inner.handles.fetch_sub(1, Ordering::AcqRel) == 1 {
+            self.inner.close(Reason::ControlLost);
+        }
+    }
+}
+
+fn deny(reason: Reason, text: &str) -> Decision {
+    Decision::Deny {
+        reason,
+        text: text.to_string(),
+    }
+}
+
+fn reason_of(error: &ControlError) -> Reason {
+    match error {
+        ControlError::Timeout => Reason::Timeout,
+        ControlError::Closed(reason) => *reason,
+        ControlError::Io(_) => Reason::ControlLost,
+        ControlError::Version(..)
+        | ControlError::RunId
+        | ControlError::Malformed(_)
+        | ControlError::Reason => Reason::Malformed,
+    }
+}
+
+/// Performs the handshake on `stream` and returns the harness's in-flight
+/// window with a fresh handle (its reader thread starts after this).
+fn hello(
+    stream: UnixStream,
+    run_id: RunId,
+    timeout: Duration,
+) -> Result<(u32, Control), ControlError> {
+    let mut writer = stream;
+    let mut body = Vec::with_capacity(13);
+    body.push(MESSAGE_VERSION);
+    body.extend_from_slice(&run_id.to_be_bytes());
+    body.extend_from_slice(&std::process::id().to_be_bytes());
+    write_frame(&mut writer, HELLO, &body).map_err(ControlError::Io)?;
+    let mut ack_reader = writer.try_clone().map_err(ControlError::Io)?;
+    ack_reader
+        .set_read_timeout(Some(timeout))
+        .map_err(ControlError::Io)?;
+    let (kind, body) = read_frame(&mut ack_reader).map_err(map_read_err)?;
+    if kind != HELLO_ACK {
+        return Err(ControlError::Malformed("expected HELLO_ACK"));
+    }
+    if body.len() != 17 {
+        return Err(ControlError::Malformed("wrong HELLO_ACK size"));
+    }
+    if body[0] != MESSAGE_VERSION {
+        return Err(ControlError::Version(body[0], 0));
+    }
+    let protocol = u32::from_be_bytes(body[1..5].try_into().expect("4"));
+    if protocol != PROTOCOL_VERSION {
+        return Err(ControlError::Version(body[0], protocol));
+    }
+    let max_inflight = u32::from_be_bytes(body[5..9].try_into().expect("4")).clamp(1, MAX_INFLIGHT);
+    let echoed = u64::from_be_bytes(body[9..17].try_into().expect("8"));
+    if echoed != run_id {
+        return Err(ControlError::RunId);
+    }
+    let inner = Arc::new(Inner {
+        writer: Mutex::new(writer),
+        pending: Mutex::new(Pending::default()),
+        next: AtomicU64::new(1),
+        handles: AtomicUsize::new(1),
+        dead: AtomicBool::new(false),
+        run_id,
+        timeout,
+        max_inflight,
+    });
+    Ok((
+        max_inflight,
+        Control {
+            inner: inner.clone(),
+        },
+    ))
+}
+
+/// Reads responses and routes each to its waiting request.
+fn read_loop(mut reader: UnixStream, inner: Arc<Inner>) {
+    loop {
+        let (kind, body) = match read_frame(&mut reader) {
+            Ok(frame) => frame,
+            Err(e) => {
+                let reason = match e.kind() {
+                    io::ErrorKind::UnexpectedEof | io::ErrorKind::ConnectionReset => {
+                        Reason::ControlLost
+                    }
+                    _ => Reason::Malformed,
+                };
+                inner.close(reason);
+                return;
+            }
+        };
+        if kind != DECIDE_RESP {
+            inner.close(Reason::Malformed);
+            return;
+        }
+        match decode_decision(&body) {
+            Ok((id, decision)) => {
+                let mut pending = match inner.pending.lock() {
+                    Ok(pending) => pending,
+                    Err(_) => {
+                        inner.close(Reason::ControlLost);
+                        return;
+                    }
+                };
+                if let Some(sender) = pending.map.remove(&id) {
+                    drop(pending);
+                    let _ = sender.try_send(Ok(decision));
+                } else if pending.expired.contains(&id) {
+                    // The request timed out; its late answer is ignored.
+                    drop(pending);
+                } else {
+                    drop(pending);
+                    inner.close(Reason::Malformed);
+                    return;
+                }
+            }
+            Err(_) => {
+                inner.close(Reason::Malformed);
+                return;
+            }
+        }
+    }
+}
+fn decode_decision(body: &[u8]) -> Result<(u64, Decision), ControlError> {
+    if body.len() < 11 {
+        return Err(ControlError::Malformed("wrong DECIDE_RESP size"));
+    }
+    let id = u64::from_be_bytes(body[0..8].try_into().expect("8"));
+    let verdict = body[8];
+    let reason_len = u16::from_be_bytes(body[9..11].try_into().expect("2")) as usize;
+    if reason_len > MAX_REASON || body.len() != 11 + reason_len {
+        return Err(ControlError::Malformed("DECIDE_RESP reason length"));
+    }
+    let reason = std::str::from_utf8(&body[11..]).map_err(|_| ControlError::Reason)?;
+    match verdict {
+        0 => Ok((
+            id,
+            Decision::Deny {
+                reason: Reason::from_text(reason),
+                text: reason.to_string(),
+            },
+        )),
+        1 => Ok((id, Decision::Allow)),
+        v => Err(ControlError::Malformed(if v == 2 {
+            "unknown DECIDE_RESP verdict"
+        } else {
+            "DECIDE_RESP verdict is not 0 or 1"
+        })),
+    }
+}
+
+fn remove(inner: &Inner, id: u64) {
+    let Ok(mut pending) = inner.pending.lock() else {
+        return;
+    };
+    pending.map.remove(&id);
+    if pending.expired.len() >= EXPIRED {
+        pending.expired.pop_front();
+    }
+    pending.expired.push_back(id);
 }
 
 fn map_read_err(e: io::Error) -> ControlError {
@@ -425,6 +586,7 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::os::unix::net::UnixListener;
+    use std::time::Instant;
 
     fn fake(
         f: impl FnOnce(&mut UnixStream) + Send + 'static,
@@ -470,6 +632,10 @@ mod tests {
         write_frame(stream, DECIDE_RESP, &body).unwrap();
     }
 
+    fn request_id(body: &[u8]) -> u64 {
+        u64::from_be_bytes(body[0..8].try_into().unwrap())
+    }
+
     const RUN: RunId = 0x0102_0304_0506_0708;
 
     #[test]
@@ -477,7 +643,6 @@ mod tests {
         let (path, handle) = fake(|s| {
             let (kind, body) = read(s);
             assert_eq!(kind, HELLO);
-            // type | version | run id | pid
             assert_eq!(body[0], 1);
             assert_eq!(u64::from_be_bytes(body[1..9].try_into().unwrap()), RUN);
             assert_eq!(
@@ -487,7 +652,7 @@ mod tests {
             ack(s, RUN);
             let (kind, body) = read(s);
             assert_eq!(kind, DECIDE_REQ);
-            let id = u64::from_be_bytes(body[0..8].try_into().unwrap());
+            let id = request_id(&body);
             let len = u16::from_be_bytes([body[8], body[9]]) as usize;
             assert_eq!(&body[10..10 + len], b"allowed.example");
             assert_eq!(
@@ -496,12 +661,10 @@ mod tests {
             );
             assert_eq!(body[10 + len + 2], 1);
             respond(s, id, 1, "allowed");
-            let (kind, body) = read(s);
-            assert_eq!(kind, DECIDE_REQ);
-            let id = u64::from_be_bytes(body[0..8].try_into().unwrap());
-            respond(s, id, 0, "permission denied");
+            let (_, body) = read(s);
+            respond(s, request_id(&body), 0, "permission denied");
         });
-        let mut control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
+        let control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
         assert_eq!(
             control.decide(&Resource::Domain("allowed.example".into()), 443, Proto::Tcp),
             Decision::Allow
@@ -509,6 +672,50 @@ mod tests {
         let denied = control.decide(&Resource::Ip("192.0.2.1".parse().unwrap()), 80, Proto::Tcp);
         assert_eq!(denied.reason(), Some(Reason::Policy));
         assert_eq!(denied.text(), Some("permission denied"));
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn two_requests_resolve_out_of_order() {
+        let (path, handle) = fake(|s| {
+            let (_, _hello) = read(s);
+            ack(s, RUN);
+            let (_, slow) = read(s);
+            let (_, fast) = read(s);
+            let (slow, fast) = (request_id(&slow), request_id(&fast));
+            // The fast flow's answer arrives first; the slow one is pending.
+            respond(s, fast, 1, "allowed");
+            std::thread::sleep(Duration::from_millis(250));
+            respond(s, slow, 0, "denied later");
+        });
+        let control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
+        let start = Instant::now();
+        let slow = std::thread::spawn({
+            let slow = control.clone();
+            move || {
+                let at = Instant::now();
+                let d = slow.decide(&Resource::Domain("slow.example".into()), 443, Proto::Tcp);
+                (at.elapsed(), d)
+            }
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        let fast = std::thread::spawn({
+            let fast = control.clone();
+            move || {
+                let at = Instant::now();
+                let d = fast.decide(&Resource::Domain("fast.example".into()), 443, Proto::Tcp);
+                (at.elapsed(), d)
+            }
+        });
+        let (fast_elapsed, fast_decision) = fast.join().unwrap();
+        let (slow_elapsed, slow_decision) = slow.join().unwrap();
+        assert_eq!(fast_decision, Decision::Allow);
+        assert!(matches!(slow_decision, Decision::Deny { .. }));
+        assert!(
+            fast_elapsed + Duration::from_millis(100) < slow_elapsed,
+            "a pending prompt must not serialize the fast flow: {fast_elapsed:?} vs {slow_elapsed:?}"
+        );
+        assert!(start.elapsed() >= Duration::from_millis(250));
         handle.join().unwrap();
     }
 
@@ -524,19 +731,19 @@ mod tests {
     }
 
     #[test]
-    fn wrong_id_denies_and_kills_channel() {
+    fn unknown_id_denies_and_kills_channel() {
         let (path, handle) = fake(|s| {
             let _ = read(s);
             ack(s, RUN);
             let _ = read(s);
             respond(s, 999, 1, "allowed");
         });
-        let mut control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
+        let control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
         let first = control.decide(&Resource::Domain("a.example".into()), 443, Proto::Tcp);
         assert_eq!(first.reason(), Some(Reason::Malformed));
         assert!(control.is_dead());
         let second = control.decide(&Resource::Domain("b.example".into()), 443, Proto::Tcp);
-        assert_eq!(second.reason(), Some(Reason::Malformed));
+        assert_eq!(second.reason(), Some(Reason::ControlLost));
         handle.join().unwrap();
     }
 
@@ -548,23 +755,42 @@ mod tests {
             let _ = read(s);
             s.write_all(&(MAX_FRAME as u32 + 1).to_be_bytes()).unwrap();
         });
-        let mut control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
+        let control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
         let decision = control.decide(&Resource::Domain("a.example".into()), 443, Proto::Tcp);
         assert_eq!(decision.reason(), Some(Reason::Malformed));
         handle.join().unwrap();
     }
 
     #[test]
-    fn eof_denies() {
+    fn eof_denies_with_control_lost() {
         let (path, handle) = fake(|s| {
             let _ = read(s);
             ack(s, RUN);
             let _ = read(s);
             let _ = s.shutdown(std::net::Shutdown::Both);
         });
-        let mut control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
+        let control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
         let decision = control.decide(&Resource::Domain("a.example".into()), 443, Proto::Tcp);
-        assert_eq!(decision.reason(), Some(Reason::Malformed));
+        assert_eq!(decision.reason(), Some(Reason::ControlLost));
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_timed_out_prompt_does_not_block_the_next_flow() {
+        let (path, handle) = fake(|s| {
+            let _ = read(s);
+            ack(s, RUN);
+            let (_, first) = read(s);
+            let (_, second) = read(s);
+            respond(s, request_id(&second), 1, "allowed");
+            std::thread::sleep(Duration::from_millis(300));
+            respond(s, request_id(&first), 1, "late");
+        });
+        let control = Control::connect(&path, RUN, Duration::from_millis(100)).unwrap();
+        let first = control.decide(&Resource::Domain("slow.example".into()), 443, Proto::Tcp);
+        assert_eq!(first.reason(), Some(Reason::Timeout));
+        let second = control.decide(&Resource::Domain("fast.example".into()), 443, Proto::Tcp);
+        assert_eq!(second, Decision::Allow);
         handle.join().unwrap();
     }
 
@@ -573,13 +799,25 @@ mod tests {
         let (path, handle) = fake(|s| {
             let _ = read(s);
             ack(s, RUN);
-            let _ = read(s);
-            let id = 1;
-            respond(s, id, 0, "decision timeout");
+            let (_, body) = read(s);
+            respond(s, request_id(&body), 0, "decision timeout");
         });
-        let mut control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
+        let control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
         let decision = control.decide(&Resource::Domain("a.example".into()), 53, Proto::Udp);
         assert_eq!(decision.reason(), Some(Reason::Timeout));
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn close_refuses_later_flows() {
+        let (path, handle) = fake(|s| {
+            let _ = read(s);
+            ack(s, RUN);
+        });
+        let control = Control::connect(&path, RUN, Duration::from_secs(2)).unwrap();
+        control.close();
+        let decision = control.decide(&Resource::Domain("a.example".into()), 443, Proto::Tcp);
+        assert_eq!(decision.reason(), Some(Reason::ControlLost));
         handle.join().unwrap();
     }
 }

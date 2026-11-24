@@ -24,6 +24,33 @@ All notable changes to procage are listed here. The format follows
 - `relay_control_socket` (and `relay_run_id`) on the Node.js `Cage` options,
   matching `RelayControlServer` in `opencode-fs-plugin`.
 
+### Changed
+
+- The relay accepts one EDNS0 OPT in a query and echoes it, bounded, in a
+  local `REFUSED`/`SERVFAIL`, so common stub queries parse.
+- Allowed DNS answers feed a bounded per-run address→name cache (A/AAAA
+  through CNAME, with TTL); a later nameless flow to a cached address is
+  authorized by the allowed QNAME. Expiry and the entry limit authorize
+  nothing.
+- An allowed DNS query uses the relay's explicit upstream, else the parent's
+  system resolver including a loopback stub, and answers `SERVFAIL` when
+  neither works.
+- Control requests are id-multiplexed on the one connection, so a pending
+  permission prompt holds only its own flow, up to the harness's in-flight
+  window.
+- The TCP sniff deadline (400 ms) is cleared before relaying, so an idle or
+  slow client is not cut off after classification.
+- IPv6 is carried too: ULA veth addresses and routes, `ip6` TPROXY rules,
+  IPv6 original-destination ancillary data, IPv6 TCP/UDP upstream and
+  transparent replies, AAAA/EDNS DNS handling and IPv6 DNS listeners.
+- QUIC Initials are buffered per flow (8 datagrams, 64 KiB, 100 ms) until
+  the SNI or ECH is parsed, then one decision covers every buffered
+  datagram; an incomplete flow asks for the destination IP after the
+  deadline and forwards nothing when denied.
+- At most 256 upstream UDP flows run per run; further datagrams are dropped
+  (DNS still answers REFUSED). Ending a run closes the control/helper
+  channels and stops every listener and UDP flow within one poll interval.
+
 ## [0.8.0] - 2026-11-14
 
 ### Security

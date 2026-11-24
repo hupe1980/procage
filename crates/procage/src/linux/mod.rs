@@ -111,16 +111,26 @@
 //!
 //! The parent bridge reads only enough of a TCP flow to name it (TLS SNI
 //! across records, HTTP `Host`; a `CONNECT` request names its proxy, not the
-//! target), decrypts QUIC v1/v2 Initials and reassembles CRYPTO frames across
-//! datagrams, parses one DNS question, and otherwise uses the destination
-//! address. It then sends one `DECIDE_REQ` over the run's Unix control socket
-//! and carries the flow only if `DECIDE_RESP` allows it. A decision timeout,
-//! EOF, malformed frame or wrong id/run id closes the channel and refuses
-//! every later flow. The child's DNS output is redirected inside its
-//! namespace to a parent listener, so a `resolv.conf` loopback stub works
-//! without granting Unix sockets; a denied QNAME is answered `REFUSED`.
-//! TCP/853, known DoH names and ECH are refused visibly, and the flow's
-//! refusal is in the run's violations when reporting is on.
+//! target), decrypts QUIC v1/v2 Initials and reassembles CRYPTO frames within
+//! the inspected datagram, parses one DNS question (EDNS OPT accepted and
+//! echoed), and otherwise uses the destination address. Allowed DNS answers
+//! (A/AAAA through a bounded CNAME chain, with the records' TTL) feed a
+//! bounded per-run address→name cache: a later flow that names no host but
+//! goes to a cached address is authorized by the previously allowed QNAME.
+//! An expired or evicted entry authorizes nothing. It then sends one
+//! `DECIDE_REQ` over the run's Unix control socket and carries the flow only
+//! if `DECIDE_RESP` allows it. Requests are id-multiplexed on that connection:
+//! a slow permission prompt holds only its own flow (bounded by the harness's
+//! in-flight window), not a global lock. A decision timeout, EOF, malformed
+//! frame or wrong id/run id closes the channel and refuses every later flow.
+//! The child's DNS output is redirected inside its namespace to a parent
+//! listener, so a `resolv.conf` loopback stub works without granting Unix
+//! sockets; a denied QNAME is answered `REFUSED`. The parent forwards an
+//! allowed query through the relay's explicit upstream, else the parent's
+//! system resolver (a loopback stub included), and answers `SERVFAIL` rather
+//! than guessing when none works. TCP/853, known DoH names and ECH are
+//! refused visibly, and the flow's refusal is in the run's violations when
+//! reporting is on.
 //!
 //! The nftables and rtnetlink messages come from a narrow in-tree writer
 //! (fixed table/chain/rules and the veth/route/rule messages above), not a
@@ -129,12 +139,20 @@
 //! accepts fixed, bound inputs; its remaining risk is the hand-written
 //! netlink encoding on kernels other than the tested one.
 //!
-//! **Relay limits:** IPv4 only (the app namespace's `AF_INET6` sockets are
-//! refused by seccomp); one decision at a time per run; a QUIC ClientHello
-//! split across datagrams falls back to authorizing the destination address
-//! (a ClientHello within one datagram is decrypted and its SNI used);
-//! arbitrary DoH inside an allowed HTTPS origin is not visible to the relay;
-//! UDP flows idle out after 30 s.
+//! **Relay limits:** IPv6 TCP and UDP are carried over the same veth with
+//! ULA addresses and `ip6` TPROXY; the parent's resolver, the address→name
+//! cache and DNS listeners cover IPv6. The control connection multiplexes up
+//! to the harness's in-flight window (at most 64 decisions); a QUIC
+//! ClientHello split across Initials is buffered (up to 8 datagrams, 64 KiB,
+//! 100 ms) until the SNI or ECH is parsed, then one decision is made for the
+//! whole buffer; an incomplete flow asks for the destination address only
+//! after that deadline, and a denial forwards nothing. The address→name
+//! cache holds at most 4096 entries and caps a TTL at one hour; at most 256
+//! upstream UDP flows run at once (a further datagram is dropped, DNS still
+//! answers REFUSED); arbitrary DoH inside an allowed HTTPS origin is not
+//! visible to the relay; UDP flows idle out after 30 s. Run teardown closes
+//! the control and helper channels, and each listener/UDP flow stops within
+//! one poll interval (200 ms).
 //!
 //! **Limits:**
 //!

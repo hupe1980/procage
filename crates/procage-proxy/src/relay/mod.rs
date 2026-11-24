@@ -50,6 +50,7 @@ pub struct Relay {
     pub(crate) control: PathBuf,
     pub(crate) timeout: Duration,
     pub(crate) dns_upstream: Option<std::net::SocketAddr>,
+    pub(crate) resolv_conf: Option<PathBuf>,
     pub(crate) run_id: Option<u64>,
 }
 
@@ -61,6 +62,7 @@ impl Relay {
             control: control.into(),
             timeout: Duration::from_secs(65),
             dns_upstream: None,
+            resolv_conf: None,
             run_id: None,
         }
     }
@@ -85,10 +87,22 @@ impl Relay {
 
     /// This relay with `upstream` as the server for an allowed DNS query
     /// that arrived on a loopback resolver stub (where the original server
-    /// is not visible). Without it procage reads `/etc/resolv.conf` and skips
-    /// loopback entries.
+    /// is not visible). Without it procage reads `/etc/resolv.conf` and the
+    /// systemd-resolved paths, and uses the first nameserver **including** a
+    /// loopback stub: the parent namespace is outside the child's relay, so
+    /// `127.0.0.53` there is the host's resolver, not a recursion.
     pub fn with_dns_upstream(mut self, upstream: std::net::SocketAddr) -> Relay {
         self.dns_upstream = Some(upstream);
+        self
+    }
+
+    /// This relay with `path` as the only resolver configuration (instead of
+    /// `/etc/resolv.conf` and the systemd-resolved paths). An empty or
+    /// unreadable file means no upstream, and an allowed query is answered
+    /// `SERVFAIL`; it never falls back silently. For a container or a test
+    /// whose resolver lives elsewhere.
+    pub fn with_resolv_conf(mut self, path: impl Into<PathBuf>) -> Relay {
+        self.resolv_conf = Some(path.into());
         self
     }
 
@@ -110,6 +124,11 @@ impl Relay {
     /// The configured DNS upstream, if any.
     pub fn dns_upstream(&self) -> Option<std::net::SocketAddr> {
         self.dns_upstream
+    }
+
+    /// The resolver configuration file, if one was chosen.
+    pub fn resolv_conf(&self) -> Option<&std::path::Path> {
+        self.resolv_conf.as_deref()
     }
 }
 
