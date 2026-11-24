@@ -55,6 +55,18 @@ export type Relaxation =
   | "no-loopback"
   | `waive:${string}`;
 
+export interface ProxyOptions {
+  /**
+   * Hosts the run may reach: `host`, `host:port`, `*.domain`, an address or
+   * a range. Required; `*`, `*.com` and an empty list are refused.
+   */
+  allowlist: string[];
+  /** HTTP CONNECT port inside the cage (default 3128). */
+  httpPort?: number;
+  /** SOCKS5 port inside the cage (default 1080). */
+  socksPort?: number;
+}
+
 export interface CageOptions {
   /** Record what the sandbox denied. */
   violations?: boolean;
@@ -64,6 +76,12 @@ export interface CageOptions {
   acceptSpawnSnapshot?: boolean;
   /** Constructs accepted as approximated, by name, e.g. `["exec-program"]`. */
   allow?: string[];
+  /**
+   * Route the run's network through a proxy of its own that reaches only
+   * these hosts (Linux tier 1 or macOS). The child gets `HTTP_PROXY`,
+   * `HTTPS_PROXY` and `ALL_PROXY`; there is no direct route.
+   */
+  proxy?: ProxyOptions;
 }
 
 export interface SpawnOptions {

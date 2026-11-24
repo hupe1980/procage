@@ -121,6 +121,49 @@ describe("escape subset", () => {
   });
 });
 
+describe("proxy", () => {
+  it("reaches allowlisted hosts and refuses every other route", async () => {
+    const ws = workspace();
+    let c;
+    try {
+      c = cage(withNode(preset(ws)), { violations: true, proxy: { allowlist: ["example.com"] } });
+    } catch (error) {
+      // Linux tier T2 cannot keep a run to a proxy-only route.
+      if (error instanceof CapabilityGapError) return;
+      throw error;
+    }
+    const curl = "/usr/bin/curl";
+    if (!existsSync(curl)) return;
+    const allowed = await run(
+      c,
+      [curl, "-sS", "-o", "/dev/null", "-w", "%{http_code}", "https://example.com"],
+      { cwd: ws, timeout: 45_000 },
+    );
+    assert.equal(allowed.exitCode, 0, allowed.stderr);
+    assert.equal(allowed.stdout, "200");
+
+    const denied = await run(c, [curl, "-sS", "https://example.org"], { cwd: ws, timeout: 45_000 });
+    assert.notEqual(denied.exitCode, 0);
+    assert.ok(
+      denied.violations.some((v) => /example\.org/.test(v.message)),
+      JSON.stringify(denied.violations),
+    );
+
+    const direct = await run(c, [curl, "-sS", "--noproxy", "*", "https://example.com"], {
+      cwd: ws,
+      timeout: 45_000,
+    });
+    assert.notEqual(direct.exitCode, 0, "there must be no direct route");
+  });
+
+  it("refuses an empty or wildcard allowlist and an invalid port", () => {
+    const ws = workspace();
+    assert.throws(() => cage(preset(ws), { proxy: { allowlist: [] } }), PolicyError);
+    assert.throws(() => cage(preset(ws), { proxy: { allowlist: ["*"] } }), PolicyError);
+    assert.throws(() => cage(preset(ws), { proxy: { allowlist: ["example.com"], httpPort: 0 } }), PolicyError);
+  });
+});
+
 describe("policies", () => {
   it("an unknown field is refused", () => {
     assert.throws(() => Policy.fromJSON({ version: 1, bogus: 1 }), PolicyError);

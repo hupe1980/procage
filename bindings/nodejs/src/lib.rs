@@ -21,6 +21,7 @@ use procage::policy::path::AbsPath;
 use procage::policy::{
     self as pp, Construct, HardDenyClass, LowerError, LowerOptions, Relax, Relaxation,
 };
+use procage::proxy::{Allowlist, Proxy};
 
 /// An error the JavaScript module turns into its class: a marked JSON
 /// document with the kind, procage's message and, for a gap, the gaps.
@@ -120,6 +121,14 @@ fn policy_error(message: String) -> Error {
     fail("PolicyError", message, None)
 }
 
+/// A proxy port from JavaScript: 1 to 65535.
+fn proxy_port(name: &str, value: u32) -> Result<pp::Port> {
+    u16::try_from(value)
+        .ok()
+        .and_then(|port| pp::Port::new(port).ok())
+        .ok_or_else(|| policy_error(format!("{name} must be between 1 and 65535")))
+}
+
 /// A policy: from a preset or from the versioned JSON format.
 #[napi]
 pub struct Policy {
@@ -190,6 +199,18 @@ impl Policy {
     }
 }
 
+/// A run's own egress proxy: the only hosts the run can reach.
+#[napi(object)]
+pub struct ProxyOptionsJs {
+    /// Hosts the run may reach: `host`, `host:port`, `*.domain`, or an
+    /// address/range. Required; `*` and a one-label wildcard are refused.
+    pub allowlist: Vec<String>,
+    /// HTTP CONNECT port inside the cage (default 3128).
+    pub http_port: Option<u32>,
+    /// SOCKS5 port inside the cage (default 1080).
+    pub socks_port: Option<u32>,
+}
+
 /// Options of a cage.
 #[napi(object)]
 pub struct CageOptionsJs {
@@ -201,6 +222,9 @@ pub struct CageOptionsJs {
     pub accept_spawn_snapshot: Option<bool>,
     /// Constructs accepted as approximated, by name (`exec-program`).
     pub allow: Option<Vec<String>>,
+    /// Route the run's network through a proxy of its own that reaches only
+    /// the allowlisted hosts (Linux tier 1 or macOS).
+    pub proxy: Option<ProxyOptionsJs>,
 }
 
 fn relax(names: &[String]) -> Result<Relax> {
@@ -257,6 +281,7 @@ impl Cage {
             relax: None,
             accept_spawn_snapshot: None,
             allow: None,
+            proxy: None,
         });
         let mut lower = if o.accept_spawn_snapshot.unwrap_or(false) {
             LowerOptions::default().accept_spawn_snapshot()
@@ -266,19 +291,29 @@ impl Cage {
         for construct in allowed(&o.allow.unwrap_or_default())? {
             lower = lower.allow(construct);
         }
+        let mut policy_inner = policy.inner.clone();
         let mut options = CageOptions::default().with_lower(lower);
         if o.violations.unwrap_or(false) {
             options = options.with_violations();
         }
+        if let Some(proxy) = o.proxy {
+            let allow = Allowlist::new(&proxy.allowlist)
+                .map_err(|e| policy_error(format!("proxy allowlist: {e}")))?;
+            policy_inner.net = pp::Network::Proxy {
+                http: Some(proxy_port("httpPort", proxy.http_port.unwrap_or(3128))?),
+                socks: Some(proxy_port("socksPort", proxy.socks_port.unwrap_or(1080))?),
+            };
+            options = options.with_proxy(Proxy::new(allow));
+        }
         let names = o.relax.unwrap_or_default();
         let (inner, relaxed) = if names.is_empty() {
             (
-                native::Cage::with_options(&policy.inner, &options).map_err(spawn_error)?,
+                native::Cage::with_options(&policy_inner, &options).map_err(spawn_error)?,
                 Vec::new(),
             )
         } else {
             let (cage, taken) =
-                native::Cage::fit(&policy.inner, &options, &relax(&names)?).map_err(spawn_error)?;
+                native::Cage::fit(&policy_inner, &options, &relax(&names)?).map_err(spawn_error)?;
             (cage, taken.iter().map(ToString::to_string).collect())
         };
         Ok(Cage {

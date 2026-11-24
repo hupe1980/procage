@@ -18,7 +18,7 @@ doctest = false
 [dependencies]
 napi = { version = "3", default-features = false, features = ["napi8"] }
 napi-derive = "3"
-procage = { path = "../../crates/procage" }
+procage = { path = "../../crates/procage", features = ["proxy"] }
 procage-policy = { workspace = true, features = ["serde"] }
 serde_json.workspace = true
 
