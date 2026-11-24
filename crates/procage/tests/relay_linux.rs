@@ -219,6 +219,24 @@ fn udp_echo() -> u16 {
     port
 }
 
+/// A DNS server that answers every query `NOERROR` with no records.
+fn dns_server() -> SocketAddr {
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let addr = socket.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 512];
+        while let Ok((n, from)) = socket.recv_from(&mut buf) {
+            if n < 12 {
+                continue;
+            }
+            let mut reply = vec![buf[0], buf[1], 0x81, 0x80, 0, 1, 0, 0, 0, 0, 0, 0];
+            reply.extend_from_slice(&buf[12..n]);
+            let _ = socket.send_to(&reply, from);
+        }
+    });
+    addr
+}
+
 // ---------------------------------------------------------------- the child
 
 fn query(name: &str) -> Vec<u8> {
@@ -276,6 +294,25 @@ fn child_entry() {
                     Ok(socket) => {
                         socket.set_read_timeout(Some(Duration::from_secs(3))).ok();
                         let _ = socket.send_to(&query("c2.example"), target);
+                        let mut buf = [0u8; 512];
+                        match socket.recv_from(&mut buf) {
+                            Ok((n, _)) => {
+                                let rcode = if n >= 4 { buf[3] & 0x0f } else { 255 };
+                                format!("rcode={rcode}")
+                            }
+                            Err(e) => format!("timeout:{:?}", e.kind()),
+                        }
+                    }
+                    Err(_) => "socket-error".into(),
+                }
+            }
+            "dnsq" => {
+                let (target, name) = arg.split_once('|').unwrap();
+                let target: SocketAddr = target.parse().unwrap();
+                match UdpSocket::bind("0.0.0.0:0") {
+                    Ok(socket) => {
+                        socket.set_read_timeout(Some(Duration::from_secs(3))).ok();
+                        let _ = socket.send_to(&query(name), target);
                         let mut buf = [0u8; 512];
                         match socket.recv_from(&mut buf) {
                             Ok((n, _)) => {
@@ -440,6 +477,32 @@ fn denied_tcp_is_closed_and_dns_is_refused() {
             .any(|v| v.to_string().contains("c2.example")),
         "the refusal must be visible: {violations:?}"
     );
+}
+
+#[test]
+fn dns_allow_and_deny_map() {
+    if !supported() {
+        return;
+    }
+    let upstream = dns_server();
+    let server = Server::start(|resource| {
+        if resource == "allowed.example" {
+            Verdict::Allow
+        } else {
+            Verdict::Deny("not on the map")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_dns_upstream(upstream)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let action = "dnsq:127.0.0.53:53|allowed.example;dnsq:127.0.0.53:53|c2.example";
+    let (results, _) = run(&cage, action);
+    assert_eq!(results[0], "rcode=0", "allowed QNAME: {results:?}");
+    assert_eq!(results[1], "rcode=5", "denied QNAME: {results:?}");
 }
 
 #[test]
