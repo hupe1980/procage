@@ -1092,6 +1092,12 @@ impl Cage {
                 setting: "Network::Relay and Network::Proxy at once",
             }));
         }
+        #[cfg(not(feature = "proxy"))]
+        if matches!(plan.network, procage_policy::linux::LinuxNetwork::Relay) {
+            return Err(SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Network::Relay without the proxy feature (CageOptions::with_relay)",
+            }));
+        }
         if matches!(
             plan.network,
             procage_policy::linux::LinuxNetwork::ProxyBridge { .. }
