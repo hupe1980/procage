@@ -43,6 +43,8 @@ pub enum Sniff {
     /// The unit is complete but names no host (for example a TLS ClientHello
     /// without SNI, or a request without `Host`).
     NoName,
+    /// ECH hides the destination name; the relay refuses the flow visibly.
+    Ech,
     /// The bytes are not this protocol.
     NotThis,
 }
@@ -99,8 +101,7 @@ impl TlsSniffer {
             TlsParse::Hello(hello) => {
                 self.done = true;
                 if hello.ech {
-                    // The caller refuses ECH visibly; no resource is returned.
-                    return Sniff::NoName;
+                    return Sniff::Ech;
                 }
                 match hello
                     .sni
@@ -456,7 +457,7 @@ impl QuicInspector {
             TlsParse::Incomplete => Sniff::NeedMore,
             TlsParse::Hello(hello) => {
                 if hello.ech {
-                    return Sniff::NoName;
+                    return Sniff::Ech;
                 }
                 match hello
                     .sni
@@ -597,7 +598,7 @@ mod tests {
     fn tls_ech_is_reported_not_named() {
         let hello = tls_hello("public.example", true);
         let mut sniffer = TlsSniffer::new();
-        assert_eq!(sniffer.push(&hello), Sniff::NoName);
+        assert_eq!(sniffer.push(&hello), Sniff::Ech);
         assert!(sniffer.ech());
     }
 

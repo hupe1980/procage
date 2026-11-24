@@ -552,6 +552,15 @@ fn udp_loop(
                 } else if destination.port() == 443 {
                     match quic.push(payload, source, destination) {
                         inspect::Sniff::Named(resource) => resource,
+                        inspect::Sniff::Ech => {
+                            record(
+                                violations.as_ref(),
+                                "network-outbound",
+                                format!("{destination} (ECH hides the name)"),
+                                crate::violation::DeniedBy::Relay,
+                            );
+                            continue;
+                        }
                         _ => Resource::Ip(destination.ip()),
                     }
                 } else {
