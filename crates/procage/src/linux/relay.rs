@@ -475,29 +475,34 @@ fn upstream(addr: SocketAddr) -> io::Result<TcpStream> {
 }
 
 /// Reads bytes until `sniffer` names the resource, fails, or the deadline or
-/// cap is reached. Returns the bytes read and the resource (if any).
+/// cap is reached. `strict` makes an unclassifiable empty/short stream
+/// incomplete instead of clearly another protocol (used on TLS ports).
 fn read_name(
     stream: &mut TcpStream,
     sniffer: &mut dyn NameSniffer,
-) -> io::Result<(Vec<u8>, Option<Resource>)> {
+    strict: bool,
+) -> io::Result<(Vec<u8>, inspect::Sniff)> {
     let timeout = Duration::from_millis(400);
     let deadline = Instant::now() + timeout;
     let mut buf = [0u8; 4096];
     loop {
         if sniffer.decided() {
-            return Ok((sniffer.bytes().to_vec(), sniffer.resource()));
+            return Ok((sniffer.bytes().to_vec(), inspect::Sniff::NoName));
         }
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            return Ok((sniffer.bytes().to_vec(), sniffer.resource()));
+            return Ok((sniffer.bytes().to_vec(), incomplete(sniffer, strict)));
         }
         stream.set_read_timeout(Some(left))?;
         match stream.read(&mut buf) {
-            Ok(0) => return Ok((sniffer.bytes().to_vec(), sniffer.resource())),
+            Ok(0) => return Ok((sniffer.bytes().to_vec(), incomplete(sniffer, strict))),
             Ok(n) => {
                 let sniff = sniffer.push(&buf[..n]);
-                if sniff != inspect::Sniff::NeedMore || sniffer.bytes().len() >= MAX_NAME {
-                    return Ok((sniffer.bytes().to_vec(), sniffer.resource()));
+                if sniff != inspect::Sniff::NeedMore {
+                    return Ok((sniffer.bytes().to_vec(), sniff));
+                }
+                if sniffer.bytes().len() >= MAX_NAME {
+                    return Ok((sniffer.bytes().to_vec(), inspect::Sniff::Malformed));
                 }
             }
             Err(e)
@@ -506,10 +511,18 @@ fn read_name(
                     io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
                 ) =>
             {
-                return Ok((sniffer.bytes().to_vec(), sniffer.resource()));
+                return Ok((sniffer.bytes().to_vec(), incomplete(sniffer, strict)));
             }
             Err(e) => return Err(e),
         }
+    }
+}
+
+fn incomplete(sniffer: &dyn NameSniffer, strict: bool) -> inspect::Sniff {
+    if sniffer.identified() || strict {
+        inspect::Sniff::Incomplete
+    } else {
+        inspect::Sniff::NotThis
     }
 }
 
@@ -519,18 +532,15 @@ trait NameSniffer {
     fn push(&mut self, bytes: &[u8]) -> inspect::Sniff;
     fn bytes(&self) -> &[u8];
     fn decided(&self) -> bool;
-    fn resource(&self) -> Option<Resource>;
+    fn identified(&self) -> bool;
 }
 
-struct TlsName(inspect::TlsSniffer, Option<Resource>, bool);
+struct TlsName(inspect::TlsSniffer, bool);
 impl NameSniffer for TlsName {
     fn push(&mut self, bytes: &[u8]) -> inspect::Sniff {
         let sniff = self.0.push(bytes);
-        if let inspect::Sniff::Named(resource) = &sniff {
-            self.1 = Some(resource.clone());
-        }
         if self.0.ech() {
-            self.2 = true;
+            self.1 = true;
         }
         sniff
     }
@@ -540,19 +550,15 @@ impl NameSniffer for TlsName {
     fn decided(&self) -> bool {
         false
     }
-    fn resource(&self) -> Option<Resource> {
-        self.1.clone()
+    fn identified(&self) -> bool {
+        self.0.identified()
     }
 }
 
-struct HttpName(inspect::HttpSniffer, Option<Resource>);
+struct HttpName(inspect::HttpSniffer);
 impl NameSniffer for HttpName {
     fn push(&mut self, bytes: &[u8]) -> inspect::Sniff {
-        let sniff = self.0.push(bytes);
-        if let inspect::Sniff::Named(resource) = &sniff {
-            self.1 = Some(resource.clone());
-        }
-        sniff
+        self.0.push(bytes)
     }
     fn bytes(&self) -> &[u8] {
         self.0.buffered()
@@ -560,8 +566,8 @@ impl NameSniffer for HttpName {
     fn decided(&self) -> bool {
         false
     }
-    fn resource(&self) -> Option<Resource> {
-        self.1.clone()
+    fn identified(&self) -> bool {
+        self.0.looks_like_http()
     }
 }
 
@@ -622,22 +628,35 @@ fn tcp_flow(
         client.write_all(&dns::frame(&reply))?;
         return Ok(());
     } else if matches!(port, 443 | 8443 | 9443 | 4443) {
-        let mut sniffer = TlsName(inspect::TlsSniffer::new(), None, false);
-        let (bytes, resource) = read_name(&mut client, &mut sniffer)?;
-        ech = sniffer.2;
+        let mut sniffer = TlsName(inspect::TlsSniffer::new(), false);
+        let (bytes, sniff) = read_name(&mut client, &mut sniffer, true)?;
+        ech = sniffer.1;
         original = bytes;
+        let Some(resource) = classify(sniff, sink, destination, port) else {
+            client.shutdown(Shutdown::Both).ok();
+            return Ok(());
+        };
         resource
     } else if matches!(port, 80 | 8080 | 8000 | 8888 | 3000 | 5000) {
-        let mut sniffer = HttpName(inspect::HttpSniffer::new(), None);
-        let (bytes, resource) = read_name(&mut client, &mut sniffer)?;
+        let mut sniffer = HttpName(inspect::HttpSniffer::new());
+        let (bytes, sniff) = read_name(&mut client, &mut sniffer, false)?;
         original = bytes;
+        let Some(resource) = classify(sniff, sink, destination, port) else {
+            client.shutdown(Shutdown::Both).ok();
+            return Ok(());
+        };
         resource
     } else {
-        // Try TLS first; if the bytes are not TLS, fall back to the address.
-        let mut sniffer = TlsName(inspect::TlsSniffer::new(), None, false);
-        let (bytes, resource) = read_name(&mut client, &mut sniffer)?;
-        ech = sniffer.2;
+        // Try TLS first; if the bytes are clearly not TLS, fall back to the
+        // address. A TLS-looking partial handshake is not a fallback.
+        let mut sniffer = TlsName(inspect::TlsSniffer::new(), false);
+        let (bytes, sniff) = read_name(&mut client, &mut sniffer, false)?;
+        ech = sniffer.1;
         original = bytes;
+        let Some(resource) = classify(sniff, sink, destination, port) else {
+            client.shutdown(Shutdown::Both).ok();
+            return Ok(());
+        };
         resource
     };
     if ech {
@@ -685,6 +704,40 @@ fn tcp_flow(
     Ok(())
 }
 
+/// Maps a sniffer verdict to an IP/name fallback or a fail-closed refusal.
+/// `Some(None)` means the destination address may be used; `None` means the
+/// flow was refused and recorded.
+fn classify(
+    sniff: inspect::Sniff,
+    sink: Option<&crate::violation::Sink>,
+    destination: SocketAddr,
+    port: u16,
+) -> Option<Option<Resource>> {
+    match sniff {
+        inspect::Sniff::Named(resource) => Some(Some(resource)),
+        inspect::Sniff::NoName | inspect::Sniff::NotThis => Some(None),
+        inspect::Sniff::Ech => {
+            record(
+                sink,
+                "network-outbound",
+                format!("{destination} (ECH hides the name)"),
+                crate::violation::DeniedBy::Relay,
+            );
+            None
+        }
+        inspect::Sniff::Incomplete | inspect::Sniff::Malformed => {
+            record(
+                sink,
+                "network-outbound",
+                format!("{destination} (incomplete or malformed handshake on port {port})"),
+                crate::violation::DeniedBy::Relay,
+            );
+            None
+        }
+        inspect::Sniff::NeedMore => None,
+    }
+}
+
 fn reason_text(decision: Decision) -> String {
     match decision.reason() {
         None => "allowed".into(),
@@ -727,6 +780,8 @@ enum QuicOutcome {
     NeedMore,
     Resource(Resource),
     Ech,
+    NotQuic,
+    Malformed,
     Overflow,
 }
 
@@ -746,9 +801,9 @@ fn feed_quic(
     match pending.inspector.push(payload, source, destination) {
         inspect::Sniff::Named(resource) => QuicOutcome::Resource(resource),
         inspect::Sniff::Ech => QuicOutcome::Ech,
-        inspect::Sniff::NoName | inspect::Sniff::NotThis => {
-            QuicOutcome::Resource(Resource::Ip(destination.ip()))
-        }
+        inspect::Sniff::NoName => QuicOutcome::Resource(Resource::Ip(destination.ip())),
+        inspect::Sniff::NotThis => QuicOutcome::NotQuic,
+        inspect::Sniff::Incomplete | inspect::Sniff::Malformed => QuicOutcome::Malformed,
         inspect::Sniff::NeedMore => QuicOutcome::NeedMore,
     }
 }
@@ -868,6 +923,7 @@ fn udp_loop(
                 }
                 if destination.port() == 443 {
                     let existing = pending.remove(&key);
+                    let had_existing = existing.is_some();
                     let overflow = existing.as_ref().is_some_and(|entry| {
                         entry.datagrams.len() >= QUIC_MAX_PACKETS
                             || entry.bytes + payload.len() > inspect::MAX_QUIC_STREAM
@@ -882,7 +938,14 @@ fn udp_loop(
                         entry.datagrams.push(payload.to_vec());
                         QuicOutcome::Overflow
                     } else {
-                        feed_quic(&mut entry, payload, source, destination)
+                        let outcome = feed_quic(&mut entry, payload, source, destination);
+                        // Once an Initial was buffered, a non-Initial datagram
+                        // cannot turn the flow into an IP-authorized one.
+                        if had_existing && matches!(outcome, QuicOutcome::NotQuic) {
+                            QuicOutcome::Malformed
+                        } else {
+                            outcome
+                        }
                     };
                     let expired = entry.started.elapsed() >= QUIC_DEADLINE;
                     let resource = match outcome {
@@ -891,9 +954,25 @@ fn udp_loop(
                             continue;
                         }
                         QuicOutcome::NeedMore | QuicOutcome::Overflow => {
-                            Resource::Ip(destination.ip())
+                            record(
+                                violations.as_ref(),
+                                "network-outbound",
+                                format!("{destination} (incomplete or overflowing QUIC Initial)"),
+                                crate::violation::DeniedBy::Relay,
+                            );
+                            continue;
+                        }
+                        QuicOutcome::Malformed => {
+                            record(
+                                violations.as_ref(),
+                                "network-outbound",
+                                format!("{destination} (malformed QUIC Initial)"),
+                                crate::violation::DeniedBy::Relay,
+                            );
+                            continue;
                         }
                         QuicOutcome::Resource(resource) => resource,
+                        QuicOutcome::NotQuic => Resource::Ip(destination.ip()),
                         QuicOutcome::Ech => {
                             record(
                                 violations.as_ref(),
@@ -975,15 +1054,7 @@ fn udp_loop(
             }
             Err(e) if e == libc::EINTR => {}
             Err(e) if e == libc::EAGAIN || e == libc::EWOULDBLOCK => {
-                flush_quic(
-                    &mut pending,
-                    &control,
-                    &relay,
-                    &helper,
-                    &flows,
-                    &stop,
-                    violations.as_ref(),
-                );
+                flush_quic(&mut pending, violations.as_ref());
             }
             Err(e) => {
                 let _ = e;
@@ -993,16 +1064,11 @@ fn udp_loop(
     }
 }
 
-/// Resolves buffered QUIC flows whose deadline passed, asking for the
-/// destination address (never forwarding before that decision).
-#[allow(clippy::too_many_arguments)]
+/// Flushes buffered QUIC flows whose deadline passed. They are refused
+/// without an address decision: an Initial that names no host before the
+/// bound must not be authorized by its bare address.
 fn flush_quic(
     pending: &mut HashMap<(SocketAddr, SocketAddr), PendingQuic>,
-    control: &Control,
-    relay: &Relay,
-    helper: &Arc<Mutex<std::os::unix::net::UnixStream>>,
-    flows: &UdpFlows,
-    stop: &Arc<AtomicBool>,
     violations: Option<&crate::violation::Sink>,
 ) {
     let expired: Vec<(SocketAddr, SocketAddr)> = pending
@@ -1014,25 +1080,13 @@ fn flush_quic(
         let Some(entry) = pending.remove(&key) else {
             continue;
         };
-        let destination = key.1;
-        let resource = Resource::Ip(destination.ip());
-        let decision = decide(control, relay, &resource, destination.port(), Proto::Udp);
-        if !decision.allowed() {
-            record(
-                violations,
-                "network-outbound",
-                format!(
-                    "{:?}:{} from {} ({})",
-                    resource,
-                    destination.port(),
-                    key.0,
-                    reason_text(decision)
-                ),
-                crate::violation::DeniedBy::Relay,
-            );
-            continue;
-        }
-        start_udp_flow(flows, key, &entry.datagrams, destination, helper, stop);
+        let _ = entry.datagrams;
+        record(
+            violations,
+            "network-outbound",
+            format!("{} (incomplete QUIC Initial at the deadline)", key.1),
+            crate::violation::DeniedBy::Relay,
+        );
     }
 }
 

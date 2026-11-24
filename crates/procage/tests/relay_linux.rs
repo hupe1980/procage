@@ -510,6 +510,50 @@ fn child_entry() {
                     Err(_) => "socket-error".into(),
                 }
             }
+            "tls-partial" => {
+                match TcpStream::connect_timeout(&arg.parse().unwrap(), Duration::from_secs(3)) {
+                    Ok(mut stream) => {
+                        let mut prefix = vec![0x16, 0x03, 0x01, 0x40, 0x00];
+                        prefix.extend_from_slice(&[0u8; 100]);
+                        let _ = stream.write_all(&prefix);
+                        let mut out = String::new();
+                        stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
+                        let _ = stream.read_to_string(&mut out);
+                        if out.is_empty() {
+                            "eof".into()
+                        } else {
+                            "forwarded".into()
+                        }
+                    }
+                    Err(e) => format!("connect-error:{:?}", e.kind()),
+                }
+            }
+            "tls-nosni" => {
+                match TcpStream::connect_timeout(&arg.parse().unwrap(), Duration::from_secs(3)) {
+                    Ok(mut stream) => {
+                        let body_len = 2 + 32 + 1 + 4 + 2;
+                        let mut hello = vec![0x16, 0x03, 0x01];
+                        hello.extend_from_slice(&((4 + body_len) as u16).to_be_bytes());
+                        hello.push(1);
+                        hello.extend_from_slice(&((body_len as u32).to_be_bytes()[1..]));
+                        hello.extend_from_slice(&[0x03, 0x03]);
+                        hello.extend_from_slice(&[7u8; 32]);
+                        hello.push(0);
+                        hello.extend_from_slice(&[0x00, 0x02, 0x13, 0x01]);
+                        hello.extend_from_slice(&[0x01, 0x00]);
+                        stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+                        let _ = stream.write_all(&hello);
+                        let mut out = String::new();
+                        let _ = stream.read_to_string(&mut out);
+                        if out.starts_with("UP:") {
+                            "forwarded".into()
+                        } else {
+                            format!("not-forwarded:{out:?}")
+                        }
+                    }
+                    Err(e) => format!("connect-error:{:?}", e.kind()),
+                }
+            }
             "quic" => {
                 let target: SocketAddr = arg.parse().unwrap();
                 let first = include_bytes!("fixtures/quic/big-0.bin");
@@ -1111,19 +1155,18 @@ fn a_denied_quic_sni_forwards_nothing() {
 }
 
 #[test]
-fn an_incomplete_quic_flow_falls_back_to_the_ip_and_can_be_denied() {
-    if !ipv6_userns_inner("an_incomplete_quic_flow_falls_back_to_the_ip_and_can_be_denied") {
+fn an_incomplete_quic_initial_is_denied_even_when_the_ip_is_allowed() {
+    if !ipv6_userns_inner("an_incomplete_quic_initial_is_denied_even_when_the_ip_is_allowed") {
         return;
     }
     let _guard = QUIC_TEST_LOCK.lock().unwrap();
     let ip: Ipv6Addr = "fd00::1".parse().unwrap();
     let seen = quic_sink6(ip);
+    let decisions = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = decisions.clone();
     let server = Server::start(move |resource| {
-        if resource == ip.to_string() {
-            Verdict::Deny("the IP fallback is not allowed")
-        } else {
-            Verdict::Allow
-        }
+        recorded.lock().unwrap().push(resource.to_string());
+        Verdict::Allow
     });
     let options = CageOptions::default().with_tier(Tier::T1).with_relay(
         Relay::new(&server.path)
@@ -1137,7 +1180,11 @@ fn an_incomplete_quic_flow_falls_back_to_the_ip_and_can_be_denied() {
     assert_eq!(
         seen.load(std::sync::atomic::Ordering::Relaxed),
         0,
-        "the deadline's IP decision denied the flow before any datagram"
+        "an incomplete Initial must fail closed, not ask for the IP"
+    );
+    assert!(
+        decisions.lock().unwrap().is_empty(),
+        "no IP decision may authorize an incomplete Initial: {decisions:?}"
     );
 }
 
@@ -1176,6 +1223,67 @@ fn ech_spanning_quic_initials_is_denied_visibly() {
     assert!(
         violations.iter().any(|v| v.to_string().contains("ECH")),
         "the ECH refusal must be visible: {violations:?}"
+    );
+}
+
+#[test]
+fn an_incomplete_tls_handshake_is_denied_even_when_the_ip_is_allowed() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let tcp_port = tcp_echo();
+    let decisions = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = decisions.clone();
+    let server = Server::start(move |resource| {
+        recorded.lock().unwrap().push(resource.to_string());
+        Verdict::Allow
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, &format!("tls-partial:{ip}:{tcp_port}"));
+    assert_eq!(
+        results[0], "eof",
+        "a TLS-looking partial handshake must fail closed: {results:?}"
+    );
+    assert!(
+        decisions.lock().unwrap().is_empty(),
+        "no IP decision may authorize an incomplete TLS handshake: {decisions:?}"
+    );
+}
+
+#[test]
+fn a_valid_tls_handshake_without_sni_uses_the_ip() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let tcp_port = tcp_echo();
+    let server = Server::start(move |resource| {
+        if resource == ip.to_string() {
+            Verdict::Allow
+        } else {
+            Verdict::Deny("only the IP")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, &format!("tls-nosni:{ip}:{tcp_port}"));
+    assert_eq!(
+        results[0], "forwarded",
+        "a valid ClientHello without SNI may use the IP decision: {results:?}"
     );
 }
 

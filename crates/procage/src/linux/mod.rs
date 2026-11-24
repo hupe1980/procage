@@ -145,8 +145,10 @@
 //! to the harness's in-flight window (at most 64 decisions); a QUIC
 //! ClientHello split across Initials is buffered (up to 8 datagrams, 64 KiB,
 //! 100 ms) until the SNI or ECH is parsed, then one decision is made for the
-//! whole buffer; an incomplete flow asks for the destination address only
-//! after that deadline, and a denial forwards nothing. The address→name
+//! whole buffer. An incomplete, malformed or overflowing TLS-looking or
+//! Initial flow is refused without asking for the address; only a valid
+//! handshake without SNI, or clearly non-TLS/non-QUIC bytes, use the
+//! address. The address→name
 //! cache holds at most 4096 entries and caps a TTL at one hour; at most 256
 //! upstream UDP flows run at once (a further datagram is dropped, DNS still
 //! answers REFUSED); arbitrary DoH inside an allowed HTTPS origin is not

@@ -43,6 +43,12 @@ pub enum Sniff {
     /// The unit is complete but names no host (for example a TLS ClientHello
     /// without SNI, or a request without `Host`).
     NoName,
+    /// The bytes look like this protocol but the unit is incomplete at the
+    /// deadline/cap; the relay must fail closed rather than fall back to an
+    /// address.
+    Incomplete,
+    /// The bytes look like this protocol but are malformed; fail closed.
+    Malformed,
     /// ECH hides the destination name; the relay refuses the flow visibly.
     Ech,
     /// The bytes are not this protocol.
@@ -85,18 +91,26 @@ impl TlsSniffer {
         }
         if self.buf.len() + bytes.len() > MAX_SNIFF {
             self.done = true;
-            return Sniff::NotThis;
+            return if self.identified() {
+                Sniff::Malformed
+            } else {
+                Sniff::NotThis
+            };
         }
         self.buf.extend_from_slice(bytes);
         match parse_client_hello_stream(&self.buf) {
             TlsParse::Incomplete => Sniff::NeedMore,
             TlsParse::NotTls => {
                 self.done = true;
-                Sniff::NotThis
+                if self.identified() {
+                    Sniff::Malformed
+                } else {
+                    Sniff::NotThis
+                }
             }
             TlsParse::Malformed => {
                 self.done = true;
-                Sniff::NotThis
+                Sniff::Malformed
             }
             TlsParse::Hello(hello) => {
                 self.done = true;
@@ -113,6 +127,14 @@ impl TlsSniffer {
                 }
             }
         }
+    }
+
+    /// Whether the bytes so far identify a TLS handshake: a record
+    /// (`0x16`) or a raw ClientHello (`0x01`).
+    pub fn identified(&self) -> bool {
+        self.buf
+            .first()
+            .is_some_and(|byte| matches!(byte, 0x16 | 0x01))
     }
 
     /// Whether the last ClientHello carried ECH.
@@ -306,22 +328,30 @@ impl HttpSniffer {
         }
         if self.buf.len() + bytes.len() > MAX_HTTP_HEAD {
             self.done = true;
-            return Sniff::NotThis;
+            return if self.looks_like_http() {
+                Sniff::Malformed
+            } else {
+                Sniff::NotThis
+            };
         }
         self.buf.extend_from_slice(bytes);
         if let Some(end) = find_head_end(&self.buf) {
             self.done = true;
             return match parse_http_head(&self.buf[..end]) {
-                Some(host) => Sniff::Named(Resource::from_host(&host)),
-                None => Sniff::NoName,
+                Ok(Some(host)) => Sniff::Named(Resource::from_host(&host)),
+                Ok(None) => Sniff::NoName,
+                Err(()) => Sniff::Malformed,
             };
         }
         Sniff::NeedMore
     }
 
-    /// Whether the bytes look like an HTTP request line.
+    /// Whether the bytes look like an HTTP request line (an uppercase method
+    /// at the start).
     pub fn looks_like_http(&self) -> bool {
-        self.buf.iter().take(8).all(|b| b.is_ascii_uppercase())
+        self.buf
+            .first()
+            .is_some_and(|byte| byte.is_ascii_uppercase())
     }
 }
 
@@ -331,34 +361,37 @@ fn find_head_end(data: &[u8]) -> Option<usize> {
         .map(|i| i + 4)
 }
 
-fn parse_http_head(head: &[u8]) -> Option<Host> {
-    let text = std::str::from_utf8(head).ok()?;
+/// `Ok(Some(host))` for a request with a valid `Host`, `Ok(None)` for a valid
+/// request without one (or a `CONNECT`, whose proxy is the destination), and
+/// `Err(())` for a malformed request line or host.
+fn parse_http_head(head: &[u8]) -> Result<Option<Host>, ()> {
+    let text = std::str::from_utf8(head).map_err(|_| ())?;
     let mut lines = text.split("\r\n");
-    let request = lines.next()?;
+    let request = lines.next().ok_or(())?;
     let mut parts = request.split(' ');
-    let method = parts.next()?;
-    let _target = parts.next()?;
-    let version = parts.next()?;
+    let method = parts.next().ok_or(())?;
+    let _target = parts.next().ok_or(())?;
+    let version = parts.next().ok_or(())?;
     if !method.bytes().all(|b| b.is_ascii_uppercase()) || !version.starts_with("HTTP/") {
-        return None;
+        return Err(());
     }
     // An external proxy is a destination, never its CONNECT target: the
     // relay authorizes the proxy address/SNI, not what the proxy will reach.
     if method == "CONNECT" {
-        return None;
+        return Ok(None);
     }
     for line in lines {
         if line.is_empty() {
             break;
         }
-        let (name, value) = line.split_once(':')?;
+        let (name, value) = line.split_once(':').ok_or(())?;
         if name.eq_ignore_ascii_case("host") {
             let value = value.trim();
-            let host = strip_port(value)?;
-            return Host::parse(host.as_bytes()).ok();
+            let host = strip_port(value).ok_or(())?;
+            return Host::parse(host.as_bytes()).map(Some).map_err(|_| ());
         }
     }
-    None
+    Ok(None)
 }
 
 fn strip_port(value: &str) -> Option<&str> {
@@ -407,20 +440,32 @@ impl QuicInspector {
     /// ClientHello names a host; `NeedMore` if this Initial carries only part
     /// of one; `NotThis` if it is not a decryptable QUIC v1/v2 Initial.
     pub fn push(&mut self, datagram: &[u8], client: SocketAddr, server: SocketAddr) -> Sniff {
+        if datagram.first().is_none_or(|byte| byte & 0x80 == 0) {
+            // Short header or empty: no Initial, hence no SNI. Clearly not a
+            // Client Initial, so the address may be asked for.
+            return Sniff::NotThis;
+        }
         if self.flows.len() >= MAX_QUIC_FLOWS && !self.flows.contains_key(&(client, server)) {
             self.expire(Duration::from_secs(30));
             if self.flows.len() >= MAX_QUIC_FLOWS {
-                return Sniff::NotThis;
+                return Sniff::Malformed;
             }
         }
-        let Ok(header) = quic_parser::parse_initial(datagram) else {
-            return Sniff::NotThis;
+        let header = match quic_parser::parse_initial(datagram) {
+            Ok(header) => header,
+            Err(quic_parser::Error::BufferTooShort { .. }) => return Sniff::NeedMore,
+            Err(quic_parser::Error::NotLongHeader | quic_parser::Error::NotInitialPacket(_)) => {
+                return Sniff::NotThis;
+            }
+            Err(_) => return Sniff::Malformed,
         };
-        let Ok(plain) = quic_parser::decrypt_initial(&header) else {
-            return Sniff::NotThis;
+        let plain = match quic_parser::decrypt_initial(&header) {
+            Ok(plain) => plain,
+            Err(_) => return Sniff::Malformed,
         };
-        let Ok(frames) = quic_parser::parse_crypto_frames(&plain) else {
-            return Sniff::NotThis;
+        let frames = match quic_parser::parse_crypto_frames(&plain) {
+            Ok(frames) => frames,
+            Err(_) => return Sniff::Malformed,
         };
         let flow = self
             .flows
@@ -438,7 +483,7 @@ impl QuicInspector {
             let offset = frame.offset;
             let data = frame.data.to_vec();
             if data.len() > MAX_QUIC_STREAM {
-                return Sniff::NotThis;
+                return Sniff::Malformed;
             }
             if flow
                 .frames
@@ -448,7 +493,7 @@ impl QuicInspector {
                 continue;
             }
             if flow.frames.len() >= MAX_QUIC_FRAMES {
-                return Sniff::NotThis;
+                return Sniff::Malformed;
             }
             flow.frames.push((offset, data));
         }
@@ -472,7 +517,7 @@ impl QuicInspector {
                     None => Sniff::NoName,
                 }
             }
-            TlsParse::NotTls | TlsParse::Malformed => Sniff::NotThis,
+            TlsParse::NotTls | TlsParse::Malformed => Sniff::Malformed,
         }
     }
 }
@@ -600,6 +645,34 @@ mod tests {
         let mut sniffer = TlsSniffer::new();
         assert_eq!(sniffer.push(&hello), Sniff::Ech);
         assert!(sniffer.ech());
+    }
+
+    #[test]
+    fn tls_looking_partial_and_malformed_are_not_ip_fallbacks() {
+        let mut partial = TlsSniffer::new();
+        assert_eq!(
+            partial.push(&[0x16, 0x03, 0x01, 0x40, 0x00, 0x01]),
+            Sniff::NeedMore
+        );
+        assert!(partial.identified());
+        let mut malformed = TlsSniffer::new();
+        assert_eq!(
+            malformed.push(&[0x16, 0x03, 0x01, 0x00, 0x08, 0x01, 0, 0, 4, 0, 0, 0, 0]),
+            Sniff::Malformed
+        );
+        let mut not_tls = TlsSniffer::new();
+        assert_eq!(not_tls.push(b"ping"), Sniff::NotThis);
+        assert!(!not_tls.identified());
+    }
+
+    #[test]
+    fn http_looking_malformed_is_not_an_ip_fallback() {
+        let mut sniffer = HttpSniffer::new();
+        assert_eq!(
+            sniffer.push(b"GET / HTTP/1.1\r\nHost: bad host\r\n\r\n"),
+            Sniff::Malformed
+        );
+        assert_eq!(sniffer.push(b"ping"), Sniff::NoName);
     }
 
     #[test]

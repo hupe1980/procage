@@ -45,11 +45,16 @@ All notable changes to procage are listed here. The format follows
   transparent replies, AAAA/EDNS DNS handling and IPv6 DNS listeners.
 - QUIC Initials are buffered per flow (8 datagrams, 64 KiB, 100 ms) until
   the SNI or ECH is parsed, then one decision covers every buffered
-  datagram; an incomplete flow asks for the destination IP after the
-  deadline and forwards nothing when denied.
+  datagram; an incomplete, malformed or overflowing Initial is refused
+  without an address decision, while a valid no-SNI handshake or clearly
+  non-QUIC bytes may use the address.
 - At most 256 upstream UDP flows run per run; further datagrams are dropped
   (DNS still answers REFUSED). Ending a run closes the control/helper
   channels and stops every listener and UDP flow within one poll interval.
+- A TLS-looking or QUIC-Initial flow that is incomplete, malformed, over the
+  buffer bound or past the sniff deadline is refused without an address
+  decision; only a valid no-SNI handshake or clearly non-TLS/non-QUIC bytes
+  may use the destination address (or its C2 name).
 
 ## [0.8.0] - 2026-11-14
 
