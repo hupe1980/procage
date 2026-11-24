@@ -971,6 +971,10 @@ fn udp_loop(
                             );
                             continue;
                         }
+                        QuicOutcome::Resource(Resource::Ip(ip)) => dns_map
+                            .name_for(ip)
+                            .map(Resource::Domain)
+                            .unwrap_or_else(|| Resource::Ip(ip)),
                         QuicOutcome::Resource(resource) => resource,
                         QuicOutcome::NotQuic => Resource::Ip(destination.ip()),
                         QuicOutcome::Ech => {
