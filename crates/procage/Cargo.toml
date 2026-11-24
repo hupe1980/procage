@@ -30,6 +30,18 @@ name = "proxy"
 path = "tests/proxy.rs"
 required-features = ["proxy"]
 
+# Linux T1's transparent relay; needs the feature.
+[[test]]
+name = "relay_linux"
+path = "tests/relay_linux.rs"
+required-features = ["proxy"]
+
+# `Network::Relay` on macOS is a gap, never a direct route.
+[[test]]
+name = "relay_macos"
+path = "tests/relay_macos.rs"
+required-features = ["proxy"]
+
 # The async handle; needs the feature.
 [[test]]
 name = "tokio"

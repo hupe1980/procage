@@ -56,6 +56,7 @@ changes the profile.
 | `net-none` | exact | exact | exact | Linux: `socket` is denied for every family (`socketpair` stays available); T1 also gets an empty network namespace. |
 | `net-loopback` | exact | unsupported | unsupported | Linux needs a relay into the network namespace, which is not implemented. Landlock filters ports, not addresses. |
 | `net-proxy` | exact | exact | unsupported | macOS: outbound to the proxy ports only (profile parameters, so a spawn can bind its own). T1: the run's network namespace, whose only endpoints are the listeners the backend's proxy hands in; Landlock allows connecting to the proxy ports only (ABI 4+). T2 has no namespace, and port rules alone are no boundary. |
+| `net-relay` | unsupported | exact | unsupported | A transparent relay: macOS has no TPROXY and Linux T2 has no network namespace, so both refuse it (no direct-route fallback). T1: the child's own network namespace reaches a veth to a proxy namespace, where TPROXY sends TCP and UDP (original destination preserved) to the parent's bridge; every flow is named to a control socket before it is carried. `socket()` for `AF_INET` only. |
 | `net-ip` | exact | exact | exact | macOS: outbound to remote IP addresses and the system resolver's socket, bind and inbound on local ones. Linux: `socket()` for `AF_INET` and `AF_INET6` only (and `AF_UNIX` with `ipc.unix_sockets`), no network namespace. Unix sockets as with the network off. |
 | `net-all` | exact | exact | exact | |
 | `exec-any` | exact | exact | exact | |

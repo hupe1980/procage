@@ -339,6 +339,10 @@ fn macos_profile(p: &Policy) -> String {
 #[test]
 fn v3_is_v2_plus_quiet_denies() {
     for (name, mut policy) in reference_policies() {
+        // macOS has no TPROXY: no profile exists for `Network::Relay`.
+        if policy.net == Network::Relay {
+            continue;
+        }
         policy.base = Base::V2;
         let v2 = macos_profile(&policy);
         policy.base = Base::V3;

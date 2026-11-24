@@ -194,6 +194,7 @@ pub fn reference_policy(construct: Construct) -> Policy {
                 socks: None,
             }
         }
+        Construct::NetRelay => p.net = Network::Relay,
         Construct::NetIp => p.net = Network::Ip,
         Construct::NetAll => p.net = Network::All,
         Construct::ExecAny => p.process.exec = Exec::Any,
@@ -300,10 +301,13 @@ pub fn read_only() -> Policy {
     p
 }
 
-/// One reference policy per construct plus the composites.
+/// One reference policy per construct plus the composites. `net-relay` is
+/// left out: no macOS profile exists for it (there is no TPROXY), and these
+/// policies feed cross-target tests; the lowering table covers its row.
 pub fn reference_policies() -> Vec<(String, Policy)> {
     let mut out: Vec<(String, Policy)> = Construct::ALL
         .iter()
+        .filter(|c| **c != Construct::NetRelay)
         .map(|c| (c.as_str().to_string(), reference_policy(*c)))
         .collect();
     out.push(("agent-workspace".into(), agent_workspace()));

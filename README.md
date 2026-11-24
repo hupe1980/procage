@@ -77,7 +77,11 @@ const done = await run(policy, ["make"]);
   reaches the hosts an allowlist names through a proxy of its own, and no
   other route (macOS, Linux T1). One canonical host parser, checked
   resolution, no allow-all.
-- ⚡ **Async (tokio).** With the `tokio` feature, `Cage::spawn_async`
+- 🕵️ **Transparent relay.** Linux T1: TPROXY preserves the original TCP and
+  UDP destination, a helper keeps only `CAP_NET_RAW`, and the parent names
+  each flow (TLS/QUIC SNI, HTTP `Host`, DNS QNAME, else the IP) before asking
+  a per-run control socket. Denied DNS gets `REFUSED`; T2 and macOS refuse
+  the mode instead of falling back.- ⚡ **Async (tokio).** With the `tokio` feature, `Cage::spawn_async`
   returns an awaitable child, and violations arrive as a stream.
 - 📦 **Frozen presets and base profiles** that let ordinary programs and
   developer tools start, and `Cage::exec` and `Cage::exec_session` for

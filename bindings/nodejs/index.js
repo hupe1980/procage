@@ -173,8 +173,8 @@ export class Cage {
    * only `proxy.allowlist`. A gap throws `CapabilityGapError`, naming the
    * option that would accept it; nothing is accepted unless passed.
    */
-  constructor(policy, { violations = false, relax = [], acceptSpawnSnapshot = false, allow = [], proxy } = {}) {
-    this.#native = call(() => new native.Cage(policy.handle, { violations, relax, acceptSpawnSnapshot, allow, proxy }));
+  constructor(policy, { violations = false, relax = [], acceptSpawnSnapshot = false, allow = [], proxy, relay_control_socket, relay_run_id } = {}) {
+    this.#native = call(() => new native.Cage(policy.handle, { violations, relax, acceptSpawnSnapshot, allow, proxy, relay_control_socket, relay_run_id }));
   }
   /** The relaxations applied, as sentences. */
   get relaxed() {

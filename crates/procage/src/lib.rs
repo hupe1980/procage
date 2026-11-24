@@ -217,6 +217,31 @@
 //! macOS and Linux tier T1; a gap on T2. Refusals are in the run's
 //! violations.
 //!
+//! # Transparent relay (Linux tier T1)
+//!
+//! A `Network::Relay` policy with `CageOptions::with_relay` gives the child
+//! an ordinary IP network in its own namespace, but every TCP connection and
+//! UDP datagram is carried by the parent. A veth joins the child's namespace
+//! to a proxy namespace, where nftables TPROXY (prerouting) preserves the
+//! original destination; a helper there installs the rules, hands the
+//! transparent sockets to the parent, drops `CAP_NET_ADMIN`, keeps only
+//! `CAP_NET_RAW`, and serves UDP replies from the exact original source
+//! address and port. Before a flow is carried, the parent names it (TLS SNI,
+//! HTTP `Host`, QUIC v1/v2 SNI, DNS QNAME, else the destination address) and
+//! asks the harness over `Relay::new(path)`'s Unix socket: a length-prefixed
+//! binary decision per flow, no payload. A timeout, EOF, malformed frame or
+//! wrong run id refuses the flow and closes the channel. Local
+//! `resolv.conf` loopback stubs are redirected inside the child's namespace
+//! to the relay's DNS listener, which answers `REFUSED` for a denied QNAME;
+//! TCP/853 and known DoH endpoints are refused visibly, and ECH is refused
+//! because the name it hides cannot be authorized. Tier T2 and macOS refuse
+//! `Network::Relay`; there is no direct-route or proxy fallback. See
+//! [`linux::CageOptions::with_relay`](linux::CageOptions::with_relay).
+//!
+//! Payload never crosses the control socket. An external proxy is a
+//! destination like any other: its address (or TLS SNI) is authorized, never
+//! the upstream its CONNECT or SOCKS request names.
+//!
 //! # Async (tokio)
 //!
 //! With the `tokio` feature, `Cage::spawn_async` takes a

@@ -225,6 +225,16 @@ pub struct CageOptionsJs {
     /// Route the run's network through a proxy of its own that reaches only
     /// the allowlisted hosts (Linux tier 1 or macOS).
     pub proxy: Option<ProxyOptionsJs>,
+    /// The per-run `AF_UNIX` `SOCK_STREAM` control server the transparent
+    /// relay asks before it carries a flow (Linux tier 1). Setting it makes
+    /// the policy's network `relay`.
+    #[napi(js_name = "relay_control_socket")]
+    pub relay_control_socket: Option<String>,
+    /// The run id the control server was created with (`runId` in
+    /// `RelayControlServer`), as a decimal string. Required when the server
+    /// fixes its id; otherwise procage sends a random id the server rejects.
+    #[napi(js_name = "relay_run_id")]
+    pub relay_run_id: Option<String>,
 }
 
 fn relax(names: &[String]) -> Result<Relax> {
@@ -282,6 +292,8 @@ impl Cage {
             accept_spawn_snapshot: None,
             allow: None,
             proxy: None,
+            relay_control_socket: None,
+            relay_run_id: None,
         });
         let mut lower = if o.accept_spawn_snapshot.unwrap_or(false) {
             LowerOptions::default().accept_spawn_snapshot()
@@ -304,6 +316,26 @@ impl Cage {
                 socks: Some(proxy_port("socksPort", proxy.socks_port.unwrap_or(1080))?),
             };
             options = options.with_proxy(Proxy::new(allow));
+        }
+        if let Some(path) = o.relay_control_socket {
+            policy_inner.net = pp::Network::Relay;
+            #[cfg(target_os = "linux")]
+            {
+                let mut relay = procage::proxy::relay::Relay::new(path);
+                if let Some(id) = o.relay_run_id {
+                    let run_id = id
+                        .parse::<u64>()
+                        .map_err(|_| policy_error("relay_run_id must be a decimal u64".into()))?;
+                    relay = relay.with_run_id(run_id);
+                }
+                options = options.with_relay(relay);
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                // No TPROXY on this platform: the policy's `net-relay` gap
+                // refuses the cage, with no direct-route fallback.
+                let _ = &path;
+            }
         }
         let names = o.relax.unwrap_or_default();
         let (inner, relaxed) = if names.is_empty() {

@@ -6,6 +6,24 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Transparent relay for Linux tier T1 (`Network::Relay`,
+  `CageOptions::with_relay`): two network namespaces joined by a veth, with
+  nftables TPROXY at prerouting so TCP and UDP keep the original destination.
+  A forked helper installs the rules before dropping `CAP_NET_ADMIN`, retains
+  only `CAP_NET_RAW`, runs under an allowlist seccomp filter, and sends UDP
+  replies from the exact original source. The parent bridge names each flow
+  (TLS SNI across records, HTTP `Host`, QUIC v1/v2 Initial decryption with
+  CRYPTO reassembly, DNS QNAME, else the IP) and asks the harness over a
+  length-prefixed Unix control socket before carrying it; no payload crosses
+  that channel. Local resolver stubs are redirected inside the child's
+  namespace and denied QNAMEs get `REFUSED`. TCP/853 and known DoH endpoints
+  are refused, ECH is refused visibly, and tier T2 or macOS refuses the mode
+  without a fallback.
+- `relay_control_socket` (and `relay_run_id`) on the Node.js `Cage` options,
+  matching `RelayControlServer` in `opencode-fs-plugin`.
+
 ## [0.8.0] - 2026-11-14
 
 ### Security

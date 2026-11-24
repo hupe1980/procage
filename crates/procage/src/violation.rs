@@ -75,6 +75,10 @@ pub enum DeniedBy {
     /// The run's proxy refused the host (feature `proxy`): it is not on the
     /// allowlist, or resolves only to addresses that are not public.
     Allowlist,
+    /// The run's transparent relay refused the flow: the control socket
+    /// denied it, could not answer, or the name could not be authorized
+    /// (ECH, a known encrypted-DNS endpoint, TCP/853).
+    Relay,
     /// A code this version does not know, kept as reported.
     Unknown(String),
 }
@@ -125,6 +129,7 @@ impl fmt::Display for DeniedBy {
                  (Exec::Never; Exec::Program lets the program execute itself)",
             ),
             DeniedBy::Allowlist => f.write_str("refused by the proxy's allowlist"),
+            DeniedBy::Relay => f.write_str("refused by the transparent relay"),
             DeniedBy::Unknown(code) => write!(f, "denied ({code})"),
         }
     }

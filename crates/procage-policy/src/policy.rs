@@ -112,6 +112,13 @@ pub enum Network {
         /// SOCKS5 proxy port.
         socks: Option<Port>,
     },
+    /// Transparent relay: the child has an ordinary IP network, but every
+    /// connection and datagram is carried by procage's parent, which asks a
+    /// control socket for each destination before it relays anything.
+    ///
+    /// Linux tier T1 only (the relay needs a network namespace and TPROXY).
+    /// Tier T2 and macOS refuse it: there is no safe direct-route fallback.
+    Relay,
     /// Connect to and listen on any IP address. Unix sockets only at
     /// [`Ipc::unix_sockets`], as with the network off, so the D-Bus and
     /// container-engine sockets stay out of reach on every Linux tier. On

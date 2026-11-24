@@ -82,6 +82,17 @@ export interface CageOptions {
    * `HTTPS_PROXY` and `ALL_PROXY`; there is no direct route.
    */
   proxy?: ProxyOptions;
+  /**
+   * The per-run `AF_UNIX` `SOCK_STREAM` control server of the transparent
+   * relay (Linux tier 1). Every flow is named to it (DNS QNAME, TLS SNI,
+   * HTTP `Host`, QUIC SNI or IP) and carried only if it allows the flow.
+   */
+  relay_control_socket?: string;
+  /**
+   * The run id the control server was created with, as a decimal string. A
+   * server that fixes its id (`RelayControlServer.runId`) rejects another.
+   */
+  relay_run_id?: string;
 }
 
 export interface SpawnOptions {
