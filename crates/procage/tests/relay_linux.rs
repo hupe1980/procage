@@ -875,6 +875,51 @@ fn run(cage: &Cage, action: &str) -> (Vec<String>, procage::Violations) {
     (results, child.violations())
 }
 
+/// The relay helper must not inherit the app's standard descriptors: with
+/// `output`'s pipes it would hold the write end open after the app exits, so
+/// reading to EOF (as `Run.output` does) would never finish.
+#[test]
+fn captured_output_ends_when_the_app_exits() {
+    if !supported() {
+        return;
+    }
+    let server = Server::start(|_| Verdict::Allow);
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let mut cmd = Command::new("/bin/echo");
+    cmd.arg("hi")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cage.spawn(&mut cmd, &Grants::new()).unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let (done, output) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stdout.read_to_string(&mut text);
+        let _ = done.send(text);
+    });
+    // `Run.output` waits for the exit, then reads the pipes to EOF.
+    let status = child.wait().unwrap();
+    assert_eq!(status.code(), Some(0), "the app must exit first");
+    let text = match output.recv_timeout(Duration::from_secs(5)) {
+        Ok(text) => text,
+        Err(_) => {
+            // The helper holds a pipe end: ending the run closes it.
+            let _ = child.kill_all();
+            let _ = reader.join();
+            panic!("captured output did not end after the app exited");
+        }
+    };
+    assert_eq!(text, "hi\n", "captured stdout");
+    reader.join().unwrap();
+    let _ = child.kill_all();
+}
+
 #[test]
 fn t2_refuses_the_relay() {
     let policy = policy();

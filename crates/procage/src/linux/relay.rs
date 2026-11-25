@@ -1420,15 +1420,22 @@ fn dns_tcp_connection(
 /// never returns.
 pub(crate) fn helper_main(child_socket: c_int, app_ns: OwnedFd, ready: c_int, port: u16) -> ! {
     use std::os::fd::AsRawFd;
+    // The helper must not inherit the app's standard descriptors: they are
+    // usually pipes the caller drains to EOF, and this helper outlives no
+    // app on every path, so holding them would stall the caller's read.
+    if let Err(e) = sys::redirect_std_to_null() {
+        let _ = sys::signal_and_close(ready, 1, e);
+        sys::exit_now(1)
+    }
     let socket_fd = child_socket;
     let ns_fd = app_ns.as_raw_fd();
     let keep = [socket_fd, ns_fd, ready];
     sys::close_others(&keep, 1024);
     let _ = sys::death_signal();
     let _ = sys::non_dumpable();
-    let fail = |code: u8, errno: i32| -> ! {
-        eprintln!("procage relay helper: step {code} failed with errno {errno}");
-        let _ = sys::signal_and_close(ready, code);
+    let fail = |code: u8, error: i32| -> ! {
+        // Standard error is /dev/null here: the ready pipe carries the step.
+        let _ = sys::signal_and_close(ready, code, error);
         sys::exit_now(1)
     };
     if let Err(e) = sys::unshare_net() {
@@ -1495,7 +1502,7 @@ pub(crate) fn helper_main(child_socket: c_int, app_ns: OwnedFd, ready: c_int, po
     if let Err(e) = sys::send_with_fds_fd(socket_fd, &[1], &fds) {
         fail(13, e);
     }
-    if let Err(e) = sys::signal_and_close(ready, 1) {
+    if let Err(e) = sys::signal_and_close(ready, 1, 0) {
         fail(14, e);
     }
     if sys::keep_only_net_raw().is_err() {

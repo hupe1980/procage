@@ -689,7 +689,14 @@ impl RelayChild {
         std::mem::forget(self.helper);
         std::mem::forget(self.dns);
         let ready = wait_and_close(ready_read)?;
-        if ready != 1 {
+        if ready != (1, 0) {
+            // The helper's standard error is /dev/null: its failed step and
+            // errno arrive on the ready pipe, and the spawn fails here with
+            // them visible on the caller's captured stderr.
+            eprintln!(
+                "procage relay helper: step {} failed with errno {}",
+                ready.0, ready.1
+            );
             return Err(libc::EPROTO);
         }
         link_up("lo")?;
@@ -3515,23 +3522,53 @@ pub(crate) fn fork() -> Result<libc::pid_t, i32> {
     if pid < 0 { Err(errno()) } else { Ok(pid) }
 }
 
-/// Writes one byte to `fd` and closes it.
-pub(crate) fn signal_and_close(fd: c_int, byte: u8) -> Result<(), i32> {
-    // SAFETY: write reads one byte on this frame.
-    let rc = unsafe { libc::write(fd, (&raw const byte).cast(), 1) };
+/// Writes the helper's step and errno to `fd`, then closes it.
+pub(crate) fn signal_and_close(fd: c_int, step: u8, error: i32) -> Result<(), i32> {
+    let status = [step, (error & 0xff) as u8];
+    // SAFETY: write reads two bytes on this frame.
+    let rc = unsafe { libc::write(fd, status.as_ptr().cast(), 2) };
     // SAFETY: closing the descriptor the caller owns.
     unsafe { libc::close(fd) };
-    if rc == 1 { Ok(()) } else { Err(errno()) }
+    if rc == 2 { Ok(()) } else { Err(errno()) }
 }
 
-/// Reads one byte from `fd` and closes it.
-pub(crate) fn wait_and_close(fd: c_int) -> Result<u8, i32> {
-    let mut byte = 0u8;
-    // SAFETY: read fills one byte on this frame.
-    let rc = unsafe { libc::read(fd, (&raw mut byte).cast(), 1) };
+/// Reads the helper's step and errno from `fd` and closes it.
+pub(crate) fn wait_and_close(fd: c_int) -> Result<(u8, u8), i32> {
+    let mut status = [0u8; 2];
+    // SAFETY: read fills two bytes on this frame.
+    let rc = unsafe { libc::read(fd, status.as_mut_ptr().cast(), 2) };
     // SAFETY: closing the descriptor the caller owns.
     unsafe { libc::close(fd) };
-    if rc == 1 { Ok(byte) } else { Err(errno()) }
+    if rc == 2 {
+        Ok((status[0], status[1]))
+    } else {
+        Err(errno())
+    }
+}
+
+/// Points the standard descriptors at `/dev/null`, so a forked helper never
+/// holds the app's stdin/stdout/stderr (usually pipes the parent drains to
+/// EOF) open. A helper's diagnostics travel on its ready/control channel.
+pub(crate) fn redirect_std_to_null() -> Result<(), i32> {
+    // SAFETY: opening a constant path with no pointer lifetimes.
+    let fd = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    for target in 0..=2 {
+        // SAFETY: duplicating onto a standard descriptor; integers only.
+        if unsafe { libc::dup2(fd, target) } < 0 {
+            let e = errno();
+            // SAFETY: closing the descriptor this function opened.
+            unsafe { libc::close(fd) };
+            return Err(e);
+        }
+    }
+    if fd > 2 {
+        // SAFETY: closing the descriptor this function opened.
+        unsafe { libc::close(fd) };
+    }
+    Ok(())
 }
 
 /// Closes every descriptor from 3 to `max` except `keep`.
