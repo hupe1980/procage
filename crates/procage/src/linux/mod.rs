@@ -98,6 +98,70 @@
 //! connect refused by a cover is not reported as a violation. Waive
 //! `container-engines` for builds that need an engine.
 //!
+//! **Transparent relay.** A `Network::Relay` policy with
+//! [`CageOptions::with_relay`] needs tier T1. Each spawn gets two network
+//! namespaces joined by a veth: the child's, and a proxy namespace where a
+//! forked helper installs nftables TPROXY rules (prerouting, mark 1 and a
+//! `local` policy route), binds transparent TCP and UDP sockets on one port,
+//! and hands them to the parent. The helper then drops `CAP_NET_ADMIN`, keeps
+//! only `CAP_NET_RAW`, sets `no_new_privs`, installs an allowlist seccomp
+//! filter, and serves the parent's UDP replies from each flow's exact
+//! original source address and port. The helper is non-dumpable, dies with
+//! its parent, and cannot open files after the filter. [`Cage::exec`] and
+//! [`Cage::exec_session`] refuse `Network::Relay`: no handle would hold the
+//! bridge or its helper.
+//!
+//! The parent bridge reads only enough of a TCP flow to name it (TLS SNI
+//! across records, HTTP `Host`; a `CONNECT` request names its proxy, not the
+//! target), decrypts QUIC v1/v2 Initials and reassembles CRYPTO frames within
+//! the inspected datagram, parses one DNS question (EDNS OPT accepted and
+//! echoed), and otherwise uses the destination address. Allowed DNS answers
+//! (A/AAAA through a bounded CNAME chain, with the records' TTL) feed a
+//! bounded per-run address→name cache: a later flow that names no host but
+//! goes to a cached address is authorized by the previously allowed QNAME.
+//! An expired or evicted entry authorizes nothing. A named flow is carried
+//! only when the same `(name, destination IP)` was returned by an allowed
+//! DNS answer and the name is allowed, or when both the name and the IP are
+//! explicitly allowed; a denied name is never rescued by an allowed IP.
+//! Shared addresses keep every allowed name. It then sends one
+//! `DECIDE_REQ` over the run's Unix control socket and carries the flow only
+//! if `DECIDE_RESP` allows it. Requests are id-multiplexed on that connection:
+//! a slow permission prompt holds only its own flow (bounded by the harness's
+//! in-flight window), not a global lock. A decision timeout, EOF, malformed
+//! frame or wrong id/run id closes the channel and refuses every later flow.
+//! The child's DNS output is redirected inside its namespace to a parent
+//! listener, so a `resolv.conf` loopback stub works without granting Unix
+//! sockets; a denied QNAME is answered `REFUSED`. The parent forwards an
+//! allowed query through the relay's explicit upstream, else the parent's
+//! system resolver (a loopback stub included), and answers `SERVFAIL` rather
+//! than guessing when none works. TCP/853, known DoH names and ECH are
+//! refused visibly, and the flow's refusal is in the run's violations when
+//! reporting is on.
+//!
+//! The nftables and rtnetlink messages come from a narrow in-tree writer
+//! (fixed table/chain/rules and the veth/route/rule messages above), not a
+//! general library: `crabtables` 0.1.0 was audited in Phase 0 and rejected
+//! for its unreviewed 27k-line, single-publisher provenance. The writer only
+//! accepts fixed, bound inputs; its remaining risk is the hand-written
+//! netlink encoding on kernels other than the tested one.
+//!
+//! **Relay limits:** IPv6 TCP and UDP are carried over the same veth with
+//! ULA addresses and `ip6` TPROXY; the parent's resolver, the address→name
+//! cache and DNS listeners cover IPv6. The control connection multiplexes up
+//! to the harness's in-flight window (at most 64 decisions); a QUIC
+//! ClientHello split across Initials is buffered (up to 8 datagrams, 64 KiB,
+//! 100 ms) until the SNI or ECH is parsed, then one decision is made for the
+//! whole buffer. An incomplete, malformed or overflowing TLS-looking or
+//! Initial flow is refused without asking for the address; only a valid
+//! handshake without SNI, or clearly non-TLS/non-QUIC bytes, use the
+//! address. The address→name
+//! cache holds at most 4096 entries and caps a TTL at one hour; at most 256
+//! upstream UDP flows run at once (a further datagram is dropped, DNS still
+//! answers REFUSED); arbitrary DoH inside an allowed HTTPS origin is not
+//! visible to the relay; UDP flows idle out after 30 s. Run teardown closes
+//! the control and helper channels, and each listener/UDP flow stops within
+//! one poll interval (200 ms).
+//!
 //! **Limits:**
 //!
 //! - no PID namespace or private `/proc`, so signal scoping needs Landlock
@@ -105,7 +169,8 @@
 //! - with `Lifetime::Tree`, a descendant that double-forks and starts its
 //!   own session is reparented away from the child and outlives the run;
 //! - no loopback networking (a gap on both tiers); proxy-only networking
-//!   needs T1 and [`CageOptions::with_proxy`]; on T2,
+//!   needs T1 and [`CageOptions::with_proxy`]; the transparent relay needs T1
+//!   and [`CageOptions::with_relay`]; on T2,
 //!   Unix-socket restrictions need Landlock ABI 9; protect, and hide
 //!   inside a writable tree, are gaps; glob rules are gaps on both tiers;
 //! - the probe is cached per process, not per boot.
@@ -113,6 +178,8 @@
 mod child;
 mod classes;
 mod probe;
+#[cfg(feature = "proxy")]
+mod relay;
 mod seccomp;
 mod services;
 mod spawn;
@@ -603,6 +670,10 @@ pub struct CageOptions {
     /// [`CageOptions::with_proxy`]).
     #[cfg(feature = "proxy")]
     pub proxy: Option<procage_proxy::Proxy>,
+    /// The transparent relay each run of a `Network::Relay` policy uses (see
+    /// [`CageOptions::with_relay`]).
+    #[cfg(feature = "proxy")]
+    pub relay: Option<procage_proxy::relay::Relay>,
 }
 
 impl Default for CageOptions {
@@ -621,6 +692,8 @@ impl Default for CageOptions {
             handoff_audit: false,
             #[cfg(feature = "proxy")]
             proxy: None,
+            #[cfg(feature = "proxy")]
+            relay: None,
         }
     }
 }
@@ -752,6 +825,27 @@ impl CageOptions {
         self.proxy = Some(proxy);
         self
     }
+
+    /// These options with a transparent relay (feature `proxy`), which a
+    /// `Network::Relay` policy needs on Linux tier T1. Each spawn runs in two
+    /// network namespaces joined by a veth pair: the child's, and a proxy
+    /// namespace in which a helper installs TPROXY rules before it drops
+    /// `CAP_NET_ADMIN`, keeps only `CAP_NET_RAW`, and serves transparent UDP
+    /// replies. The parent reads just enough of each flow to name it (TLS
+    /// SNI, HTTP `Host`, QUIC SNI, DNS QNAME, else the destination address)
+    /// and asks `relay`'s control socket; no payload crosses that socket.
+    /// A refused flow is closed (TCP) or dropped (UDP, or `REFUSED` for DNS)
+    /// and is in [`Child::violations`] when the cage reports violations.
+    ///
+    /// Tier T2 and macOS refuse `Network::Relay`: there is no fallback to a
+    /// direct route or to the proxy. [`Cage::exec`] and
+    /// [`Cage::exec_session`] also refuse it: no handle would hold the
+    /// bridge and its helper.
+    #[cfg(feature = "proxy")]
+    pub fn with_relay(mut self, relay: procage_proxy::relay::Relay) -> Self {
+        self.relay = Some(relay);
+        self
+    }
 }
 
 /// Per-spawn bindings of the policy's grants to existing paths.
@@ -809,6 +903,9 @@ pub struct Cage {
     /// The cage's own proxy.
     #[cfg(feature = "proxy")]
     proxied: Option<crate::proxied::Proxied>,
+    /// The cage's transparent relay.
+    #[cfg(feature = "proxy")]
+    relay: Option<procage_proxy::relay::Relay>,
 }
 
 impl Cage {
@@ -996,6 +1093,39 @@ impl Cage {
         };
         #[cfg(not(feature = "proxy"))]
         let proxied: Option<()> = None;
+        #[cfg(feature = "proxy")]
+        let relay = match (&options.relay, &policy.net) {
+            (None, procage_policy::Network::Relay) => {
+                return Err(SpawnError::Unsupported(Unsupported::Setting {
+                    setting: "Network::Relay on Linux without CageOptions::with_relay",
+                }));
+            }
+            (Some(_), procage_policy::Network::Relay) => options.relay.clone(),
+            (Some(_), _) => {
+                return Err(SpawnError::Unsupported(Unsupported::Setting {
+                    setting: "CageOptions::with_relay without Network::Relay",
+                }));
+            }
+            (None, _) => None,
+        };
+        #[cfg(feature = "proxy")]
+        if relay.is_some() && tier != Tier::T1 {
+            return Err(SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Network::Relay needs Linux tier T1",
+            }));
+        }
+        #[cfg(feature = "proxy")]
+        if relay.is_some() && proxied.is_some() {
+            return Err(SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Network::Relay and Network::Proxy at once",
+            }));
+        }
+        #[cfg(not(feature = "proxy"))]
+        if matches!(plan.network, procage_policy::linux::LinuxNetwork::Relay) {
+            return Err(SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Network::Relay without the proxy feature (CageOptions::with_relay)",
+            }));
+        }
         if matches!(
             plan.network,
             procage_policy::linux::LinuxNetwork::ProxyBridge { .. }
@@ -1030,6 +1160,8 @@ impl Cage {
             explainer,
             #[cfg(feature = "proxy")]
             proxied,
+            #[cfg(feature = "proxy")]
+            relay,
         })
     }
 
@@ -1112,17 +1244,26 @@ impl Cage {
     /// Like [`Cage::spawn`], and also hands `fds` to the child: they stay
     /// open across the exec, at the same numbers. Every other descriptor
     /// numbered 3 or higher is closed in the child.
+    #[allow(unused_mut)]
     pub fn spawn_with_fds(
         &self,
         command: &mut Command,
         grants: &Grants,
         fds: &[BorrowedFd<'_>],
     ) -> Result<Child, SpawnError> {
-        let launch = self.launch(command, grants, fds)?;
+        let mut launch = self.launch(command, grants, fds)?;
         let spawned = command.spawn();
         launch.release(command);
         match spawned {
-            Ok(inner) => Ok(self.adopt(launch, crate::unix::Proc::Std(inner))),
+            Ok(mut inner) => {
+                #[cfg(feature = "proxy")]
+                if let Err(e) = launch.start_relay() {
+                    let _ = inner.kill();
+                    let _ = inner.wait();
+                    return Err(SpawnError::Io(e));
+                }
+                Ok(self.adopt(launch, crate::unix::Proc::Std(inner)))
+            }
             Err(e) => Err(launch.abandon(e)),
         }
     }
@@ -1189,8 +1330,28 @@ impl Cage {
         };
         #[cfg(not(feature = "proxy"))]
         let bridge = None;
+        #[cfg(feature = "proxy")]
+        let (relay_child, relay_control, relay_socket) = match &self.relay {
+            Some(relay) => {
+                let control = relay::connect(relay).map_err(SpawnError::Io)?;
+                let (helper_parent, helper_child) = sys::relay_pair().map_err(SpawnError::Io)?;
+                let (dns_parent, dns_child) = sys::relay_pair().map_err(SpawnError::Io)?;
+                (
+                    Some(sys::RelayChild {
+                        helper: helper_child,
+                        dns: dns_child,
+                        port: relay::PROXY_PORT,
+                    }),
+                    Some(control),
+                    Some((helper_parent, dns_parent)),
+                )
+            }
+            None => (None, None, None),
+        };
+        #[cfg(not(feature = "proxy"))]
+        let relay_child: Option<sys::RelayChild> = None;
         let (dropped, removal, proc, mounts, pty, installed) =
-            self.prepare(command, grants, fds, session, notify, bridge)?;
+            self.prepare(command, grants, fds, session, notify, bridge, relay_child)?;
         // The link check is the last step before the fork.
         let run_audit = self.audit.before_spawn().map_err(SpawnError::HardLinks)?;
         let names = grants.bindings.iter().map(|(n, _)| n.clone()).collect();
@@ -1207,6 +1368,14 @@ impl Cage {
             _installed: installed,
             #[cfg(feature = "proxy")]
             bridge_end,
+            #[cfg(feature = "proxy")]
+            relay_control,
+            #[cfg(feature = "proxy")]
+            relay_socket,
+            #[cfg(feature = "proxy")]
+            relay: self.relay.clone(),
+            #[cfg(feature = "proxy")]
+            relay_run: None,
         })
     }
 
@@ -1223,6 +1392,8 @@ impl Cage {
             pty,
             #[cfg(feature = "proxy")]
             bridge_end,
+            #[cfg(feature = "proxy")]
+            relay_run,
             ..
         } = launch;
         let reporting = supervise(pending, record);
@@ -1258,6 +1429,8 @@ impl Cage {
         let mut child = Child::new(inner, dropped, tmpdir, reporting, facts, run_audit);
         #[cfg(feature = "proxy")]
         child.set_proxy(proxy_run);
+        #[cfg(feature = "proxy")]
+        child.set_relay(relay_run);
         child.set_pty(pty);
         child
     }
@@ -1359,6 +1532,17 @@ impl Cage {
         if self.declared().contains(TMPDIR_GRANT) {
             return SpawnError::Grant(GrantError::TmpdirWithExec);
         }
+        #[cfg(feature = "proxy")]
+        if matches!(
+            self.plan.network,
+            procage_policy::linux::LinuxNetwork::Relay
+        ) {
+            // No handle would hold the relay bridge and its helper; an exec
+            // has no parent side to service the control socket.
+            return SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Cage::exec with Network::Relay",
+            });
+        }
         let threads = sys::thread_count();
         if self.plan.namespaces.is_some() && threads > 1 {
             return SpawnError::Unsupported(Unsupported::ExecThreads { threads });
@@ -1381,7 +1565,7 @@ impl Cage {
                 setting: "Cage::exec with CageOptions::with_proxy",
             });
         }
-        match self.prepare(command, grants, fds, session, None, None) {
+        match self.prepare(command, grants, fds, session, None, None, None) {
             Ok((.., mounts, _, _installed)) => match self.audit.before_spawn() {
                 Ok(_) => mounts.decode(command.exec()),
                 Err(found) => SpawnError::HardLinks(found),
@@ -1395,6 +1579,7 @@ impl Cage {
     /// environment and the child sequence installed on `command`. Returns
     /// what was dropped from the environment, the temporary directory's
     /// removal, and whether a grant reaches other processes' `/proc` entries.
+    #[allow(clippy::too_many_arguments)]
     fn prepare(
         &self,
         command: &mut Command,
@@ -1403,6 +1588,7 @@ impl Cage {
         session: sys::Session,
         notify: Option<sys::Notify>,
         bridge: Option<sys::Bridge>,
+        relay: Option<sys::RelayChild>,
     ) -> Result<Prepared, SpawnError> {
         let keep = kept_fds(fds.iter().map(AsRawFd::as_raw_fd))?;
         if grants.bindings.iter().any(|(name, _)| name == TMPDIR_GRANT) {
@@ -1503,6 +1689,7 @@ impl Cage {
             },
             notify,
             bridge,
+            relay,
         }
         .install(command);
         let proc = bound.values().any(|p| proc_gap(&self.plan, p).is_some());
@@ -1768,9 +1955,43 @@ pub(crate) struct Launch {
     /// The parent's end of the proxy listeners' socket pair.
     #[cfg(feature = "proxy")]
     bridge_end: Option<std::os::fd::OwnedFd>,
+    /// The run's control channel, connected before the fork.
+    #[cfg(feature = "proxy")]
+    relay_control: Option<procage_proxy::relay::Control>,
+    /// The parent's ends of the relay helper and DNS pairs.
+    #[cfg(feature = "proxy")]
+    relay_socket: Option<(std::os::fd::OwnedFd, std::os::fd::OwnedFd)>,
+    /// The relay configuration, for the post-spawn hand-over.
+    #[cfg(feature = "proxy")]
+    relay: Option<procage_proxy::relay::Relay>,
+    /// The started relay, once its descriptors arrived.
+    #[cfg(feature = "proxy")]
+    relay_run: Option<relay::Run>,
 }
 
 impl Launch {
+    /// Receives the relay helper's and child's descriptors and starts the
+    /// bridge. A failure leaves a spawned child that the caller must kill: no
+    /// flow is relayed without the hand-over.
+    #[cfg(feature = "proxy")]
+    pub(crate) fn start_relay(&mut self) -> std::io::Result<()> {
+        let (Some(control), Some((helper, dns)), Some(relay)) = (
+            self.relay_control.take(),
+            self.relay_socket.take(),
+            self.relay.clone(),
+        ) else {
+            return Ok(());
+        };
+        self.relay_run = Some(relay::start(
+            relay,
+            control,
+            helper,
+            dns,
+            self.record.clone(),
+        )?);
+        Ok(())
+    }
+
     /// Closes the parent's copies of the terminal on `command`'s standard
     /// streams once the child has them, so the controller sees the run end.
     pub(crate) fn release(&self, command: &mut Command) {

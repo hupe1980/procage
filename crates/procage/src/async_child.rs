@@ -39,13 +39,22 @@ impl Cage {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(SpawnError::NoRuntime);
         }
-        let launch = self.launch(command.as_std_mut(), grants, fds)?;
+        let mut launch = self.launch(command.as_std_mut(), grants, fds)?;
         let spawned = command.spawn();
         launch.release(command.as_std_mut());
         match spawned {
-            Ok(inner) => Ok(AsyncChild(
-                self.adopt(launch, Proc::Tokio(std::panic::AssertUnwindSafe(inner))),
-            )),
+            Ok(mut inner) => {
+                #[cfg(feature = "proxy")]
+                if let Err(e) = launch.start_relay() {
+                    let _ = inner.start_kill();
+                    let _ = inner.wait().await;
+                    return Err(SpawnError::Io(e));
+                }
+                Ok(AsyncChild(self.adopt(
+                    launch,
+                    Proc::Tokio(std::panic::AssertUnwindSafe(inner)),
+                )))
+            }
             Err(e) => Err(launch.abandon(e)),
         }
     }

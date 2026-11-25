@@ -55,6 +55,18 @@ export type Relaxation =
   | "no-loopback"
   | `waive:${string}`;
 
+export interface ProxyOptions {
+  /**
+   * Hosts the run may reach: `host`, `host:port`, `*.domain`, an address or
+   * a range. Required; `*`, `*.com` and an empty list are refused.
+   */
+  allowlist: string[];
+  /** HTTP CONNECT port inside the cage (default 3128). */
+  httpPort?: number;
+  /** SOCKS5 port inside the cage (default 1080). */
+  socksPort?: number;
+}
+
 export interface CageOptions {
   /** Record what the sandbox denied. */
   violations?: boolean;
@@ -64,6 +76,34 @@ export interface CageOptions {
   acceptSpawnSnapshot?: boolean;
   /** Constructs accepted as approximated, by name, e.g. `["exec-program"]`. */
   allow?: string[];
+  /**
+   * Route the run's network through a proxy of its own that reaches only
+   * these hosts (Linux tier 1 or macOS). The child gets `HTTP_PROXY`,
+   * `HTTPS_PROXY` and `ALL_PROXY`; there is no direct route.
+   */
+  proxy?: ProxyOptions;
+  /**
+   * The per-run `AF_UNIX` `SOCK_STREAM` control server of the transparent
+   * relay (Linux tier 1). Every flow is named to it (DNS QNAME, TLS SNI,
+   * HTTP `Host`, QUIC SNI or IP) and carried only if it allows the flow.
+   */
+  relay_control_socket?: string;
+  /**
+   * The run id the control server was created with, as a decimal string. A
+   * server that fixes its id (`RelayControlServer.runId`) rejects another.
+   */
+  relay_run_id?: string;
+  /**
+   * The parent resolver for allowed DNS queries, as `ip:port` (for example
+   * `127.0.0.1:53`). Without it the parent's `resolv.conf` and
+   * systemd-resolved paths are used, including a loopback stub.
+   */
+  relay_dns_upstream?: string;
+  /**
+   * A resolver configuration file to use instead of the parent's
+   * `resolv.conf`; an empty file means no upstream and `SERVFAIL`.
+   */
+  relay_resolv_conf?: string;
 }
 
 export interface SpawnOptions {

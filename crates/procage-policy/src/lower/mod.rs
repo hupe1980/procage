@@ -114,6 +114,7 @@ constructs! {
     NetNone => "net-none",
     NetLoopback => "net-loopback",
     NetProxy => "net-proxy",
+    NetRelay => "net-relay",
     NetIp => "net-ip",
     NetAll => "net-all",
     ExecAny => "exec-any",

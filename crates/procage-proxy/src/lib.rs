@@ -33,6 +33,8 @@ mod addr;
 mod allow;
 mod host;
 mod http;
+#[cfg(unix)]
+pub mod relay;
 mod resolve;
 mod socks;
 

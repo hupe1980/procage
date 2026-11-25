@@ -320,6 +320,15 @@ pub(crate) fn emit(policy: &Policy, options: &LowerOptions) -> Result<Emitted, L
         }
         // Remote and local IP addresses only, so Unix sockets stay as with
         // the network off; the resolver's socket, or no name resolves.
+        Network::Relay => {
+            ledger.outcome(
+                Construct::NetRelay,
+                Outcome::Unsupported,
+                None,
+                "the transparent relay is Linux tier T1 only; macOS has no TPROXY and \
+                 procage does not fall back to a direct route",
+            );
+        }
         Network::Ip => {
             ledger.outcome(Construct::NetIp, Outcome::Exact, None, "");
             allow.push(net(Rule::new(

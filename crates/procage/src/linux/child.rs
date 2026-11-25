@@ -58,6 +58,9 @@ pub struct Child {
     /// The run's proxy; dropped when the run ends.
     #[cfg(feature = "proxy")]
     proxy: Option<procage_proxy::Run>,
+    /// The run's transparent relay; dropped when the run ends.
+    #[cfg(feature = "proxy")]
+    relay: Option<super::relay::Run>,
     /// The controller of the run's new terminal, until taken.
     pty: Option<crate::Pty>,
 }
@@ -82,6 +85,8 @@ impl Child {
             audit,
             #[cfg(feature = "proxy")]
             proxy: None,
+            #[cfg(feature = "proxy")]
+            relay: None,
             pty: None,
         }
     }
@@ -100,6 +105,11 @@ impl Child {
     #[cfg(feature = "proxy")]
     pub(super) fn set_proxy(&mut self, run: Option<procage_proxy::Run>) {
         self.proxy = run;
+    }
+
+    #[cfg(feature = "proxy")]
+    pub(super) fn set_relay(&mut self, run: Option<super::relay::Run>) {
+        self.relay = run;
     }
 
     /// The run's [audits](crate::audit): `None` while the child runs. Once it
@@ -206,6 +216,8 @@ impl Child {
         // The run's connections close with it, before its record does.
         #[cfg(feature = "proxy")]
         drop(self.proxy.take());
+        #[cfg(feature = "proxy")]
+        drop(self.relay.take());
         // No process of the run is left: the listener hangs up at once.
         if let Reporting::On { done, .. } = &self.reporting {
             let start = Instant::now();

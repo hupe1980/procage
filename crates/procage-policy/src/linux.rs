@@ -630,6 +630,10 @@ pub enum LinuxNetwork {
         /// The proxy ports.
         ports: Vec<Port>,
     },
+    /// A network namespace whose egress is carried by the parent's
+    /// transparent relay (TCP and UDP TPROXY); every destination is decided
+    /// by the run's control socket before it is reached.
+    Relay,
     /// A network namespace whose loopback ports are relayed to the host's
     /// (an approximation of loopback access).
     LoopbackRelay {

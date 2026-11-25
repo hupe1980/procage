@@ -75,6 +75,30 @@ doc.fs.push({ access: "exec", target: { subpath: path.dirname(fs.realpathSync(pr
 const policy = Policy.fromJSON(doc);
 ```
 
+## Egress through an allowlist
+
+`proxy` gives each run a proxy of its own and keeps the child from every
+other route. It needs macOS or Linux tier 1 (user namespaces); on Linux
+tier 2 it is a capability gap.
+
+```ts
+const cage = new Cage(policy, {
+  proxy: { allowlist: ["registry.npmjs.org", "*.npmjs.org"] },
+});
+const done = await run(cage, ["npm", "install"], { timeout: 600_000 });
+```
+
+The child gets `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` (no
+`NO_PROXY`); a program that ignores them fails, because there is no direct
+route. The allowlist takes `host`, `host:port`, `*.domain`, an address or
+a range. An empty list, `*` and a one-label wildcard (`*.com`) are
+refused. `httpPort` and `socksPort` set the ports inside the cage
+(defaults 3128 and 1080). Refused hosts are reported as violations:
+
+```text
+proxy (pid 0) was denied network-outbound example.org:443 (not on the allowlist)
+```
+
 ## Errors
 
 All extend `ProcageError`: `PolicyError`, `CapabilityGapError`,

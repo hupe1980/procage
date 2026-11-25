@@ -396,6 +396,35 @@ pub(super) fn lower(
             }
             LinuxNetwork::ProxyBridge { ports }
         }
+        // T1: a transparent relay in the run's network namespace. The child
+        // keeps an ordinary IP network, but TPROXY sends every flow to the
+        // parent, which decides it. T2 has no namespace, so a direct route
+        // would be the only option: refuse rather than fall back.
+        Network::Relay => {
+            if t1 {
+                if ledger.outcome(Construct::NetRelay, Outcome::Exact, None, "") {
+                    let mut families = vec![AF_INET, AF_INET6];
+                    if !policy.ipc.unix_sockets.is_empty() {
+                        families.push(AF_UNIX);
+                    }
+                    seccomp.push(deny_if(
+                        Syscall::Socket,
+                        Condition::SocketFamilyExcept(families),
+                    ));
+                    // Any IPv4 destination is reachable through the relay, so
+                    // Landlock must not narrow connections by port.
+                }
+            } else {
+                ledger.outcome(
+                    Construct::NetRelay,
+                    Outcome::Unsupported,
+                    None,
+                    "transparent relay needs tier T1 (a network namespace and TPROXY); \
+                     tier T2 has no safe direct-route fallback",
+                );
+            }
+            LinuxNetwork::Relay
+        }
         // The host's network, without a namespace; IP sockets only, so the
         // Unix sockets are kept as with the network off.
         Network::Ip => {

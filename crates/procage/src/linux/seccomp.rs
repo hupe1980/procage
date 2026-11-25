@@ -243,6 +243,32 @@ pub(crate) fn build(rules: &[SeccompRule], arch: &Arch, notify: bool) -> Result<
     Ok(prog)
 }
 
+/// An allowlist filter on `arch`: only the numbered system calls pass; every
+/// other call fails with `EPERM`. Used by the relay helper, whose loop needs
+/// nothing but socket and memory calls.
+#[cfg(feature = "proxy")]
+pub(crate) fn allowlist(arch: &Arch, allowed: &[u32]) -> Vec<Insn> {
+    let mut prog = vec![
+        ld(ARCH),
+        insn(JEQ_K, 1, 0, arch.audit),
+        ret(RET_KILL_PROCESS),
+    ];
+    if arch.kill_x32 {
+        prog.extend([ld(NR), insn(JGE_K, 0, 1, X32_BIT), ret(RET_KILL_PROCESS)]);
+    }
+    prog.push(ld(NR));
+    let n = allowed.len().min(200);
+    for (i, nr) in allowed.iter().take(n).enumerate() {
+        let Some(jt) = u8::try_from(n - i).ok() else {
+            break;
+        };
+        prog.push(insn(JEQ_K, jt, 0, *nr));
+    }
+    prog.push(ret(RET_ERRNO | libc::EPERM as u32));
+    prog.push(ret(RET_ALLOW));
+    prog
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

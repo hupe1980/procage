@@ -6,6 +6,65 @@ All notable changes to procage are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Transparent relay for Linux tier T1 (`Network::Relay`,
+  `CageOptions::with_relay`): two network namespaces joined by a veth, with
+  nftables TPROXY at prerouting so TCP and UDP keep the original destination.
+  A forked helper installs the rules before dropping `CAP_NET_ADMIN`, retains
+  only `CAP_NET_RAW`, runs under an allowlist seccomp filter, and sends UDP
+  replies from the exact original source. The parent bridge names each flow
+  (TLS SNI across records, HTTP `Host`, QUIC v1/v2 Initial decryption with
+  CRYPTO reassembly, DNS QNAME, else the IP) and asks the harness over a
+  length-prefixed Unix control socket before carrying it; no payload crosses
+  that channel. Local resolver stubs are redirected inside the child's
+  namespace and denied QNAMEs get `REFUSED`. TCP/853 and known DoH endpoints
+  are refused, ECH is refused visibly, and tier T2 or macOS refuses the mode
+  without a fallback.
+- `relay_control_socket` (and `relay_run_id`) on the Node.js `Cage` options,
+  matching `RelayControlServer` in `opencode-fs-plugin`.
+
+### Changed
+
+- The relay accepts one EDNS0 OPT in a query and echoes it, bounded, in a
+  local `REFUSED`/`SERVFAIL`, so common stub queries parse.
+- Allowed DNS answers feed a bounded per-run address→name cache (A/AAAA
+  through CNAME, with TTL); a later nameless flow to a cached address is
+  authorized by the allowed QNAME, else by the address itself when every
+  mapped name is denied. Expiry and the entry limit authorize nothing.
+- An allowed DNS query uses the relay's explicit upstream, else the parent's
+  system resolver including a loopback stub, and answers `SERVFAIL` when
+  neither works.
+- Control requests are id-multiplexed on the one connection, so a pending
+  permission prompt holds only its own flow, up to the harness's in-flight
+  window.
+- The TCP sniff deadline (400 ms) is cleared before relaying, so an idle or
+  slow client is not cut off after classification.
+- IPv6 is carried too: ULA veth addresses and routes, `ip6` TPROXY rules,
+  IPv6 original-destination ancillary data, IPv6 TCP/UDP upstream and
+  transparent replies, AAAA/EDNS DNS handling and IPv6 DNS listeners.
+- QUIC Initials are buffered per flow (8 datagrams, 64 KiB, 100 ms) until
+  the SNI or ECH is parsed, then one decision covers every buffered
+  datagram; an incomplete, malformed or overflowing Initial is refused
+  without an address decision, while a valid no-SNI handshake or clearly
+  non-QUIC bytes may use the address.
+- At most 256 upstream UDP flows run per run; further datagrams are dropped
+  (DNS still answers REFUSED). Ending a run closes the control/helper
+  channels and stops every listener and UDP flow within one poll interval.
+- A TLS-looking or QUIC-Initial flow that is incomplete, malformed, over the
+  buffer bound or past the sniff deadline is refused without an address
+  decision; only a valid no-SNI handshake or clearly non-TLS/non-QUIC bytes
+  may use the destination address (or its C2 name).
+- A named flow is bound to the address an allowed DNS answer returned:
+  either the exact `(name, IP)` is cached and the name is allowed, or both
+  the name and IP are explicitly allowed. A denied name is never rescued by
+  an allowed IP; shared IPs keep every allowed name. `Cage::exec` and
+  `Cage::exec_session` refuse `Network::Relay`.
+- DNS-over-TCP connections are handled on bounded per-connection threads
+  with read/write deadlines, so a stalled client cannot block the listener.
+  The TCP bridge now half-closes the correct direction: client EOF shuts
+  down the upstream write half and upstream EOF the client write half.
+
 ## [0.8.0] - 2026-11-14
 
 ### Security

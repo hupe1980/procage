@@ -21,6 +21,7 @@ use procage::policy::path::AbsPath;
 use procage::policy::{
     self as pp, Construct, HardDenyClass, LowerError, LowerOptions, Relax, Relaxation,
 };
+use procage::proxy::{Allowlist, Proxy};
 
 /// An error the JavaScript module turns into its class: a marked JSON
 /// document with the kind, procage's message and, for a gap, the gaps.
@@ -120,6 +121,14 @@ fn policy_error(message: String) -> Error {
     fail("PolicyError", message, None)
 }
 
+/// A proxy port from JavaScript: 1 to 65535.
+fn proxy_port(name: &str, value: u32) -> Result<pp::Port> {
+    u16::try_from(value)
+        .ok()
+        .and_then(|port| pp::Port::new(port).ok())
+        .ok_or_else(|| policy_error(format!("{name} must be between 1 and 65535")))
+}
+
 /// A policy: from a preset or from the versioned JSON format.
 #[napi]
 pub struct Policy {
@@ -190,6 +199,18 @@ impl Policy {
     }
 }
 
+/// A run's own egress proxy: the only hosts the run can reach.
+#[napi(object)]
+pub struct ProxyOptionsJs {
+    /// Hosts the run may reach: `host`, `host:port`, `*.domain`, or an
+    /// address/range. Required; `*` and a one-label wildcard are refused.
+    pub allowlist: Vec<String>,
+    /// HTTP CONNECT port inside the cage (default 3128).
+    pub http_port: Option<u32>,
+    /// SOCKS5 port inside the cage (default 1080).
+    pub socks_port: Option<u32>,
+}
+
 /// Options of a cage.
 #[napi(object)]
 pub struct CageOptionsJs {
@@ -201,6 +222,29 @@ pub struct CageOptionsJs {
     pub accept_spawn_snapshot: Option<bool>,
     /// Constructs accepted as approximated, by name (`exec-program`).
     pub allow: Option<Vec<String>>,
+    /// Route the run's network through a proxy of its own that reaches only
+    /// the allowlisted hosts (Linux tier 1 or macOS).
+    pub proxy: Option<ProxyOptionsJs>,
+    /// The per-run `AF_UNIX` `SOCK_STREAM` control server the transparent
+    /// relay asks before it carries a flow (Linux tier 1). Setting it makes
+    /// the policy's network `relay`.
+    #[napi(js_name = "relay_control_socket")]
+    pub relay_control_socket: Option<String>,
+    /// The run id the control server was created with (`runId` in
+    /// `RelayControlServer`), as a decimal string. Required when the server
+    /// fixes its id; otherwise procage sends a random id the server rejects.
+    #[napi(js_name = "relay_run_id")]
+    pub relay_run_id: Option<String>,
+    /// The parent's resolver for the relay's allowed DNS queries, as
+    /// `ip:port` (for example `127.0.0.1:53`). Without it the parent's
+    /// `/etc/resolv.conf` and systemd-resolved paths are used, including a
+    /// loopback stub.
+    #[napi(js_name = "relay_dns_upstream")]
+    pub relay_dns_upstream: Option<String>,
+    /// A resolver configuration file to use instead of the parent's
+    /// `/etc/resolv.conf`; an empty file means no upstream and `SERVFAIL`.
+    #[napi(js_name = "relay_resolv_conf")]
+    pub relay_resolv_conf: Option<String>,
 }
 
 fn relax(names: &[String]) -> Result<Relax> {
@@ -257,6 +301,11 @@ impl Cage {
             relax: None,
             accept_spawn_snapshot: None,
             allow: None,
+            proxy: None,
+            relay_control_socket: None,
+            relay_run_id: None,
+            relay_dns_upstream: None,
+            relay_resolv_conf: None,
         });
         let mut lower = if o.accept_spawn_snapshot.unwrap_or(false) {
             LowerOptions::default().accept_spawn_snapshot()
@@ -266,19 +315,58 @@ impl Cage {
         for construct in allowed(&o.allow.unwrap_or_default())? {
             lower = lower.allow(construct);
         }
+        let mut policy_inner = policy.inner.clone();
         let mut options = CageOptions::default().with_lower(lower);
         if o.violations.unwrap_or(false) {
             options = options.with_violations();
         }
+        if let Some(proxy) = o.proxy {
+            let allow = Allowlist::new(&proxy.allowlist)
+                .map_err(|e| policy_error(format!("proxy allowlist: {e}")))?;
+            policy_inner.net = pp::Network::Proxy {
+                http: Some(proxy_port("httpPort", proxy.http_port.unwrap_or(3128))?),
+                socks: Some(proxy_port("socksPort", proxy.socks_port.unwrap_or(1080))?),
+            };
+            options = options.with_proxy(Proxy::new(allow));
+        }
+        if let Some(path) = o.relay_control_socket {
+            policy_inner.net = pp::Network::Relay;
+            #[cfg(target_os = "linux")]
+            {
+                let mut relay = procage::proxy::relay::Relay::new(path);
+                if let Some(id) = o.relay_run_id {
+                    let run_id = id
+                        .parse::<u64>()
+                        .map_err(|_| policy_error("relay_run_id must be a decimal u64".into()))?;
+                    relay = relay.with_run_id(run_id);
+                }
+                if let Some(upstream) = o.relay_dns_upstream {
+                    let upstream = upstream
+                        .parse()
+                        .map_err(|_| policy_error("relay_dns_upstream must be ip:port".into()))?;
+                    relay = relay.with_dns_upstream(upstream);
+                }
+                if let Some(path) = o.relay_resolv_conf {
+                    relay = relay.with_resolv_conf(path);
+                }
+                options = options.with_relay(relay);
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                // No TPROXY on this platform: the policy's `net-relay` gap
+                // refuses the cage, with no direct-route fallback.
+                let _ = &path;
+            }
+        }
         let names = o.relax.unwrap_or_default();
         let (inner, relaxed) = if names.is_empty() {
             (
-                native::Cage::with_options(&policy.inner, &options).map_err(spawn_error)?,
+                native::Cage::with_options(&policy_inner, &options).map_err(spawn_error)?,
                 Vec::new(),
             )
         } else {
             let (cage, taken) =
-                native::Cage::fit(&policy.inner, &options, &relax(&names)?).map_err(spawn_error)?;
+                native::Cage::fit(&policy_inner, &options, &relax(&names)?).map_err(spawn_error)?;
             (cage, taken.iter().map(ToString::to_string).collect())
         };
         Ok(Cage {
