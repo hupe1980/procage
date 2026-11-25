@@ -736,7 +736,8 @@ fn authorize_named(
 }
 
 /// Authorizes a nameless flow from any fresh allowed name bound to `ip`;
-/// with no bound name, from the address itself.
+/// when every bound name is denied (or none is bound), from the address
+/// itself. A denied mapped name never hides an explicitly allowed address.
 fn authorize_nameless(
     control: &Control,
     relay: &Relay,
@@ -745,17 +746,12 @@ fn authorize_nameless(
     port: u16,
     proto: Proto,
 ) -> (Decision, Resource) {
-    let mut last = None;
     for name in dns_map.names_for(ip) {
         let resource = Resource::Domain(name);
         let decision = decide(control, relay, &resource, port, proto);
         if decision.allowed() {
             return (Decision::Allow, resource);
         }
-        last = Some((decision, resource));
-    }
-    if let Some(last) = last {
-        return last;
     }
     let address = Resource::Ip(ip);
     let decision = decide(control, relay, &address, port, proto);

@@ -10,7 +10,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use procage::native::{Cage, CageOptions, Grants};
@@ -1024,6 +1024,48 @@ fn an_allowed_dns_answer_maps_a_nameless_flow() {
 }
 
 #[test]
+fn a_denied_mapped_name_still_checks_the_address_for_a_nameless_flow() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let tcp_port = tcp_echo();
+    let dns = dns_server_for(vec![("mapped.example", ip)]);
+    let name_queries = Arc::new(AtomicUsize::new(0));
+    let server = Server::start(move |resource| {
+        if resource == ip.to_string() {
+            Verdict::Allow
+        } else if resource == "mapped.example" {
+            // The DNS query is allowed so its answer is mapped; the later
+            // nameless flow's check of that mapped name is denied.
+            if name_queries.fetch_add(1, Ordering::SeqCst) == 0 {
+                Verdict::Allow
+            } else {
+                Verdict::Deny("the mapped name is denied")
+            }
+        } else {
+            Verdict::Deny("unexpected resource")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_dns_upstream(dns)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let action = format!("dnsq:127.0.0.53:53|mapped.example;tcp:{ip}:{tcp_port}");
+    let (results, _) = run(&cage, &action);
+    assert_eq!(results[0], "rcode=0", "DNS answer: {results:?}");
+    assert_eq!(
+        results[1], "UP:ping",
+        "an allowed address must authorize a nameless flow even when its fresh mapped name is denied: {results:?}"
+    );
+}
+
+#[test]
 fn a_denied_dns_answer_adds_no_mapping() {
     if !supported() {
         return;
@@ -1585,6 +1627,49 @@ fn a_denied_name_is_not_rescued_by_an_allowed_ip() {
     assert!(
         results[0].starts_with("not-forwarded") || results[0] == "eof",
         "a denied name must not be rescued by an allowed IP: {results:?}"
+    );
+}
+
+#[test]
+fn a_denied_mapped_name_is_not_rescued_by_an_allowed_ip_for_a_named_flow() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let tcp_port = tcp_echo();
+    let dns = dns_server_for(vec![("mapped.example", ip)]);
+    let name_queries = Arc::new(AtomicUsize::new(0));
+    let server = Server::start(move |resource| {
+        if resource == ip.to_string() {
+            Verdict::Allow
+        } else if resource == "mapped.example" {
+            // The DNS query is allowed so its answer is mapped; the named
+            // flow's check of that name is denied.
+            if name_queries.fetch_add(1, Ordering::SeqCst) == 0 {
+                Verdict::Allow
+            } else {
+                Verdict::Deny("the mapped name is denied")
+            }
+        } else {
+            Verdict::Deny("unexpected resource")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_dns_upstream(dns)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let action =
+        format!("dnsq:127.0.0.53:53|mapped.example;tls-sni:{ip}:{tcp_port}|mapped.example");
+    let (results, _) = run(&cage, &action);
+    assert_eq!(results[0], "rcode=0");
+    assert!(
+        results[1].starts_with("not-forwarded") || results[1] == "eof",
+        "a denied mapped name must not be rescued by an allowed IP on a named flow: {results:?}"
     );
 }
 

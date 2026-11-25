@@ -30,8 +30,8 @@ All notable changes to procage are listed here. The format follows
   local `REFUSED`/`SERVFAIL`, so common stub queries parse.
 - Allowed DNS answers feed a bounded per-run address→name cache (A/AAAA
   through CNAME, with TTL); a later nameless flow to a cached address is
-  authorized by the allowed QNAME. Expiry and the entry limit authorize
-  nothing.
+  authorized by the allowed QNAME, else by the address itself when every
+  mapped name is denied. Expiry and the entry limit authorize nothing.
 - An allowed DNS query uses the relay's explicit upstream, else the parent's
   system resolver including a loopback stub, and answers `SERVFAIL` when
   neither works.
