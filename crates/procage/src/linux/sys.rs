@@ -690,13 +690,16 @@ impl RelayChild {
         std::mem::forget(self.dns);
         let ready = wait_and_close(ready_read)?;
         if ready != (1, 0) {
-            // The helper's standard error is /dev/null: its failed step and
-            // errno arrive on the ready pipe, and the spawn fails here with
-            // them visible on the caller's captured stderr.
-            eprintln!(
-                "procage relay helper: step {} failed with errno {}",
-                ready.0, ready.1
-            );
+            // Still the post-fork child: no Rust formatting, allocation, or
+            // stdio locks (a multithreaded parent can hold them). The helper's
+            // failed step and errno travel on the ready pipe; this fixed note
+            // only marks the failure on the caller's captured stderr.
+            const NOTE: &[u8] = b"procage relay helper failed\n";
+            // SAFETY: the pointer and length describe a static byte string;
+            // write does not retain them.
+            unsafe {
+                libc::write(libc::STDERR_FILENO, NOTE.as_ptr().cast(), NOTE.len());
+            }
             return Err(libc::EPROTO);
         }
         link_up("lo")?;
