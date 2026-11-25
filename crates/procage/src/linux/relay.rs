@@ -66,6 +66,8 @@ const UDP_IDLE: Duration = Duration::from_secs(30);
 /// is dropped (DNS still answers REFUSED through its one-shot path); no
 /// socket or thread is created.
 const MAX_UDP_FLOWS: usize = 256;
+/// The most DNS-over-TCP connections handled at once.
+const MAX_DNS_TCP: usize = 32;
 
 /// Connects to the harness's control socket.
 pub(crate) fn connect(relay: &Relay) -> io::Result<Control> {
@@ -131,73 +133,6 @@ pub(crate) struct Run {
     relay: Relay,
     dns_map: Arc<DnsMap>,
     violations: Option<crate::violation::Sink>,
-}
-
-/// The names an allowed DNS answer has authorized, per address, with the
-/// record's TTL. A later flow that names no host may use the entry instead of
-/// its bare address; an expired or evicted entry authorizes nothing.
-#[derive(Debug, Default)]
-struct DnsMap {
-    entries: Mutex<HashMap<IpAddr, CacheEntry>>,
-}
-
-#[derive(Debug, Clone)]
-struct CacheEntry {
-    name: String,
-    expires: Instant,
-}
-
-impl DnsMap {
-    fn insert(&self, name: &str, answers: &[dns::Answer]) {
-        self.insert_at(name, answers, Instant::now());
-    }
-
-    fn insert_at(&self, name: &str, answers: &[dns::Answer], now: Instant) {
-        let Ok(mut entries) = self.entries.lock() else {
-            return;
-        };
-        if entries.len() >= DNS_MAP_MAX {
-            entries.retain(|_, entry| entry.expires > now);
-            if entries.len() >= DNS_MAP_MAX {
-                // Full: no new name is remembered; the address alone must be
-                // authorized, so the limit fails closed.
-                return;
-            }
-        }
-        for answer in answers {
-            if answer.ttl == 0 {
-                continue;
-            }
-            let ttl = u64::from(answer.ttl).min(DNS_TTL_MAX);
-            entries.insert(
-                answer.ip,
-                CacheEntry {
-                    name: name.to_string(),
-                    expires: now + Duration::from_secs(ttl),
-                },
-            );
-        }
-    }
-
-    fn insert_reply(&self, query: &dns::Query, reply: &[u8]) {
-        if let Ok(answers) = dns::parse_answers(reply, &query.name) {
-            self.insert(&query.name, &answers);
-        }
-    }
-
-    fn name_for(&self, ip: IpAddr) -> Option<String> {
-        let Ok(mut entries) = self.entries.lock() else {
-            return None;
-        };
-        match entries.get(&ip) {
-            Some(entry) if entry.expires > Instant::now() => Some(entry.name.clone()),
-            Some(_) => {
-                entries.remove(&ip);
-                None
-            }
-            None => None,
-        }
-    }
 }
 
 impl Run {
@@ -281,8 +216,6 @@ impl Run {
                 }
             }
         }));
-        // The IPv6 listener accepts the same flows; the original destination
-        // is its local address.
         let tcp6_stop = stop.clone();
         run.handles.push(std::thread::spawn(move || {
             loop {
@@ -315,7 +248,6 @@ impl Run {
                 }
             }
         }));
-        // UDP TPROXY and DNS share the decision path but not a socket.
         let udp_stop = stop.clone();
         let udp_map = dns_map.clone();
         run.handles.push(std::thread::spawn(move || {
@@ -401,19 +333,91 @@ impl Run {
         Ok(run)
     }
 }
+
 impl Drop for Run {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         self.control.close();
-        // The helper channel closes too: no reply socket keeps servicing a
-        // run whose child is gone.
         if let Ok(socket) = self.socket.lock() {
             let _ = socket.shutdown(Shutdown::Both);
         }
-        // Listener loops notice within one poll interval and upstream flow
-        // threads within their 200 ms read timeout; each drops its socket.
     }
 }
+
+/// The names an allowed DNS answer has authorized, per address, with the
+/// record's TTL. Several names may share an address (CDNs); an expired or
+/// evicted entry authorizes nothing.
+#[derive(Debug, Default)]
+struct DnsMap {
+    entries: Mutex<HashMap<(IpAddr, String), Instant>>,
+}
+
+impl DnsMap {
+    fn insert(&self, name: &str, answers: &[dns::Answer]) {
+        self.insert_at(name, answers, Instant::now());
+    }
+
+    fn insert_at(&self, name: &str, answers: &[dns::Answer], now: Instant) {
+        let Ok(mut entries) = self.entries.lock() else {
+            return;
+        };
+        for answer in answers {
+            if answer.ttl == 0 {
+                continue;
+            }
+            if entries.len() >= DNS_MAP_MAX {
+                entries.retain(|_, expires| *expires > now);
+                if entries.len() >= DNS_MAP_MAX {
+                    // Full: no new binding is remembered, so an unmapped
+                    // name needs an explicit IP permission.
+                    return;
+                }
+            }
+            let ttl = u64::from(answer.ttl).min(DNS_TTL_MAX);
+            entries.insert(
+                (answer.ip, name.to_string()),
+                now + Duration::from_secs(ttl),
+            );
+        }
+    }
+
+    fn insert_reply(&self, query: &dns::Query, reply: &[u8]) {
+        if let Ok(answers) = dns::parse_answers(reply, &query.name) {
+            self.insert(&query.name, &answers);
+        }
+    }
+
+    /// Whether an allowed DNS answer bound `name` to `ip` and it is fresh.
+    fn contains(&self, name: &str, ip: IpAddr) -> bool {
+        let Ok(mut entries) = self.entries.lock() else {
+            return false;
+        };
+        let key = (ip, name.to_string());
+        match entries.get(&key) {
+            Some(expires) if *expires > Instant::now() => true,
+            Some(_) => {
+                entries.remove(&key);
+                false
+            }
+            None => false,
+        }
+    }
+
+    /// The fresh names an allowed answer bound to `ip`.
+    fn names_for(&self, ip: IpAddr) -> Vec<String> {
+        let Ok(mut entries) = self.entries.lock() else {
+            return Vec::new();
+        };
+        let now = Instant::now();
+        entries.retain(|_, expires| *expires > now);
+        entries
+            .keys()
+            .filter(|(address, _)| *address == ip)
+            .map(|(_, name)| name.clone())
+            .collect()
+    }
+}
+
 fn record(
     sink: Option<&crate::violation::Sink>,
     operation: &str,
@@ -669,21 +673,23 @@ fn tcp_flow(
         client.shutdown(Shutdown::Both).ok();
         return Ok(());
     }
-    let resource = resource.unwrap_or_else(|| {
-        dns_map
-            .name_for(destination.ip())
-            .map(Resource::Domain)
-            .unwrap_or_else(|| Resource::Ip(destination.ip()))
-    });
-    let decision = decide(control, relay, &resource, port, Proto::Tcp);
+    let (decision, denied) = match resource {
+        Some(Resource::Domain(name)) => authorize_named(
+            control,
+            relay,
+            dns_map,
+            &name,
+            destination.ip(),
+            port,
+            Proto::Tcp,
+        ),
+        _ => authorize_nameless(control, relay, dns_map, destination.ip(), port, Proto::Tcp),
+    };
     if !decision.allowed() {
         record(
             sink,
             "network-outbound",
-            format!(
-                "{resource:?}:{port} from {peer} ({})",
-                reason_text(decision)
-            ),
+            format!("{denied:?}:{port} from {peer} ({})", reason_text(decision)),
             crate::violation::DeniedBy::Relay,
         );
         client.shutdown(Shutdown::Both).ok();
@@ -702,6 +708,58 @@ fn tcp_flow(
     relay_both(&mut client, &mut up)?;
     let _ = helper;
     Ok(())
+}
+
+/// Authorizes a named flow with C2 binding: an exact `(name, IP)` returned
+/// by an allowed DNS answer allows the name; otherwise both the name and the
+/// destination IP must be allowed. A denied name is never rescued by an IP.
+fn authorize_named(
+    control: &Control,
+    relay: &Relay,
+    dns_map: &DnsMap,
+    name: &str,
+    ip: IpAddr,
+    port: u16,
+    proto: Proto,
+) -> (Decision, Resource) {
+    let named = Resource::Domain(name.to_string());
+    let decision = decide(control, relay, &named, port, proto);
+    if !decision.allowed() {
+        return (decision, named);
+    }
+    if dns_map.contains(name, ip) {
+        return (Decision::Allow, named);
+    }
+    let address = Resource::Ip(ip);
+    let decision = decide(control, relay, &address, port, proto);
+    (decision, address)
+}
+
+/// Authorizes a nameless flow from any fresh allowed name bound to `ip`;
+/// with no bound name, from the address itself.
+fn authorize_nameless(
+    control: &Control,
+    relay: &Relay,
+    dns_map: &DnsMap,
+    ip: IpAddr,
+    port: u16,
+    proto: Proto,
+) -> (Decision, Resource) {
+    let mut last = None;
+    for name in dns_map.names_for(ip) {
+        let resource = Resource::Domain(name);
+        let decision = decide(control, relay, &resource, port, proto);
+        if decision.allowed() {
+            return (Decision::Allow, resource);
+        }
+        last = Some((decision, resource));
+    }
+    if let Some(last) = last {
+        return last;
+    }
+    let address = Resource::Ip(ip);
+    let decision = decide(control, relay, &address, port, proto);
+    (decision, address)
 }
 
 /// Maps a sniffer verdict to an IP/name fallback or a fail-closed refusal.
@@ -757,13 +815,14 @@ fn relay_both(client: &mut TcpStream, up: &mut TcpStream) -> io::Result<()> {
     let mut c2 = client.try_clone()?;
     let mut up_reader = up.try_clone()?;
     let mut client_up = client.try_clone()?;
-    let up_writer = up.try_clone()?;
     let up_thread = std::thread::spawn(move || {
         let _ = io::copy(&mut up_reader, &mut client_up);
-        let _ = up_writer.shutdown(Shutdown::Write);
+        // Upstream EOF: our client write half is finished.
+        let _ = client_up.shutdown(Shutdown::Write);
     });
     let _ = io::copy(&mut c2, up);
-    let _ = c2.shutdown(Shutdown::Write);
+    // Client EOF: our upstream write half is finished.
+    let _ = up.shutdown(Shutdown::Write);
     up_thread.join().ok();
     Ok(())
 }
@@ -948,7 +1007,7 @@ fn udp_loop(
                         }
                     };
                     let expired = entry.started.elapsed() >= QUIC_DEADLINE;
-                    let resource = match outcome {
+                    let (decision, denied) = match outcome {
                         QuicOutcome::NeedMore if !expired => {
                             pending.insert(key, entry);
                             continue;
@@ -971,12 +1030,25 @@ fn udp_loop(
                             );
                             continue;
                         }
-                        QuicOutcome::Resource(Resource::Ip(ip)) => dns_map
-                            .name_for(ip)
-                            .map(Resource::Domain)
-                            .unwrap_or_else(|| Resource::Ip(ip)),
-                        QuicOutcome::Resource(resource) => resource,
-                        QuicOutcome::NotQuic => Resource::Ip(destination.ip()),
+                        QuicOutcome::Resource(Resource::Domain(name)) => authorize_named(
+                            &control,
+                            &relay,
+                            &dns_map,
+                            &name,
+                            destination.ip(),
+                            destination.port(),
+                            Proto::Udp,
+                        ),
+                        QuicOutcome::Resource(Resource::Ip(_)) | QuicOutcome::NotQuic => {
+                            authorize_nameless(
+                                &control,
+                                &relay,
+                                &dns_map,
+                                destination.ip(),
+                                destination.port(),
+                                Proto::Udp,
+                            )
+                        }
                         QuicOutcome::Ech => {
                             record(
                                 violations.as_ref(),
@@ -987,15 +1059,13 @@ fn udp_loop(
                             continue;
                         }
                     };
-                    let decision =
-                        decide(&control, &relay, &resource, destination.port(), Proto::Udp);
                     if !decision.allowed() {
                         record(
                             violations.as_ref(),
                             "network-outbound",
                             format!(
                                 "{:?}:{} from {source} ({})",
-                                resource,
+                                denied,
                                 destination.port(),
                                 reason_text(decision)
                             ),
@@ -1006,25 +1076,30 @@ fn udp_loop(
                     start_udp_flow(&flows, key, &entry.datagrams, destination, &helper, &stop);
                     continue;
                 }
-                let resource = if destination.port() == 53 {
-                    match dns::parse_query(payload) {
+                let (decision, denied) = if destination.port() == 53 {
+                    let resource = match dns::parse_query(payload) {
                         Ok(query) => Resource::Domain(query.name),
                         Err(_) => continue,
-                    }
+                    };
+                    let decision = decide(&control, &relay, &resource, 53, Proto::Udp);
+                    (decision, resource)
                 } else {
-                    dns_map
-                        .name_for(destination.ip())
-                        .map(Resource::Domain)
-                        .unwrap_or_else(|| Resource::Ip(destination.ip()))
+                    authorize_nameless(
+                        &control,
+                        &relay,
+                        &dns_map,
+                        destination.ip(),
+                        destination.port(),
+                        Proto::Udp,
+                    )
                 };
-                let decision = decide(&control, &relay, &resource, destination.port(), Proto::Udp);
                 if !decision.allowed() {
                     record(
                         violations.as_ref(),
                         "network-outbound",
                         format!(
                             "{:?}:{} from {source} ({})",
-                            resource,
+                            denied,
                             destination.port(),
                             reason_text(decision)
                         ),
@@ -1277,42 +1352,24 @@ fn dns_listener_tcp(
     violations: Option<crate::violation::Sink>,
 ) {
     listener.set_nonblocking(true).ok();
+    let inflight = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
-            Ok((mut stream, _)) => {
-                let mut head = [0u8; 2];
-                if stream.read_exact(&mut head).is_err() {
+            Ok((stream, _)) => {
+                if inflight.load(Ordering::Relaxed) >= MAX_DNS_TCP {
+                    let _ = stream.shutdown(Shutdown::Both);
                     continue;
                 }
-                let len = u16::from_be_bytes(head) as usize;
-                if len == 0 || len > dns::MAX_TCP {
-                    continue;
-                }
-                let mut message = vec![0u8; len];
-                if stream.read_exact(&mut message).is_err() {
-                    continue;
-                }
-                let Ok(query) = dns::parse_query(&message) else {
-                    continue;
-                };
-                let resource = Resource::Domain(query.name.clone());
-                let decision = decide(&control, &relay, &resource, 53, Proto::Tcp);
-                let reply = if decision.allowed() {
-                    let reply =
-                        forward_dns_tcp(&relay, &message, SocketAddr::from(([127, 0, 0, 53], 53)))
-                            .unwrap_or_else(|| dns::servfail(&query));
-                    dns_map.insert_reply(&query, &reply);
-                    reply
-                } else {
-                    record(
-                        violations.as_ref(),
-                        "network-outbound",
-                        format!("{}:53 ({})", query.name, reason_text(decision)),
-                        crate::violation::DeniedBy::Relay,
-                    );
-                    dns::refused(&query)
-                };
-                let _ = stream.write_all(&dns::frame(&reply));
+                inflight.fetch_add(1, Ordering::Relaxed);
+                let count = inflight.clone();
+                let control = control.clone();
+                let relay = relay.clone();
+                let dns_map = dns_map.clone();
+                let sink = violations.clone();
+                std::thread::spawn(move || {
+                    let _ = dns_tcp_connection(stream, &control, &relay, &dns_map, sink.as_ref());
+                    count.fetch_sub(1, Ordering::Relaxed);
+                });
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(2));
@@ -1320,6 +1377,47 @@ fn dns_listener_tcp(
             Err(_) => break,
         }
     }
+}
+
+/// One bounded DNS-over-TCP connection; a stalled client only blocks its own
+/// two-second deadline, never the listener.
+fn dns_tcp_connection(
+    mut stream: TcpStream,
+    control: &Control,
+    relay: &Relay,
+    dns_map: &DnsMap,
+    violations: Option<&crate::violation::Sink>,
+) -> io::Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+    let mut head = [0u8; 2];
+    stream.read_exact(&mut head)?;
+    let len = u16::from_be_bytes(head) as usize;
+    if len == 0 || len > dns::MAX_TCP {
+        return Ok(());
+    }
+    let mut message = vec![0u8; len];
+    stream.read_exact(&mut message)?;
+    let Ok(query) = dns::parse_query(&message) else {
+        return Ok(());
+    };
+    let resource = Resource::Domain(query.name.clone());
+    let decision = decide(control, relay, &resource, 53, Proto::Tcp);
+    let reply = if decision.allowed() {
+        let reply = forward_dns_tcp(relay, &message, SocketAddr::from(([127, 0, 0, 53], 53)))
+            .unwrap_or_else(|| dns::servfail(&query));
+        dns_map.insert_reply(&query, &reply);
+        reply
+    } else {
+        record(
+            violations,
+            "network-outbound",
+            format!("{}:53 ({})", query.name, reason_text(decision)),
+            crate::violation::DeniedBy::Relay,
+        );
+        dns::refused(&query)
+    };
+    stream.write_all(&dns::frame(&reply))
 }
 
 /// Installs the helper's namespace and sockets. Called in the forked helper:
@@ -1582,8 +1680,8 @@ mod tests {
         map.insert_at("expired.example", &[answer([192, 0, 2, 1], 5)], now);
         map.insert_at("live.example", &[answer([192, 0, 2, 2], 60)], now);
         assert_eq!(
-            map.name_for(IpAddr::from([192, 0, 2, 2])).as_deref(),
-            Some("live.example")
+            map.names_for(IpAddr::from([192, 0, 2, 2])),
+            vec!["live.example".to_string()]
         );
         // An answer inserted with a base older than its TTL is already stale:
         // a lookup must remove it, not keep a stale name.
@@ -1592,10 +1690,10 @@ mod tests {
             &[answer([192, 0, 2, 1], 5)],
             now - Duration::from_secs(10),
         );
-        assert_eq!(map.name_for(IpAddr::from([192, 0, 2, 1])), None);
+        assert!(map.names_for(IpAddr::from([192, 0, 2, 1])).is_empty());
         assert_eq!(
-            map.name_for(IpAddr::from([192, 0, 2, 2])).as_deref(),
-            Some("live.example")
+            map.names_for(IpAddr::from([192, 0, 2, 2])),
+            vec!["live.example".to_string()]
         );
     }
 
@@ -1623,14 +1721,31 @@ mod tests {
             }],
             now,
         );
-        assert_eq!(map.name_for(IpAddr::V4(extra)), None);
+        assert!(map.names_for(IpAddr::V4(extra)).is_empty());
     }
 
     #[test]
     fn a_zero_ttl_answer_is_not_kept() {
         let map = DnsMap::default();
         map.insert("zero.example", &[answer([192, 0, 2, 9], 0)]);
-        assert_eq!(map.name_for(IpAddr::from([192, 0, 2, 9])), None);
+        assert!(map.names_for(IpAddr::from([192, 0, 2, 9])).is_empty());
+    }
+
+    #[test]
+    fn shared_address_keeps_each_allowed_name() {
+        let map = DnsMap::default();
+        let now = Instant::now();
+        map.insert_at("one.example", &[answer([192, 0, 2, 5], 60)], now);
+        map.insert_at("two.example", &[answer([192, 0, 2, 5], 60)], now);
+        let mut names = map.names_for(IpAddr::from([192, 0, 2, 5]));
+        names.sort();
+        assert_eq!(
+            names,
+            vec!["one.example".to_string(), "two.example".to_string()]
+        );
+        assert!(map.contains("one.example", IpAddr::from([192, 0, 2, 5])));
+        assert!(map.contains("two.example", IpAddr::from([192, 0, 2, 5])));
+        assert!(!map.contains("other.example", IpAddr::from([192, 0, 2, 5])));
     }
 
     #[test]

@@ -107,7 +107,9 @@
 //! only `CAP_NET_RAW`, sets `no_new_privs`, installs an allowlist seccomp
 //! filter, and serves the parent's UDP replies from each flow's exact
 //! original source address and port. The helper is non-dumpable, dies with
-//! its parent, and cannot open files after the filter.
+//! its parent, and cannot open files after the filter. [`Cage::exec`] and
+//! [`Cage::exec_session`] refuse `Network::Relay`: no handle would hold the
+//! bridge or its helper.
 //!
 //! The parent bridge reads only enough of a TCP flow to name it (TLS SNI
 //! across records, HTTP `Host`; a `CONNECT` request names its proxy, not the
@@ -117,7 +119,11 @@
 //! (A/AAAA through a bounded CNAME chain, with the records' TTL) feed a
 //! bounded per-run address→name cache: a later flow that names no host but
 //! goes to a cached address is authorized by the previously allowed QNAME.
-//! An expired or evicted entry authorizes nothing. It then sends one
+//! An expired or evicted entry authorizes nothing. A named flow is carried
+//! only when the same `(name, destination IP)` was returned by an allowed
+//! DNS answer and the name is allowed, or when both the name and the IP are
+//! explicitly allowed; a denied name is never rescued by an allowed IP.
+//! Shared addresses keep every allowed name. It then sends one
 //! `DECIDE_REQ` over the run's Unix control socket and carries the flow only
 //! if `DECIDE_RESP` allows it. Requests are id-multiplexed on that connection:
 //! a slow permission prompt holds only its own flow (bounded by the harness's
@@ -832,7 +838,9 @@ impl CageOptions {
     /// and is in [`Child::violations`] when the cage reports violations.
     ///
     /// Tier T2 and macOS refuse `Network::Relay`: there is no fallback to a
-    /// direct route or to the proxy.
+    /// direct route or to the proxy. [`Cage::exec`] and
+    /// [`Cage::exec_session`] also refuse it: no handle would hold the
+    /// bridge and its helper.
     #[cfg(feature = "proxy")]
     pub fn with_relay(mut self, relay: procage_proxy::relay::Relay) -> Self {
         self.relay = Some(relay);
@@ -1523,6 +1531,17 @@ impl Cage {
         }
         if self.declared().contains(TMPDIR_GRANT) {
             return SpawnError::Grant(GrantError::TmpdirWithExec);
+        }
+        #[cfg(feature = "proxy")]
+        if matches!(
+            self.plan.network,
+            procage_policy::linux::LinuxNetwork::Relay
+        ) {
+            // No handle would hold the relay bridge and its helper; an exec
+            // has no parent side to service the control socket.
+            return SpawnError::Unsupported(Unsupported::Setting {
+                setting: "Cage::exec with Network::Relay",
+            });
         }
         let threads = sys::thread_count();
         if self.plan.namespaces.is_some() && threads > 1 {

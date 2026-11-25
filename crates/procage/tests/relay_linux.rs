@@ -205,6 +205,40 @@ fn tcp_echo() -> u16 {
     port
 }
 
+/// Reads until the client's FIN, then replies; proves the relay forwards the
+/// client's half-close upstream.
+fn tcp_fin_server() -> u16 {
+    let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut stream = stream;
+                let mut data = Vec::new();
+                let _ = stream.read_to_end(&mut data);
+                let _ = stream.write_all(b"UP:");
+                let _ = stream.write_all(&data);
+            });
+        }
+    });
+    port
+}
+
+/// Writes and closes immediately; proves the relay forwards the upstream
+/// half-close to the client.
+fn tcp_close_server() -> u16 {
+    let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut stream = stream;
+            let _ = stream.write_all(b"BYE");
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+    });
+    port
+}
+
 fn udp_echo() -> u16 {
     let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
     let port = socket.local_addr().unwrap().port();
@@ -434,6 +468,41 @@ fn query(name: &str) -> Vec<u8> {
     out
 }
 
+/// A minimal TLS ClientHello, optionally with SNI, as one TLS record.
+fn tls_client_hello(sni: Option<&str>) -> Vec<u8> {
+    let mut extensions = Vec::new();
+    if let Some(sni) = sni {
+        let name = sni.as_bytes();
+        let mut list = Vec::new();
+        list.push(0);
+        list.extend_from_slice(&(name.len() as u16).to_be_bytes());
+        list.extend_from_slice(name);
+        let mut server_name = Vec::new();
+        server_name.extend_from_slice(&(list.len() as u16).to_be_bytes());
+        server_name.extend_from_slice(&list);
+        extensions.extend_from_slice(&0u16.to_be_bytes());
+        extensions.extend_from_slice(&(server_name.len() as u16).to_be_bytes());
+        extensions.extend_from_slice(&server_name);
+    }
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x03, 0x03]);
+    body.extend_from_slice(&[7u8; 32]);
+    body.push(0);
+    body.extend_from_slice(&[0x00, 0x02, 0x13, 0x01]);
+    body.extend_from_slice(&[0x01, 0x00]);
+    if !extensions.is_empty() {
+        body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
+        body.extend_from_slice(&extensions);
+    }
+    let mut handshake = vec![1];
+    handshake.extend_from_slice(&((body.len() as u32).to_be_bytes()[1..]));
+    handshake.extend_from_slice(&body);
+    let mut record = vec![0x16, 0x03, 0x01];
+    record.extend_from_slice(&(handshake.len() as u16).to_be_bytes());
+    record.extend_from_slice(&handshake);
+    record
+}
+
 #[test]
 fn child_entry() {
     let Ok(action) = std::env::var("PROCAGE_CHILD") else {
@@ -461,6 +530,30 @@ fn child_entry() {
                 Ok(socket) => format!("bound:{}", socket.local_addr().unwrap()),
                 Err(e) => format!("bind-error:{e}"),
             },
+            "tcp-fin" => {
+                match TcpStream::connect_timeout(&arg.parse().unwrap(), Duration::from_secs(3)) {
+                    Ok(mut stream) => {
+                        let _ = stream.write_all(b"ping");
+                        let _ = stream.shutdown(std::net::Shutdown::Write);
+                        stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+                        let mut out = String::new();
+                        let _ = stream.read_to_string(&mut out);
+                        if out.is_empty() { "eof".into() } else { out }
+                    }
+                    Err(e) => format!("connect-error:{:?}", e.kind()),
+                }
+            }
+            "tcp-read" => {
+                match TcpStream::connect_timeout(&arg.parse().unwrap(), Duration::from_secs(3)) {
+                    Ok(mut stream) => {
+                        stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+                        let mut out = String::new();
+                        let _ = stream.read_to_string(&mut out);
+                        if out.is_empty() { "eof".into() } else { out }
+                    }
+                    Err(e) => format!("connect-error:{:?}", e.kind()),
+                }
+            }
             "tcpdelay" => {
                 let (target, delay) = arg.split_once('|').unwrap();
                 let delay: u64 = delay.parse().unwrap();
@@ -531,18 +624,25 @@ fn child_entry() {
             "tls-nosni" => {
                 match TcpStream::connect_timeout(&arg.parse().unwrap(), Duration::from_secs(3)) {
                     Ok(mut stream) => {
-                        let body_len = 2 + 32 + 1 + 4 + 2;
-                        let mut hello = vec![0x16, 0x03, 0x01];
-                        hello.extend_from_slice(&((4 + body_len) as u16).to_be_bytes());
-                        hello.push(1);
-                        hello.extend_from_slice(&((body_len as u32).to_be_bytes()[1..]));
-                        hello.extend_from_slice(&[0x03, 0x03]);
-                        hello.extend_from_slice(&[7u8; 32]);
-                        hello.push(0);
-                        hello.extend_from_slice(&[0x00, 0x02, 0x13, 0x01]);
-                        hello.extend_from_slice(&[0x01, 0x00]);
                         stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
-                        let _ = stream.write_all(&hello);
+                        let _ = stream.write_all(&tls_client_hello(None));
+                        let mut out = String::new();
+                        let _ = stream.read_to_string(&mut out);
+                        if out.starts_with("UP:") {
+                            "forwarded".into()
+                        } else {
+                            format!("not-forwarded:{out:?}")
+                        }
+                    }
+                    Err(e) => format!("connect-error:{:?}", e.kind()),
+                }
+            }
+            "tls-sni" => {
+                let (target, sni) = arg.split_once('|').unwrap();
+                match TcpStream::connect_timeout(&target.parse().unwrap(), Duration::from_secs(3)) {
+                    Ok(mut stream) => {
+                        stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+                        let _ = stream.write_all(&tls_client_hello(Some(sni)));
                         let mut out = String::new();
                         let _ = stream.read_to_string(&mut out);
                         if out.starts_with("UP:") {
@@ -647,6 +747,43 @@ fn child_entry() {
                         }
                     }
                     Err(_) => "socket-error".into(),
+                }
+            }
+            "dns-stall" => {
+                let (target, name) = arg.split_once('|').unwrap();
+                let target: SocketAddr = target.parse().unwrap();
+                match TcpStream::connect_timeout(&target, Duration::from_secs(3)) {
+                    Ok(mut stalled) => {
+                        let _ = stalled.write_all(&[0x00]);
+                        std::thread::sleep(Duration::from_millis(50));
+                        let started = std::time::Instant::now();
+                        match TcpStream::connect_timeout(&target, Duration::from_secs(3)) {
+                            Ok(mut stream) => {
+                                stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+                                let message = query(name);
+                                let _ = stream.write_all(&(message.len() as u16).to_be_bytes());
+                                let _ = stream.write_all(&message);
+                                let mut head = [0u8; 2];
+                                if stream.read_exact(&mut head).is_err() {
+                                    "read-error".into()
+                                } else {
+                                    let len = u16::from_be_bytes(head) as usize;
+                                    let mut reply = vec![0u8; len];
+                                    if stream.read_exact(&mut reply).is_err() || len < 4 {
+                                        "read-error".into()
+                                    } else {
+                                        format!(
+                                            "rcode={}|ms={}",
+                                            reply[3] & 0x0f,
+                                            started.elapsed().as_millis()
+                                        )
+                                    }
+                                }
+                            }
+                            Err(e) => format!("second-connect-error:{:?}", e.kind()),
+                        }
+                    }
+                    Err(e) => format!("connect-error:{:?}", e.kind()),
                 }
             }
             "dnsq" => {
@@ -1125,10 +1262,10 @@ fn quic_initials_are_buffered_until_the_sni_decides() {
     let recorded = decisions.clone();
     let server = Server::start(move |resource| {
         recorded.lock().unwrap().push(resource.to_string());
-        if resource == "quic-big.example" {
+        if resource == "quic-big.example" || resource == ip.to_string() {
             Verdict::Allow
         } else {
-            Verdict::Deny("only the QUIC SNI")
+            Verdict::Deny("only the QUIC SNI or its address")
         }
     });
     let options = CageOptions::default().with_tier(Tier::T1).with_relay(
@@ -1146,7 +1283,10 @@ fn quic_initials_are_buffered_until_the_sni_decides() {
         "both Initial datagrams must be forwarded: {decisions:?}"
     );
     let decisions = decisions.lock().unwrap();
-    assert_eq!(&*decisions, &["quic-big.example".to_string()]);
+    assert_eq!(
+        &*decisions,
+        &["quic-big.example".to_string(), ip.to_string()]
+    );
 }
 
 #[test]
@@ -1335,6 +1475,206 @@ fn a_valid_tls_handshake_without_sni_uses_the_ip() {
     assert_eq!(
         results[0], "forwarded",
         "a valid ClientHello without SNI may use the IP decision: {results:?}"
+    );
+}
+
+#[test]
+fn exec_refuses_the_relay() {
+    if !supported() {
+        return;
+    }
+    let options = CageOptions::default()
+        .with_tier(Tier::T1)
+        .with_relay(Relay::new("/nonexistent/control.sock").with_run_id(RUN));
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let error = cage.exec(&mut Command::new("/bin/true"), &Grants::new());
+    let text = error.to_string();
+    assert!(
+        text.contains("Cage::exec with Network::Relay"),
+        "exec must refuse a relay cage: {text}"
+    );
+}
+
+#[test]
+fn a_named_flow_needs_the_name_and_ip_bound_by_dns() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let tcp_port = tcp_echo();
+    let server = Server::start(move |resource| {
+        if resource == "approved.example" {
+            Verdict::Allow
+        } else {
+            Verdict::Deny("the IP is not allowed on its own")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, &format!("tls-sni:{ip}:{tcp_port}|approved.example"));
+    assert!(
+        results[0].starts_with("not-forwarded") || results[0] == "eof",
+        "an unmapped IP must not ride an allowed SNI: {results:?}"
+    );
+}
+
+#[test]
+fn a_dns_mapped_name_allows_its_ip_for_a_named_flow() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let tcp_port = tcp_echo();
+    let dns = dns_server_for(vec![("approved.example", ip)]);
+    let server = Server::start(move |resource| {
+        if resource == "approved.example" {
+            Verdict::Allow
+        } else {
+            Verdict::Deny("the IP is not allowed on its own")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_dns_upstream(dns)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(
+        &cage,
+        &format!("dnsq:127.0.0.53:53|approved.example;tls-sni:{ip}:{tcp_port}|approved.example"),
+    );
+    assert_eq!(results[0], "rcode=0");
+    assert_eq!(
+        results[1], "forwarded",
+        "the exact (name, IP) binding must allow the flow: {results:?}"
+    );
+}
+
+#[test]
+fn a_denied_name_is_not_rescued_by_an_allowed_ip() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let tcp_port = tcp_echo();
+    let server = Server::start(move |resource| {
+        if resource == ip.to_string() {
+            Verdict::Allow
+        } else {
+            Verdict::Deny("the name is denied")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, &format!("tls-sni:{ip}:{tcp_port}|denied.example"));
+    assert!(
+        results[0].starts_with("not-forwarded") || results[0] == "eof",
+        "a denied name must not be rescued by an allowed IP: {results:?}"
+    );
+}
+
+#[test]
+fn a_stalled_dns_tcp_client_does_not_block_another() {
+    if !supported() {
+        return;
+    }
+    let server = Server::start(|resource| {
+        if resource == "blocked.example" {
+            Verdict::Deny("blocked")
+        } else {
+            Verdict::Allow
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, "dns-stall:127.0.0.53:53|blocked.example");
+    let result = &results[0];
+    assert!(result.starts_with("rcode=5"), "{results:?}");
+    let ms: u128 = result
+        .split("ms=")
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(u128::MAX);
+    assert!(
+        ms < 1000,
+        "a stalled DNS/TCP client must not serialize the listener: {result}"
+    );
+}
+
+#[test]
+fn a_client_half_close_reaches_upstream_before_the_reply() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let port = tcp_fin_server();
+    let server = Server::start(move |resource| {
+        if resource == ip.to_string() {
+            Verdict::Allow
+        } else {
+            Verdict::Deny("only this IP")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, &format!("tcp-fin:{ip}:{port}"));
+    assert_eq!(
+        results[0], "UP:ping",
+        "client FIN must reach upstream: {results:?}"
+    );
+}
+
+#[test]
+fn an_upstream_close_reaches_the_client() {
+    if !supported() {
+        return;
+    }
+    let Some(ip) = local_ip() else {
+        return;
+    };
+    let port = tcp_close_server();
+    let server = Server::start(move |resource| {
+        if resource == ip.to_string() {
+            Verdict::Allow
+        } else {
+            Verdict::Deny("only this IP")
+        }
+    });
+    let options = CageOptions::default().with_tier(Tier::T1).with_relay(
+        Relay::new(&server.path)
+            .with_run_id(RUN)
+            .with_timeout(Duration::from_secs(5)),
+    );
+    let cage = Cage::with_options(&policy(), &options).unwrap();
+    let (results, _) = run(&cage, &format!("tcp-read:{ip}:{port}"));
+    assert_eq!(
+        results[0], "BYE",
+        "upstream FIN must reach the client: {results:?}"
     );
 }
 

@@ -55,6 +55,15 @@ All notable changes to procage are listed here. The format follows
   buffer bound or past the sniff deadline is refused without an address
   decision; only a valid no-SNI handshake or clearly non-TLS/non-QUIC bytes
   may use the destination address (or its C2 name).
+- A named flow is bound to the address an allowed DNS answer returned:
+  either the exact `(name, IP)` is cached and the name is allowed, or both
+  the name and IP are explicitly allowed. A denied name is never rescued by
+  an allowed IP; shared IPs keep every allowed name. `Cage::exec` and
+  `Cage::exec_session` refuse `Network::Relay`.
+- DNS-over-TCP connections are handled on bounded per-connection threads
+  with read/write deadlines, so a stalled client cannot block the listener.
+  The TCP bridge now half-closes the correct direction: client EOF shuts
+  down the upstream write half and upstream EOF the client write half.
 
 ## [0.8.0] - 2026-11-14
 
